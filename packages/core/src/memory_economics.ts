@@ -1,4 +1,5 @@
 import type { DecisionTrace, MemoryMeta, MemoryMetaSource, MemoryTier } from "./types.js";
+import { classifyMemoryState, scoreMemory } from "./memory_lifecycle.js";
 
 export function classifyMemoryTier(params: {
   userInput?: string;
@@ -43,12 +44,26 @@ export function buildMemoryMeta(params: {
   tier: MemoryTier;
   source: MemoryMetaSource;
   contentLength: number;
+  emotionScore?: number;
+  narrativeScore?: number;
+  activatedAt?: string;
 }): MemoryMeta {
   const costs = estimateMemoryCosts(params.tier, params.contentLength);
-  return {
+  const activatedAt = params.activatedAt ?? new Date().toISOString();
+  const base: MemoryMeta = {
     tier: params.tier,
     storageCost: costs.storageCost,
     retrievalCost: costs.retrievalCost,
-    source: params.source
+    source: params.source,
+    activationCount: 1,
+    lastActivatedAt: activatedAt,
+    emotionScore: params.emotionScore ?? (params.tier === "error" ? 0.8 : 0.3),
+    narrativeScore: params.narrativeScore ?? (params.tier === "highlight" ? 0.8 : 0.4)
+  };
+  const salience = scoreMemory(base, activatedAt);
+  return {
+    ...base,
+    salienceScore: salience,
+    state: classifyMemoryState(salience)
   };
 }

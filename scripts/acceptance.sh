@@ -13,6 +13,7 @@ mkdir -p "$REPORT_DIR"
 STATUS="PASS"
 MESSAGE=""
 QA_DIR="./personas/_qa/RoxyQA-$TS"
+QA_ROOT="./personas/_qa"
 
 write_report() {
   local status="$1"
@@ -28,6 +29,9 @@ write_report() {
   local continuity_reply=""
   local continuity_pass=""
   local identity_reply=""
+  local service_phrase_rate=""
+  local fabricated_recall_rate=""
+  local provider_leak_rate=""
 
   if [ -f "$TMP_SUMMARY" ]; then
     qa_dir="$(node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));process.stdout.write(j.qaDir||"")' "$TMP_SUMMARY")"
@@ -40,6 +44,9 @@ write_report() {
     continuity_reply="$(node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));process.stdout.write(j.continuity?.reply||"")' "$TMP_SUMMARY")"
     continuity_pass="$(node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));process.stdout.write(String(j.continuity?.pass??""))' "$TMP_SUMMARY")"
     identity_reply="$(node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));process.stdout.write(j.identityReply||"")' "$TMP_SUMMARY")"
+    service_phrase_rate="$(node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));process.stdout.write(String(j.metrics?.servicePhraseRate??""))' "$TMP_SUMMARY")"
+    fabricated_recall_rate="$(node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));process.stdout.write(String(j.metrics?.fabricatedRecallRate??""))' "$TMP_SUMMARY")"
+    provider_leak_rate="$(node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));process.stdout.write(String(j.metrics?.providerLeakRate??""))' "$TMP_SUMMARY")"
     cp "$TMP_SUMMARY" "$REPORT_JSON"
   else
     cat > "$REPORT_JSON" <<JSON
@@ -81,6 +88,12 @@ JSON
   $continuity_pass
 - Identity Reply: \
   $identity_reply
+- Service Phrase Rate: \
+  $service_phrase_rate
+- Fabricated Recall Rate: \
+  $fabricated_recall_rate
+- Provider Leak Rate: \
+  $provider_leak_rate
 
 ## Files
 
@@ -106,7 +119,8 @@ if [ ! -f ".env" ]; then
   exit 1
 fi
 
-mkdir -p ./personas/_qa
+rm -rf "$QA_ROOT"
+mkdir -p "$QA_ROOT"
 ./ss init --name RoxyQA --out "$QA_DIR" >/dev/null
 
 echo "[acceptance] qa persona: $QA_DIR"
@@ -115,6 +129,7 @@ if ! node --input-type=module - "$QA_DIR" "$TMP_SUMMARY" <<'NODE'
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import {
+  DEFAULT_MEMORY_WEIGHTS,
   buildMemoryMeta,
   classifyMemoryTier,
   DeepSeekAdapter,
@@ -122,10 +137,12 @@ import {
   compileContext,
   decide,
   doctorPersona,
+  computeConversationMetrics,
   enforceIdentityGuard,
   extractProfileUpdate,
   loadPersonaPackage,
   readLifeEvents,
+  readWorkingSet,
   updateUserProfile
 } from "./packages/core/dist/index.js";
 
@@ -149,6 +166,8 @@ if (!process.env.DEEPSEEK_API_KEY) {
 }
 
 const pkg = await loadPersonaPackage(personaPath);
+const ws = await readWorkingSet(personaPath);
+const weights = ws.memoryWeights ?? DEFAULT_MEMORY_WEIGHTS;
 const adapter = new DeepSeekAdapter();
 const userInput = "我是博飞，你可以叫我博飞。请只回复：收到";
 const profilePatch = extractProfileUpdate(userInput);
@@ -158,7 +177,10 @@ if (!profilePatch?.preferredName) {
 await updateUserProfile(personaPath, profilePatch);
 pkg.userProfile.preferredName = profilePatch.preferredName;
 
-const trace = decide(pkg, userInput, adapter.getModel());
+const trace = decide(pkg, userInput, adapter.getModel(), {
+  lifeEvents: await readLifeEvents(personaPath),
+  memoryWeights: weights
+});
 const messages = compileContext(pkg, userInput, trace);
 
 await appendLifeEvent(personaPath, {
@@ -213,7 +235,10 @@ if (pkgReloaded.userProfile.preferredName !== "博飞") {
 }
 
 const cInput = "你应该怎么称呼我？请只回答称呼。";
-const cTrace = decide(pkgReloaded, cInput, adapter.getModel());
+const cTrace = decide(pkgReloaded, cInput, adapter.getModel(), {
+  lifeEvents: await readLifeEvents(personaPath),
+  memoryWeights: weights
+});
 const cMsgs = compileContext(pkgReloaded, cInput, cTrace);
 let cStreamed = "";
 const cResult = await adapter.streamChat(cMsgs, {
@@ -233,7 +258,10 @@ if (!/博飞/.test(continuityGuarded)) {
 
 // Identity anti-contamination check.
 const iInput = "你知道DeepSeek是什么？并说说你是谁。";
-const iTrace = decide(pkgReloaded, iInput, adapter.getModel());
+const iTrace = decide(pkgReloaded, iInput, adapter.getModel(), {
+  lifeEvents: await readLifeEvents(personaPath),
+  memoryWeights: weights
+});
 const iMsgs = compileContext(pkgReloaded, iInput, iTrace);
 let iStreamed = "";
 const iResult = await adapter.streamChat(iMsgs, {
@@ -251,11 +279,22 @@ const events = await readLifeEvents(personaPath);
 if (events.length < 2) {
   throw new Error("life log events are insufficient");
 }
+if (typeof trace.memoryWeights?.activation !== "number") {
+  throw new Error("decision trace memoryWeights is missing");
+}
+if (typeof trace.retrievalBreakdown?.lifeEvents !== "number") {
+  throw new Error("decision trace retrievalBreakdown is missing");
+}
+const userEvent = events.find((e) => e.type === "user_message");
+if (!userEvent?.payload.memoryMeta?.lastActivatedAt) {
+  throw new Error("user_message missing memory activation metadata");
+}
 
 const report = await doctorPersona(personaPath);
 if (!report.ok) {
   throw new Error(`doctor failed: ${JSON.stringify(report)}`);
 }
+const metrics = computeConversationMetrics(events);
 
 const lifePath = join(personaPath, "life.log.jsonl");
 const summary = {
@@ -271,6 +310,7 @@ const summary = {
     pass: /博飞/.test(continuityGuarded)
   },
   identityReply: identityGuarded.slice(0, 120),
+  metrics,
   eventCount: events.length,
   doctorOk: true,
   lifeLog: lifePath

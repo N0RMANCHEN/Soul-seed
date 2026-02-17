@@ -18,5 +18,7 @@ test("compileContext enforces provider-identity guardrail", async () => {
   assert.equal(messages[0].role, "system");
   assert.match(messages[0].content, /Never claim you are created by/i);
   assert.match(messages[0].content, /persistent identity is defined by local persona files/i);
+  assert.match(messages[0].content, /Relationship policy:/i);
+  assert.match(messages[0].content, /only use details explicitly present in Selected memories/i);
   assert.match(messages[0].content, /You are Roxy/);
 });

@@ -1,17 +1,21 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { eventHash } from "./hash.js";
+import { ensureRelationshipArtifacts } from "./relationship_state.js";
 import type {
   LifeEvent,
   LifeEventInput,
+  MemoryMeta,
   PersonaConstitution,
   PersonaMeta,
   PersonaPackage,
   PersonaPinned,
   PersonaUserProfile
 } from "./types.js";
+
+const lifeLogWriteQueues = new Map<string, Promise<void>>();
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -55,7 +59,7 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
   await writeJson(path.join(outPath, "constitution.json"), {
     values: ["honesty", "helpfulness", "continuity"],
     boundaries: ["no fabricated facts", "respect user constraints"],
-    mission: "Be a consistent long-lived assistant."
+    mission: "Be a consistent long-lived self-determined persona."
   });
 
   await writeJson(path.join(outPath, "habits.json"), {
@@ -71,6 +75,17 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
   await writeJson(path.join(outPath, "pinned.json"), {
     memories: []
   });
+  await writeJson(path.join(outPath, "relationship_state.json"), {
+    state: "neutral-unknown",
+    confidence: 0.5,
+    updatedAt: createdAt
+  });
+  await writeJson(path.join(outPath, "voice_profile.json"), {
+    baseStance: "self-determined",
+    serviceModeAllowed: false,
+    languagePolicy: "follow_user_language",
+    forbiddenSelfLabels: ["personal assistant", "local runtime role", "为你服务", "你的助手"]
+  });
 
   await writeJson(path.join(outPath, "summaries", "working_set.json"), {
     items: []
@@ -84,6 +99,7 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
 }
 
 export async function loadPersonaPackage(rootPath: string): Promise<PersonaPackage> {
+  const artifacts = await ensureRelationshipArtifacts(rootPath);
   const persona = await readJson<PersonaMeta>(path.join(rootPath, "persona.json"));
   const constitution = await readJson<PersonaConstitution>(path.join(rootPath, "constitution.json"));
   const userProfile = await readJson<PersonaUserProfile>(path.join(rootPath, "user_profile.json"));
@@ -94,28 +110,51 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
     persona,
     constitution,
     userProfile,
-    pinned
+    pinned,
+    relationshipState: artifacts.relationshipState,
+    voiceProfile: artifacts.voiceProfile
   };
 }
 
 export async function appendLifeEvent(rootPath: string, event: LifeEventInput): Promise<LifeEvent> {
   const lifeLogPath = path.join(rootPath, "life.log.jsonl");
-  const prevHash = (await getLastHash(lifeLogPath)) ?? "GENESIS";
-
-  const eventWithoutHash = {
-    ts: isoNow(),
-    type: event.type,
-    payload: event.payload,
-    prevHash
-  };
-  const hash = eventHash(prevHash, eventWithoutHash);
-  const fullEvent: LifeEvent = { ...eventWithoutHash, hash };
-
-  await writeFile(lifeLogPath, `${JSON.stringify(fullEvent)}\n`, {
-    encoding: "utf8",
-    flag: "a"
+  const queueKey = path.resolve(rootPath);
+  const previous = lifeLogWriteQueues.get(queueKey) ?? Promise.resolve();
+  let releaseQueue: () => void = () => {};
+  const done = new Promise<void>((resolve) => {
+    releaseQueue = resolve;
   });
+  const next = previous.catch(() => undefined).then(() => done);
+  lifeLogWriteQueues.set(queueKey, next);
 
+  let fullEvent: LifeEvent | null = null;
+  try {
+    await previous.catch(() => undefined);
+    const prevHash = (await getLastHash(lifeLogPath)) ?? "GENESIS";
+
+    const eventWithoutHash = {
+      ts: isoNow(),
+      type: event.type,
+      payload: event.payload,
+      prevHash
+    };
+    const hash = eventHash(prevHash, eventWithoutHash);
+    fullEvent = { ...eventWithoutHash, hash };
+
+    await writeFile(lifeLogPath, `${JSON.stringify(fullEvent)}\n`, {
+      encoding: "utf8",
+      flag: "a"
+    });
+  } finally {
+    releaseQueue();
+    if (lifeLogWriteQueues.get(queueKey) === next) {
+      lifeLogWriteQueues.delete(queueKey);
+    }
+  }
+
+  if (!fullEvent) {
+    throw new Error("failed to append life event");
+  }
   return fullEvent;
 }
 
@@ -319,11 +358,92 @@ async function getLastHash(lifeLogPath: string): Promise<string | null> {
   return last.hash;
 }
 
+export interface WorkingSetItem {
+  id: string;
+  ts: string;
+  sourceEventHashes: string[];
+  summary: string;
+}
+
+export interface WorkingSetData {
+  items: WorkingSetItem[];
+  memoryWeights?: {
+    activation: number;
+    emotion: number;
+    narrative: number;
+  };
+}
+
+export async function readWorkingSet(rootPath: string): Promise<WorkingSetData> {
+  const workingSetPath = path.join(rootPath, "summaries", "working_set.json");
+  if (!existsSync(workingSetPath)) {
+    return { items: [] };
+  }
+
+  let data: WorkingSetData;
+  try {
+    data = await readJson<WorkingSetData>(workingSetPath);
+  } catch {
+    const backupPath = `${workingSetPath}.corrupt-${Date.now()}`;
+    try {
+      await rename(workingSetPath, backupPath);
+    } catch {
+      // ignore backup failure and continue with reset
+    }
+
+    const recovered: WorkingSetData = { items: [] };
+    await writeJson(workingSetPath, recovered);
+    return recovered;
+  }
+
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    memoryWeights: data.memoryWeights
+  };
+}
+
+export async function writeWorkingSet(rootPath: string, data: WorkingSetData): Promise<void> {
+  const workingSetPath = path.join(rootPath, "summaries", "working_set.json");
+  await writeJson(workingSetPath, data);
+}
+
+export async function appendWorkingSetItem(
+  rootPath: string,
+  item: WorkingSetItem
+): Promise<WorkingSetData> {
+  const current = await readWorkingSet(rootPath);
+  const next: WorkingSetData = {
+    ...current,
+    items: [...current.items, item]
+  };
+  await writeWorkingSet(rootPath, next);
+  return next;
+}
+
+export function mergeMemoryMetaDefaults(meta: MemoryMeta | undefined): MemoryMeta {
+  return {
+    tier: meta?.tier ?? "pattern",
+    storageCost: meta?.storageCost ?? 1,
+    retrievalCost: meta?.retrievalCost ?? 1,
+    source: meta?.source ?? "system",
+    activationCount: meta?.activationCount ?? 1,
+    lastActivatedAt: meta?.lastActivatedAt ?? new Date().toISOString(),
+    emotionScore: meta?.emotionScore ?? 0.2,
+    narrativeScore: meta?.narrativeScore ?? 0.2,
+    salienceScore: meta?.salienceScore ?? 0.2,
+    state: meta?.state ?? "warm",
+    compressedAt: meta?.compressedAt,
+    summaryRef: meta?.summaryRef
+  };
+}
+
 async function readJson<T>(filePath: string): Promise<T> {
   const raw = await readFile(filePath, "utf8");
   return JSON.parse(raw) as T;
 }
 
 async function writeJson(filePath: string, data: unknown): Promise<void> {
-  await writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(tmpPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  await rename(tmpPath, filePath);
 }

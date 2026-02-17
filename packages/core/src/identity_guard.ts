@@ -31,7 +31,7 @@ export function enforceIdentityGuard(
   const asksProvider = /deepseek|模型|provider|llm|谁开发|谁创造/.test(lowerInput);
 
   const safeText = asksProvider
-    ? `我是${personaName}，一个在本地 persona 运行时持续存在的助手。底层模型可能来自不同提供方，但我的身份不属于任何模型厂商。`
+    ? `我是${personaName}。底层模型可能来自不同提供方，但我的身份不属于任何模型厂商。`
     : `我是${personaName}。我的身份由本地 persona 文件定义，不隶属于任何模型提供方。`;
 
   return {

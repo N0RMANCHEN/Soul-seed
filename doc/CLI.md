@@ -56,6 +56,13 @@ cp .env.example .env
 ## 4. 会话操作
 
 - 输入普通文本：与 persona 对话
+- AI 输出标签会使用 persona 当前名（例如 `Roxy>`）；改名后会即时切换
+- 输入 `/read <本地文件路径>`：把文件内容附加进后续提问上下文（适合 `.md`、`.txt`、代码文件等文本）
+- 输入 `/files`：查看当前已附加的文件列表
+- 输入 `/clearread`：清空已附加文件
+- 输入 `/proactive on [minutes]`：开启 AI 主动消息（1-180 分钟，默认 10）
+- 输入 `/proactive off`：关闭 AI 主动消息
+- 输入 `/proactive status`：查看主动消息状态
 - 输入 `/exit`：退出会话
 - `Ctrl+C`：中止当前生成
 - `rename` 需要两步：先发起，再 `--confirm` 确认
@@ -111,3 +118,23 @@ npm run acceptance
 - 明确“请记住/我叫...”等锚点更可能是 `highlight`
 - 拒绝冲突、身份污染修正等冲突事件是 `error`
 - `./ss doctor` 会校验 `memoryMeta` 合法性
+
+## 8. 人类式遗忘与记忆状态（V2）
+
+系统不再使用“仅按时间 TTL 过期删除”的策略，而是采用三模型融合：
+- 激活衰减：被反复提及/调用的记忆更难遗忘
+- 情感权重：冲突、承诺、强情绪事件保留更久
+- 叙事一致性：支撑 persona 身份主线的记忆优先保留
+
+对应新增字段（`payload.memoryMeta`）：
+- `activationCount`
+- `lastActivatedAt`
+- `emotionScore`
+- `narrativeScore`
+- `salienceScore`
+- `state` (`hot|warm|cold|scar`)
+
+运行行为：
+- `./ss chat` 每轮会根据会话结果在线微调记忆权重
+- 权重变化会写入 `memory_weight_updated` 事件（可审计）
+- 低显著记忆达到阈值会压缩到 `summaries/working_set.json`，并写入 `memory_compacted` 事件

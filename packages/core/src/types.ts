@@ -33,6 +33,28 @@ export interface PersonaPackage {
   constitution: PersonaConstitution;
   userProfile: PersonaUserProfile;
   pinned: PersonaPinned;
+  relationshipState?: RelationshipState;
+  voiceProfile?: VoiceProfile;
+}
+
+export interface RelationshipState {
+  state: "neutral-unknown" | "friend" | "peer" | "intimate";
+  confidence: number;
+  updatedAt: string;
+}
+
+export interface VoiceProfile {
+  baseStance: "self-determined";
+  serviceModeAllowed: boolean;
+  languagePolicy: "follow_user_language";
+  forbiddenSelfLabels: string[];
+}
+
+export interface VoiceIntent {
+  stance: "friend" | "peer" | "intimate" | "neutral";
+  tone: "warm" | "plain" | "reflective" | "direct";
+  serviceMode: false;
+  language: "zh" | "en" | "mixed";
 }
 
 export interface DecisionTrace {
@@ -44,6 +66,23 @@ export interface DecisionTrace {
   riskLevel: "low" | "medium" | "high";
   reason: string;
   model: string;
+  memoryBudget?: {
+    maxItems: number;
+    usedItems: number;
+  };
+  retrievalBreakdown?: {
+    profile: number;
+    pinned: number;
+    lifeEvents: number;
+    summaries: number;
+  };
+  memoryWeights?: {
+    activation: number;
+    emotion: number;
+    narrative: number;
+  };
+  voiceIntent?: VoiceIntent;
+  relationshipStateSnapshot?: RelationshipState;
 }
 
 export type MemoryTier = "highlight" | "pattern" | "error";
@@ -54,6 +93,17 @@ export interface MemoryMeta {
   storageCost: number;
   retrievalCost: number;
   source: MemoryMetaSource;
+  activationCount?: number;
+  lastActivatedAt?: string;
+  emotionScore?: number;
+  narrativeScore?: number;
+  salienceScore?: number;
+  state?: "hot" | "warm" | "cold" | "scar";
+  compressedAt?: string;
+  summaryRef?: string;
+  credibilityScore?: number;
+  contaminationFlags?: string[];
+  excludedFromRecall?: boolean;
 }
 
 export type LifeEventType =
@@ -65,6 +115,15 @@ export type LifeEventType =
   | "rename_applied"
   | "rename_rejected"
   | "rename_suggested_by_soul"
+  | "rename_proposed_by_soul"
+  | "rename_confirmed_via_chat"
+  | "memory_weight_updated"
+  | "memory_compacted"
+  | "memory_contamination_flagged"
+  | "relationship_state_updated"
+  | "voice_intent_selected"
+  | "narrative_drift_detected"
+  | "constitution_review_requested"
   | "scar";
 
 export interface LifeEvent {

@@ -1,189 +1,216 @@
-# Soulseed CLI Roadmap（执行版）
+# Soulseed Roadmap（P0-P5 执行版）
 
-## 执行状态（2026-02-17）
+## 基线
+- 更新日期：2026-02-17
+- 目标：本地优先、四类类人记忆、强可解释、可长期运行、在线检索额外时延 P95 `<=150ms`
+- 任务编号规则：`P{优先级}-{序号}`，数字越小优先级越高
+- 状态：`done` / `in_progress` / `todo` / `blocked`
 
-- 已完成：P0-0A 代码骨架（DeepSeekAdapter、`persona init`、`chat`、life log 追加写入、Ctrl+C 中止）
-- 已完成：P0-0 验证基础（`./scripts/verify.sh` 可通过，含 lint/typecheck/build/test）
-- 已完成：P0-1a 最小 replay harness 与三类回归用例（追问/拒绝/正常回复）
-- 已完成：P0-1b life log `prevHash/hash` 链式写入与断链校验
-- 已完成：P0-1c 最小 `doctor`（必需文件 + hash 链检查）
-- 已完成：P0-2 Profile Memory（用户称呼/语言偏好抽取与持久化）
-- 已完成：P0-3 自由演化（rename 双确认、冷却期、personaId 不变、事件可追溯）
-- 已完成：连续性回归标准化（acceptance 增加“博飞”跨重载校验与结构化报告）
-- 已完成：冲突日志先行（`conflict_logged` 事件：拒绝冲突 / 身份污染修正冲突）
-- 已完成：P1-0 记忆经济学 V1（事件 `memoryMeta`：tier/source/storageCost/retrievalCost + doctor 校验）
-- 阻塞项：DeepSeek 真实联调依赖有效 `DEEPSEEK_API_KEY` 与可访问 DeepSeek API 的网络
+## P0（必须优先完成，阻塞主线）
 
-## 1. 产品理解（先统一“我们在做什么”）
+### P0-1 记忆主存落地（SQLite）
+- 状态：`todo`
+- 交付：
+  - 新建 `personas/<id>.soulseedpersona/memory.db`
+  - 建表：`memories`、`memory_edges`、`recall_traces`、`archive_segments`
+  - schema version 与迁移入口
+- DoD：
+  - 初始化 persona 时可自动建库
+  - doctor 可检查 schema/version 完整性
 
-Soulseed 的核心不是“聊天应用”，而是：
-- 可迁移的人格资产（Persona Package）
-- 可审计、可回放的决策闭环（Orchestrator）
-- 可替换的大模型驱动层（ModelAdapter）
+### P0-2 记忆写入链路（ingest + store）
+- 状态：`todo`
+- 交付：
+  - 从对话事件提取候选记忆并分类（`episodic|semantic|relational|procedural`）
+  - 写入 `memory.db` 并记录 `source_event_hash`
+- DoD：
+  - 抽样回放中每类记忆都有可写入样本
+  - `source_event_hash` 可在 `life.log` 追溯
 
-CLI 版本的目标是先把“灵魂内核 + 驱动闭环”跑通，并用可验证行为证明四件事：
-- 持续自我模型：跨重启/跨模型仍是“同一个它”
-- 深层价值结构：选择会被宪法/承诺约束
-- 不可逆损失表征：历史不可悄悄重写
-- 情绪作为控制信号：影响策略，同时可外部中止
+### P0-3 召回链路 v1（无 RAG）
+- 状态：`todo`
+- 交付：
+  - 输入解析 -> 意图标签 -> 结构化检索 -> 打分 -> 预算裁剪 -> 注入
+  - 默认预算：候选 `<=100`，精排 `<=30`，注入 `<=8`，字符 `<=2200`
+- DoD：
+  - 每轮产出 recall trace（命中、分数、淘汰原因、预算）
+  - 无 soft-deleted 记忆被注入
 
-## 2. 路线图迁移说明（来自 README）
+### P0-4 迁移脚手架（life.log + working_set -> memory.db）
+- 状态：`todo`
+- 交付：
+  - 迁移脚本与备份目录：`migration-backups/<ts>/`
+  - 报告：`memory-migration-report.json`
+- DoD：
+  - 可一键迁移与回滚
+  - 报告包含条目数、哈希摘要、失败样本
 
-本文件承接并扩展 README 原 Roadmap 内容。原有阶段被保留并细化：
-- P0-0 CLI Verify + CI
-- P0-1 驱动闭环（load → decide → generate → writeback）
-- P0-1a DecisionTrace 回放与回归
-- P0-1b life log 防篡改证据链
-- P0-1c Persona Doctor（体检 + 迁移提示）
-- P0-2 Profile Memory
-- P0-3 自由演化（名字/习惯/性格可变）
-- P0-4 Attachments
-- P0-x MCP 兼容层（可选）
+### P0-5 CLI 交互修正（AI 标签与主动消息）
+- 状态：`done`
+- 交付：
+  - `assistant>` 改为动态 `AI名称>`（来自 persona displayName）
+  - 新增主动消息控制：`/proactive on [minutes]`、`/proactive off`、`/proactive status`
+- DoD：
+  - 改名后标签实时切换
+  - 主动消息默认关闭，开启后按间隔推送并可关闭
 
-在此基础上新增硬优先级：**P0-0A 先用 DeepSeek API 跑通整条链路**。
+## P1（高优先，形成可用闭环）
 
-## 3. 最高优先级：先用 DeepSeek API 跑通
+### P1-1 生命周期 v3（激活/情感/叙事/关系）
+- 状态：`todo`
+- 交付：
+  - `memory_lifecycle_v3`：四信号统一评分
+  - 状态流转与衰减策略（含 `decayClass`）
+- DoD：
+  - 评分边界与状态迁移有单元测试
+  - 回放中无明显“短期噪声压制长期事实”回归
 
-### P0-0A DeepSeek First（强制第一里程碑）
+### P1-2 软遗忘与恢复
+- 状态：`todo`
+- 交付：
+  - `forget --mode soft|hard`（默认 soft）
+  - `recover --id <memory_id>`
+  - 事件：`memory_soft_forgotten`、`memory_recovered`
+- DoD：
+  - soft forget 不物理删除，可恢复
+  - recall trace 不应出现 soft-deleted
 
-目标：先让“真实模型调用 + CLI 会话 + 事件写回”端到端可用，不等其它优化。
+### P1-3 记忆控制面 CLI（完整命令集）
+- 状态：`todo`
+- 交付：
+  - `ss memory status|list|inspect|pin|unpin|forget|recover|compact|export|import`
+- DoD：
+  - 全命令具备参数校验与错误码
+  - 核心命令有 CLI 集成测试
 
-交付：
-- `ModelAdapter` 首个真实实现：`DeepSeekAdapter`
-- 配置规范（例如环境变量）：`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`（可选）
-- CLI 最小命令可跑：`persona init` + `chat`
-- 支持 streaming 与 Ctrl+C 中止
-- 会话后可见 `life.log.jsonl` 新增事件
+## P2（中高优先，规模化与成本控制）
 
-DoD（全部满足才算完成）：
-- 使用 DeepSeek API 进行一次真实对话并返回内容
-- 中止指令可立即停止输出与后续工具动作
-- 对话后 `life.log.jsonl` 仅追加，不覆盖历史
-- 重启 CLI 后仍能读取同一 persona 并继续会话
-- `./scripts/verify.sh` 与 CI 通过
+### P2-1 冷归档与分段压缩
+- 状态：`todo`
+- 交付：
+  - `summaries/archive/segment-YYYYMM.jsonl`
+  - 归档触发：事件数/冷记忆占比/时间窗口阈值
+- DoD：
+  - 主表保留摘要+引用，归档段可验 checksum
+  - doctor 可发现引用断裂
 
-非目标（本阶段不做）：
-- 不先做多模型切换 UI
-- 不先做复杂检索系统
-- 不先做 Doctor 全量能力
+### P2-2 working_set 降级与缓存视图化
+- 状态：`todo`
+- 交付：
+  - `working_set.json` 仅缓存视图，不再唯一事实源
+  - 内部读路径优先 `memory.db`
+- DoD：
+  - 兼容期一个版本周期不破坏旧流程
+  - 读取逻辑切换可回滚
 
-## 4. P0 分阶段执行计划
+### P2-3 存储/内存预算治理
+- 状态：`todo`
+- 交付：
+  - 预算目标：`memory.db <300MB/年/重度 persona`
+  - 进程缓存 `<64MB`，LRU 最近召回缓存
+- DoD：
+  - 压测报告包含空间增长曲线与缓存命中率
 
-### P0-0 CLI Verify + CI（协作基础设施）
-交付：
-- `./scripts/verify.sh`（lint/typecheck/test/build）
-- CI（Linux）执行同一入口
+## P3（中优先，工程可靠性）
 
-DoD：
-- 本地 verify 0 退出
-- CI 全绿
+### P3-1 doctor 扩展（记忆专项）
+- 状态：`todo`
+- 交付：
+  - schema/version 校验
+  - `source_event_hash` 存在性校验
+  - 归档 checksum 与 recall trace 完整性校验
+- DoD：
+  - 错误分级明确（error/warning）
+  - 每类错误有修复建议
 
-### P0-1 驱动闭环：load → decide → generate → writeback
-交付：
-- Persona Loader（读写 package）
-- Orchestrator（最小 DecisionTrace schema + context compiler）
-- ModelAdapter（先 DeepSeek，再补 Mock）
-- life log append-only 写回
+### P3-2 CI 与回归门禁
+- 状态：`todo`
+- 交付：
+  - `.github/workflows` 跑 `npm run verify`
+  - 最小门禁：typecheck + test
+- DoD：
+  - PR 无绿灯不可合并
+  - 主分支可复现实验结果
 
-DoD：
-- 可以加载 persona、聊天、写回、重启后延续
+### P3-3 迁移一致性审计
+- 状态：`todo`
+- 交付：
+  - 迁移前后对账：数量、哈希、关键记忆可召回一致性
+- DoD：
+  - 提供自动化对账脚本与报告
 
-### P0-1a DecisionTrace 回放与回归
-交付：
-- 固化 `decision_trace.json` schema
-- Replay harness（mock adapter 可回放）
-- 三类关键测试：追问/拒绝/正常回复
+## P4（中低优先，体验增强）
 
-DoD：
-- 回放输出稳定，回归可发现策略漂移
+### P4-1 主动消息策略升级（从模板到模型驱动）
+- 状态：`todo`
+- 交付：
+  - 基于关系态、近期事件、任务上下文生成主动消息
+  - 频率限制、静默时段、手动打断策略
+- DoD：
+  - 不打扰（可配置）与可解释（触发原因记录）
+  - 误触发率在验收阈值内
 
-### P0-1b life log 防篡改证据链
-交付：
-- 每条事件写入 `prevHash/hash`
-- 断链检测与 scar event 写入
+### P4-2 会话资产迁移补齐
+- 状态：`todo`
+- 交付：
+  - `persona inspect/export/import`
+  - 附件 manifest 与一致性校验
+- DoD：
+  - 跨目录迁移后引用不失效
 
-DoD：
-- 篡改可被检测；系统不做静默修复
+### P4-3 宪法审查闭环工具化
+- 状态：`todo`
+- 交付：
+  - `constitution_review_requested` 到人工确认/拒绝流程
+  - 宪法版本化、回滚与审计事件
+- DoD：
+  - 可执行一次完整审查与回滚演练
 
-### P0-1c Persona Doctor（体检 + 迁移提示）
-交付：
-- package 完整性检查
-- 附件路径检查（相对路径）
-- schema migration 提示与最小迁移器
+## P5（阶段 B：RAG 增强，增量接入）
 
-DoD：
-- 能对缺文件/断链/丢附件给出明确诊断
+### P5-1 本地向量索引接入
+- 状态：`todo`
+- 交付：
+  - 本地 embedding + 向量索引（HNSW/SQLite VSS/轻量库）
+  - 配置开关：`memory_config.json` 中 `rag.enabled=true`
+- DoD：
+  - 关闭 RAG 时行为与阶段 A 一致
+  - 打开 RAG 后不破坏现有 CLI 接口
 
-### P0-2 Profile Memory：用户名必记
-交付：
-- `user_profile.json`
-- 每轮注入与最小抽取规则
+### P5-2 混合检索策略
+- 状态：`todo`
+- 交付：
+  - `hybrid_score = α*vector + β*bm25 + γ*memory_salience`
+  - 结构化过滤作为先决条件
+- DoD：
+  - 语义召回率提升（基线对比）
+  - P95 延迟仍在目标预算内
 
-DoD：
-- 跨重启仍记住用户名、语言偏好等关键字段
+## 关键接口变更（统一登记）
+- `packages/core/src/types.ts`
+  - 扩展 `MemoryMeta`
+  - 扩展 `LifeEventType`
+  - 新增 recall trace 类型
+- `packages/core/src/index.ts`
+  - 导出 `memory_store`、`memory_recall`、`memory_archive`
+- `packages/cli/src/index.ts`
+  - 新增 `memory` 子命令路由
+  - 新增主动消息控制命令
+- persona 目录
+  - 新增 `memory.db`
+  - 新增 `summaries/archive/`
+  - 新增 `memory_config.json`
 
-### P0-3 自由演化：可变但有门槛
-交付：
-- 更名事件（personaId 不变）
-- 习惯演化事件
-- 可选：性格向量更新规则
+## 里程碑映射（6 周）
+- Week 1-2：`P0-1~P0-4` + `P1-1` 启动
+- Week 3-4：`P1-2~P1-3` + `P2-1~P2-2` + `P3-1`
+- Week 5：`P2-3` + `P3-2~P3-3` + 回归稳定
+- Week 6：阶段 A 验收发布
+- 后续 2-4 周：`P5-1~P5-2`
 
-DoD：
-- “变化”有事件证据、有门槛、有可追溯理由
-
-### P0-4 Attachments：头像/图片
-交付：
-- `attachments/` 相对路径引用与校验
-- 复制 persona 包后仍可解析附件
-
-DoD：
-- 迁移目录后资源不丢失
-
-### P0-x（可选）MCP 兼容层
-交付：
-- 暴露“决策/记忆编译”可调用接口
-
-DoD：
-- 不破坏 CLI 主闭环的前提下可被外部代理接入
-
-## 5. 技术落地建议（针对“先跑通”）
-
-建议先做最小包结构与最小命令：
-- `packages/core`：domain/storage/orchestrator/adapters
-- `packages/cli`：命令行入口与交互
-- `scripts/verify.sh`：单一验证入口
-
-建议最小命令集（先够用）：
-- `soulseed persona init --name <name> --out <path>`
-- `soulseed chat --persona <path>`
-
-DeepSeek 接入建议：
-- 先实现 OpenAI 兼容调用层（若采用兼容端点）
-- 把 provider 抽象留在 `ModelAdapter`，避免后续重写 orchestration
-- streaming 作为默认路径，非 streaming 仅做回退
-
-## 6. 风险与应对
-
-风险：
-- 先做“人格参数”而不做驱动闭环，会导致价值无法验证
-- 没有 DecisionTrace 回放，后续改动会引入不可见退化
-- life log 若可回写，会破坏“不可逆损失”的核心承诺
-
-应对：
-- 里程碑顺序强制按本文件执行
-- 每阶段都绑定 DoD 与最小回归测试
-- DeepSeek 首跑通过前，不进入复杂功能开发
-
-## 7. 里程碑验收清单（发布前）
-
-- [ ] DeepSeek API 真实对话已跑通（非 mock）
-- [ ] persona 可创建、可加载、可持续会话
-- [ ] life log append-only，且可检测断链
-- [ ] DecisionTrace 可回放并有回归测试
-- [ ] Ctrl+C 可中止生成与工具执行
-- [ ] `./scripts/verify.sh` 本地与 CI 全绿
-
-## 8. 下一阶段优先方向（CLI 语境）
-
-1. 记忆经济学（P1/P2）  
-- 已落地 V1：写回分层元数据与成本预算。下一步聚焦 TTL/压缩/检索优先级联动。
+## 验收总表
+- 功能：四类记忆、软遗忘/恢复、完整 CLI memory 命令可用
+- 一致性：life.log hash 链有效，迁移可回滚且对账通过
+- 可解释：recall trace 全链路可审计
+- 性能：Recall P95 `<=150ms`（不含模型推理）
+- 回归：现有 `chat/rename/doctor` 不退化
