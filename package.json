@@ -1,0 +1,20 @@
+{
+  "name": "soulseed",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/cli/tsconfig.json --noEmit",
+    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/cli/tsconfig.json --noEmit",
+    "build": "tsc -p packages/core/tsconfig.build.json && tsc -p packages/cli/tsconfig.build.json",
+    "test": "npm run test -w @soulseed/core && npm run test -w @soulseed/cli",
+    "acceptance": "./scripts/acceptance.sh",
+    "verify": "./scripts/verify.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "typescript": "^5.7.3"
+  }
+}

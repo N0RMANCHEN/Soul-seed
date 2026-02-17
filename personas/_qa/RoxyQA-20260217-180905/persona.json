@@ -1,0 +1,15 @@
+{
+  "id": "0cc6fe7c-9879-4547-b053-c020372bd6e7",
+  "displayName": "RoxyQA",
+  "schemaVersion": "0.1.0",
+  "createdAt": "2026-02-17T10:09:05.401Z",
+  "paths": {
+    "identity": "identity.json",
+    "worldview": "worldview.json",
+    "constitution": "constitution.json",
+    "habits": "habits.json",
+    "userProfile": "user_profile.json",
+    "pinned": "pinned.json",
+    "lifeLog": "life.log.jsonl"
+  }
+}

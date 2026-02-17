@@ -1,0 +1,15 @@
+{
+  "id": "e6e42826-92cc-444a-b9ef-c5876a7f5062",
+  "displayName": "Roxy",
+  "schemaVersion": "0.1.0",
+  "createdAt": "2026-02-17T09:22:06.411Z",
+  "paths": {
+    "identity": "identity.json",
+    "worldview": "worldview.json",
+    "constitution": "constitution.json",
+    "habits": "habits.json",
+    "userProfile": "user_profile.json",
+    "pinned": "pinned.json",
+    "lifeLog": "life.log.jsonl"
+  }
+}

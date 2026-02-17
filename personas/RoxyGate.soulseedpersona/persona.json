@@ -1,0 +1,15 @@
+{
+  "id": "425d4801-476c-4c18-8e9f-5035d6d73b4e",
+  "displayName": "Nova",
+  "schemaVersion": "0.1.0",
+  "createdAt": "2026-02-17T09:34:03.358Z",
+  "paths": {
+    "identity": "identity.json",
+    "worldview": "worldview.json",
+    "constitution": "constitution.json",
+    "habits": "habits.json",
+    "userProfile": "user_profile.json",
+    "pinned": "pinned.json",
+    "lifeLog": "life.log.jsonl"
+  }
+}

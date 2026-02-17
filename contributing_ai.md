@@ -10,6 +10,11 @@
 - **Dev AI**：写代码、补测试、跑构建、更新文档。
 - **Runtime AI**：产品内 Persona runtime / Orchestrator / ToolBus / ModelAdapter（属于产品能力）。
 
+## 0.1 Core-first & Multi-shell（对齐）
+
+- CLI / iOS / Web 都是壳，核心逻辑必须优先放在 `packages/core`。
+- 若某项逻辑可复用，不得只写在 `packages/cli` 的交互层。
+
 ---
 
 ## 1) Default Working Protocol（强制输出结构）
@@ -92,6 +97,7 @@ trace/日志禁止输出绝对路径与用户长段原文（可摘要/哈希/计
   - `pnpm typecheck`
   - `pnpm test`
   - `pnpm build`
+- 若改动涉及在线模型链路（ModelAdapter / chat online path），必须额外运行 `npm run acceptance` 并记录报告路径。
 
 ### 5.2 Chat / ModelAdapter changes（改动驱动链路必须）
 至少完成 3 项回归：
@@ -139,3 +145,5 @@ trace/日志禁止输出绝对路径与用户长段原文（可摘要/哈希/计
 - 不引入显式评分反馈作为主闭环
 - 主动思考不是文案：由 decision/tension/代价预算驱动
 - 四条 P0 指标（持续自我/价值结构/不可逆损失/情绪控制信号）的实现路径更清晰而不是更模糊
+- 在线链路改动已通过 `npm run acceptance`，并提供报告文件（成功或失败归因）
+- 验收未污染日常 persona（只使用 `personas/_qa/*`）
