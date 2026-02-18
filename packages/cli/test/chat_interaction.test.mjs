@@ -18,6 +18,7 @@ test("chat supports proactive controls and dynamic AI label after rename", async
 
   const chatResult = await runChatScript(personaPath, [
     "/proactive status",
+    "/relation detail",
     "/proactive on 1",
     "/proactive status",
     "/proactive off",
@@ -30,6 +31,8 @@ test("chat supports proactive controls and dynamic AI label after rename", async
 
   assert.equal(chatResult.status, 0);
   assert.match(chatResult.stdout, /主动消息: 已关闭/);
+  assert.match(chatResult.stdout, /overall=/);
+  assert.match(chatResult.stdout, /dimensions: trust=/);
   assert.match(chatResult.stdout, /已开启主动消息（每 1 分钟）/);
   assert.match(chatResult.stdout, /主动消息: 已开启（每 1 分钟）/);
   assert.match(chatResult.stdout, /已关闭主动消息/);

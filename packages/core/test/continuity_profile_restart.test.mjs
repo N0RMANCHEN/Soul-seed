@@ -28,4 +28,5 @@ test("continuity: preferred name survives reload and is injected into context", 
 
   assert.match(messages[0].content, /Selected memories:/);
   assert.match(messages[0].content, /user_preferred_name=博飞/);
+  assert.match(messages[0].content, /Current timestamp \(system local, ISO8601\):/);
 });

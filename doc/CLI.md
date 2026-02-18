@@ -1,140 +1,334 @@
-# Soulseed CLI 快速入口
+# Soulseed CLI 指令总览
+
+本文档对应当前 `./ss`（`packages/cli/src/index.ts`）实际实现的命令集合，包含用途、参数、示例与调试说明。
 
 ## 1. 一次性准备
 
 ```bash
 npm install
 cp .env.example .env
-# 在 .env 填 DEEPSEEK_API_KEY
+# 编辑 .env，填入 DEEPSEEK_API_KEY
 ```
 
-## 2. 最短命令入口
-
-本仓库提供短命令：`./ss`
-
-说明：
-- 日常 persona 用 `./personas/Roxy.soulseedpersona`
-- 验收请用 `scripts/acceptance.sh`，它会自动创建 `./personas/_qa/RoxyQA-*`
-- 不要用日常 `Roxy` 跑验收，避免记忆污染
-- 涉及在线模型链路改动时，提交前必须附 `npm run acceptance` 报告路径
+## 2. 最短入口
 
 ```bash
 # 查看帮助
 ./ss
 
-# 创建第一个 Roxy（默认名就是 Roxy）
+# 初始化 persona（默认 Roxy）
 ./ss init
 
-# 开始聊天（默认走 ./personas/Roxy.soulseedpersona）
+# 开始聊天
 ./ss chat
-
-# 改名（双确认）
-./ss rename --to Nova
-./ss rename --to Nova --confirm
 
 # 体检
 ./ss doctor
 ```
 
-## 3. 常用参数
+说明：
+- 默认 persona 路径：`./personas/Roxy.soulseedpersona`
+- 验收请使用隔离 QA persona：`npm run acceptance`
+- 涉及在线链路变更时，提交前应附 `reports/acceptance/*` 报告
+
+## 3. 全量命令清单
+
+### 3.1 Persona 命令
 
 ```bash
-# 自定义名字和路径
+./ss init [--name <displayName>] [--out <personaPath>]
+./ss rename --to <newName> [--persona <personaPath>]
+./ss rename --to <newName> [--persona <personaPath>] --confirm
+```
+
+兼容别名：
+
+```bash
+./ss persona init --name <displayName> --out <personaPath>
+./ss persona rename --to <newName> [--persona <personaPath>] [--confirm]
+```
+
+说明：
+- `rename` 是双阶段确认：
+- 第 1 次只写入 rename request
+- 第 2 次加 `--confirm` 才真正应用
+
+### 3.2 会话命令
+
+```bash
+./ss chat [--persona <personaPath>] [--model deepseek-chat] [--strict-memory-grounding true|false]
+```
+
+`chat` 内部命令：
+- `/read <file_path>` 读取本地文本并附加到后续问题上下文
+- `/files` 查看已附加文件
+- `/clearread` 清空附加文件
+- `/proactive on [minutes]` 开启主动消息（1-180，默认 10）
+- `/proactive off` 关闭主动消息
+- `/proactive status` 查看主动消息状态
+- `/relation` 查看关系状态摘要
+- `/relation detail` 查看关系细项与驱动因素
+- `/rename confirm <new_name>` 在聊天内确认改名
+- `/exit` 退出会话
+- `Ctrl+C` 中止当前生成
+
+### 3.3 Doctor 命令
+
+```bash
+./ss doctor [--persona <personaPath>]
+```
+
+输出 JSON 报告，`ok=false` 时进程会返回非零退出码。
+
+### 3.4 MCP 命令（stdio + http 双入口）
+
+```bash
+./ss mcp [--persona <personaPath>] [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--auth-token <token>]
+```
+
+用途：
+- 启动 Soulseed MCP Server（JSON-RPC 2.0）。
+- 支持两种传输：
+- `stdio`：本地进程直连（默认）
+- `http`：远程/跨进程访问（`/mcp`，兼容 `/sse` + `/messages`）
+
+前置条件：
+- 先构建 mcp-server：
+
+```bash
+npm run build -w @soulseed/mcp-server
+```
+
+参数说明：
+- `--transport`：`stdio|http`，默认 `stdio`
+- `--host`：HTTP 监听地址，默认 `127.0.0.1`
+- `--port`：HTTP 监听端口，默认 `8787`
+- `--auth-token`：可选。开启 Bearer 鉴权（`Authorization: Bearer <token>`）
+- `--persona`：persona 目录路径（会注入到 `SOULSEED_PERSONA_PATH`）
+
+服务端环境变量（mcp-server）：
+- `SOULSEED_PERSONA_PATH`：persona 路径（必填）
+- `MCP_TRANSPORT`：`stdio|http`
+- `MCP_HOST` / `MCP_PORT`：HTTP 地址
+- `MCP_AUTH_TOKEN`：Bearer token（可选）
+- `MCP_RATE_LIMIT_PER_MINUTE`：每 IP 每分钟请求上限（默认 `120`）
+
+行为说明：
+- `./ss mcp` 会拉起 `packages/mcp-server/dist/index.js`，并透传退出码。
+- `http` 模式下可用端点：
+- 健康检查：`GET /health`
+- Streamable HTTP：`POST /mcp`
+- 兼容 SSE：`GET /sse` + `POST /messages?sessionId=<id>`
+
+当前工具能力（tools/list）：
+- `persona.get_context`
+- `conversation.save_turn`
+- `memory.search`
+- `memory.inspect`
+
+### 3.5 Memory 控制面命令（含调试）
+
+```bash
+./ss memory status [--persona <personaPath>]
+./ss memory list [--persona <personaPath>] [--limit 20] [--state hot|warm|cold|archive|scar] [--deleted]
+./ss memory inspect --id <memory_id> [--persona <personaPath>]
+./ss memory forget --id <memory_id> [--mode soft|hard] [--persona <personaPath>]
+./ss memory recover --id <memory_id> [--persona <personaPath>]
+./ss memory compact [--persona <personaPath>]
+./ss memory export --out <file.json> [--persona <personaPath>] [--include-deleted]
+./ss memory import --in <file.json> [--persona <personaPath>]
+./ss memory pin add --text <memory> [--persona <personaPath>]
+./ss memory pin list [--persona <personaPath>]
+./ss memory pin remove --text <memory> [--persona <personaPath>]
+./ss memory unpin --text <memory> [--persona <personaPath>]
+./ss memory reconcile [--persona <personaPath>]
+```
+
+#### status
+- 用途：查看 `memory.db` 状态与统计
+- 输出：`schemaVersion`、`missingTables`、state 分布统计
+
+#### list
+- 用途：列出记忆条目（默认不含已软删除）
+- 参数：
+- `--limit` 1-200，默认 20
+- `--state` 可选过滤：`hot|warm|cold|archive|scar`
+- `--deleted` 包含软删除条目
+
+#### inspect
+- 用途：按 `id` 查看单条记忆详情
+- 必填：`--id`
+
+#### forget（调试入口）
+- 用途：删除或隐藏记忆
+- 参数：
+- `--mode soft` 软删除（写 `deleted_at`，可恢复）
+- `--mode hard` 物理删除（不可恢复）
+- 默认：`soft`
+- 审计：写入 `memory_soft_forgotten` 事件（含 mode）
+
+#### recover（调试入口）
+- 用途：恢复 soft-delete 记忆
+- 必填：`--id`
+- 审计：写入 `memory_recovered` 事件
+
+#### compact
+- 用途：执行 `life.log + working_set -> memory.db` 压缩迁移流程
+- 输出：迁移报告与备份路径
+
+#### export / import
+- `export`：
+- 导出 memory 快照到 JSON 文件，默认不含软删除
+- 可用 `--include-deleted` 带出软删除条目
+- `import`：
+- 从 JSON 快照导入到 `memory.db`
+- 使用 `INSERT OR REPLACE`
+
+#### pin / unpin
+- `pin add`：添加高优先固定记忆（`--text`）
+- `pin list`：查看固定记忆
+- `pin remove`：删除固定记忆（按文本匹配）
+- `unpin`：`pin remove` 的别名
+
+#### reconcile
+- 用途：以 `life.log` 为准校正 memory store 与 policy drift
+- 输出：对账与修复统计（如 `rowsUpdated`）
+
+## 4. 常见参数示例
+
+```bash
 ./ss init --name Roxy --out ./personas/Roxy.soulseedpersona
-
-# 指定 persona 聊天
-./ss chat --persona ./personas/Roxy.soulseedpersona
-
-# 指定模型
-./ss chat --model deepseek-chat
-
-# 指定 persona 改名
+./ss chat --persona ./personas/Roxy.soulseedpersona --model deepseek-chat
 ./ss rename --persona ./personas/Roxy.soulseedpersona --to Nova
 ./ss rename --persona ./personas/Roxy.soulseedpersona --to Nova --confirm
+./ss memory list --persona ./personas/Roxy.soulseedpersona --limit 50 --state warm
+./ss memory forget --persona ./personas/Roxy.soulseedpersona --id <memory_id> --mode soft
+./ss memory recover --persona ./personas/Roxy.soulseedpersona --id <memory_id>
+./ss mcp --persona ./personas/Roxy.soulseedpersona
+./ss mcp --transport http --host 127.0.0.1 --port 8787
+./ss mcp --transport http --host 0.0.0.0 --port 8787 --auth-token your-secret-token
 ```
 
-## 4. 会话操作
+## 5. MCP 调用流程（外部模型接入）
 
-- 输入普通文本：与 persona 对话
-- AI 输出标签会使用 persona 当前名（例如 `Roxy>`）；改名后会即时切换
-- 输入 `/read <本地文件路径>`：把文件内容附加进后续提问上下文（适合 `.md`、`.txt`、代码文件等文本）
-- 输入 `/files`：查看当前已附加的文件列表
-- 输入 `/clearread`：清空已附加文件
-- 输入 `/proactive on [minutes]`：开启 AI 主动消息（1-180 分钟，默认 10）
-- 输入 `/proactive off`：关闭 AI 主动消息
-- 输入 `/proactive status`：查看主动消息状态
-- 输入 `/exit`：退出会话
-- `Ctrl+C`：中止当前生成
-- `rename` 需要两步：先发起，再 `--confirm` 确认
+推荐流程：
+1. client 调用 `persona.get_context` 获取 `systemPrompt`、`recentConversation`、`selectedMemories`
+2. 外部大模型基于以上上下文生成回复
+3. client 调用 `conversation.save_turn` 写回 `userMessage + assistantMessage`（含守卫链）
+4. 可选调用 `memory.search` / `memory.inspect` 做额外检索
 
-## 5. 最小日常流程
+最小 JSON-RPC 示例（stdio）：
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"demo","version":"0.1.0"}}}
+{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"persona.get_context","arguments":{"userInput":"你好"}}}
+```
+
+注意：
+- `persona.get_context` 不调用 LLM，只做上下文编译。
+- `conversation.save_turn` 才是“把外部对话写入灵魂资产”的关键步骤。
+- `memory.search`/`memory.inspect` 属于读能力；工具调用会写 MCP 审计事件。
+
+## 6. ChatGPT 远程 MCP 配置（HTTP）
+
+目标：
+- 让 ChatGPT 通过 MCP URL 直接连到你本机/服务器上的 Soulseed MCP。
+
+步骤 1：启动 Soulseed MCP（HTTP）
 
 ```bash
-./ss init
-./ss rename --to Nova
-./ss rename --to Nova --confirm
-./ss chat
-./ss doctor
+# 本机调试（仅本机访问）
+./ss mcp --persona ./personas/Roxy.soulseedpersona --transport http --host 127.0.0.1 --port 8787
+
+# 需要 token 时
+./ss mcp --persona ./personas/Roxy.soulseedpersona --transport http --host 127.0.0.1 --port 8787 --auth-token your-secret-token
 ```
 
-## 6. 一键验收（隔离 QA persona）
+步骤 2：确认服务可用
+
+```bash
+curl http://127.0.0.1:8787/health
+# 期望: {"ok":true}
+```
+
+步骤 3：在 ChatGPT 配置 MCP 连接
+- 打开 ChatGPT 的 MCP/Connectors 配置页面（不同版本 UI 名称可能略有差异）。
+- 新建自定义 MCP 连接，填入：
+- URL：`http://<host>:<port>/mcp`
+- 若你设置了 `--auth-token`：添加 Header `Authorization: Bearer <token>`
+- 保存并触发 `tools/list` 测试。
+
+步骤 4：验证工具可见
+- 期望至少出现 4 个工具：
+- `persona.get_context`
+- `conversation.save_turn`
+- `memory.search`
+- `memory.inspect`
+
+步骤 5：推荐调用顺序（避免“聊了但没入魂”）
+1. 先调 `persona.get_context`
+2. 再让外部模型生成回复
+3. 最后调 `conversation.save_turn` 写回 `userMessage + assistantMessage`
+
+说明：
+- 若只调用 `persona.get_context`/`memory.search` 而不调用 `conversation.save_turn`，本轮对话不会沉淀到 Soulseed 记忆。
+## 7. 记忆生命周期说明（当前实现）
+
+`memoryMeta` 关键字段（含 v3）：
+- `activationCount`
+- `lastActivatedAt`
+- `emotionScore`
+- `narrativeScore`
+- `relationalScore`
+- `decayClass`：`fast|standard|slow|sticky`
+- `salienceScore`
+- `state`：`hot|warm|cold|archive|scar`
+
+行为摘要：
+- 召回默认过滤 soft-delete（`deleted_at IS NULL`）
+- 召回会写 trace 并对命中记忆进行激活强化（activation/reconsolidation）
+- 生命周期评分由四信号驱动，并受 `decayClass` 时间衰减影响
+
+## 8. 调试建议
+
+- 开发调试时可使用：
+- `memory inspect`
+- `memory forget/recover`
+- `memory export/import`
+- 产品层若需要隐藏删除能力，可在上层产品壳屏蔽 `forget/recover` 命令入口，仅保留工程调试渠道。
+
+## 9. MCP 最小排障清单
+
+- `401 unauthorized`
+- 原因：启用了 `MCP_AUTH_TOKEN`，但请求未带 `Authorization: Bearer <token>` 或 token 不一致。
+- 检查：`./ss mcp ... --auth-token <token>` 与客户端 Header 是否完全一致。
+
+- `tools/list` 为空或调用失败
+- 原因：MCP 会话未正确 initialize，或连接到了错误路径。
+- 检查：URL 必须是 `/mcp`；先走 `initialize` + `notifications/initialized` 再 `tools/list`。
+
+- persona 相关错误（例如 `SOULSEED_PERSONA_PATH`）
+- 原因：persona 目录不存在或结构不完整。
+- 检查：先执行 `./ss init`，再用 `--persona` 指向真实路径。
+
+- ChatGPT 能连通但“记忆没增长”
+- 原因：只读工具被调用了，但没调用 `conversation.save_turn`。
+- 检查：在每轮外部回复后补一条 `conversation.save_turn`。
+
+- `429 rate_limited`
+- 原因：触发 `MCP_RATE_LIMIT_PER_MINUTE`（默认 120）。
+- 检查：降低调用频率，或按部署环境提高该阈值。
+
+## 10. 验收
 
 ```bash
 npm run acceptance
 ```
 
-验收脚本会检查：
-- DeepSeek 真实回复
-- `life.log.jsonl` 已追加事件
-- `doctor` 通过
-- 连续性：设置称呼后重载仍记住（示例：博飞）
-- 身份防污染：不允许自称“DeepSeek 开发的助手”
-- 本地兜底：即使模型偶发污染，CLI 会在展示前进行身份守卫修正
-
-并生成报告文件：
+产物：
 - `reports/acceptance/acceptance-*.json`
 - `reports/acceptance/acceptance-*.md`
-
-连续性报告关键字段：
-- `continuity.input`
-- `continuity.reloadedPreferredName`
-- `continuity.reply`
-- `continuity.pass`
-
-如果验收失败：
-- 仍会生成报告文件
-- 必须记录失败归因（网络 / API / 配置 / doctor）
-
-## 7. 事件中的记忆元数据（Memory Economics V1）
-
-`life.log.jsonl` 中的核心对话事件会追加 `payload.memoryMeta`：
-- `tier`: `highlight | pattern | error`
-- `source`: `chat | system | acceptance`
-- `storageCost`: 存储成本估算（非负数）
-- `retrievalCost`: 检索成本估算（非负数）
-
-说明：
-- 普通对话通常是 `pattern`
-- 明确“请记住/我叫...”等锚点更可能是 `highlight`
-- 拒绝冲突、身份污染修正等冲突事件是 `error`
-- `./ss doctor` 会校验 `memoryMeta` 合法性
-
-## 8. 人类式遗忘与记忆状态（V2）
-
-系统不再使用“仅按时间 TTL 过期删除”的策略，而是采用三模型融合：
-- 激活衰减：被反复提及/调用的记忆更难遗忘
-- 情感权重：冲突、承诺、强情绪事件保留更久
-- 叙事一致性：支撑 persona 身份主线的记忆优先保留
-
-对应新增字段（`payload.memoryMeta`）：
-- `activationCount`
-- `lastActivatedAt`
-- `emotionScore`
-- `narrativeScore`
-- `salienceScore`
-- `state` (`hot|warm|cold|scar`)
-
-运行行为：
-- `./ss chat` 每轮会根据会话结果在线微调记忆权重
-- 权重变化会写入 `memory_weight_updated` 事件（可审计）
-- 低显著记忆达到阈值会压缩到 `summaries/working_set.json`，并写入 `memory_compacted` 事件
+- `reports/acceptance/mcp-integration-*.json`
+- `reports/acceptance/mcp-integration-*.md`

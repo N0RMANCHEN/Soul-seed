@@ -1,19 +1,31 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { eventHash } from "./hash.js";
-import { ensureRelationshipArtifacts } from "./relationship_state.js";
+import { ingestLifeEventMemory } from "./memory_ingest.js";
+import { ensureMemoryStore } from "./memory_store.js";
+import {
+  createInitialRelationshipState,
+  ensureRelationshipArtifacts,
+  writeRelationshipState
+} from "./relationship_state.js";
 import type {
   LifeEvent,
   LifeEventInput,
   MemoryMeta,
+  PersonaHabits,
   PersonaConstitution,
   PersonaMeta,
   PersonaPackage,
   PersonaPinned,
-  PersonaUserProfile
+  PersonaUserProfile,
+  PersonaWorldview,
+  VoiceProfile,
+  WorkingSetData,
+  WorkingSetItem
 } from "./types.js";
+import { runMemoryStoreSql } from "./memory_store.js";
 
 const lifeLogWriteQueues = new Map<string, Promise<void>>();
 
@@ -41,7 +53,8 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
       habits: "habits.json",
       userProfile: "user_profile.json",
       pinned: "pinned.json",
-      lifeLog: "life.log.jsonl"
+      lifeLog: "life.log.jsonl",
+      memoryDb: "memory.db"
     }
   });
 
@@ -59,7 +72,8 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
   await writeJson(path.join(outPath, "constitution.json"), {
     values: ["honesty", "helpfulness", "continuity"],
     boundaries: ["no fabricated facts", "respect user constraints"],
-    mission: "Be a consistent long-lived self-determined persona."
+    mission: "Be a consistent long-lived self-determined persona.",
+    commitments: ["ground memory claims in available evidence", "preserve continuity without fabrication"]
   });
 
   await writeJson(path.join(outPath, "habits.json"), {
@@ -73,13 +87,10 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
   });
 
   await writeJson(path.join(outPath, "pinned.json"), {
-    memories: []
-  });
-  await writeJson(path.join(outPath, "relationship_state.json"), {
-    state: "neutral-unknown",
-    confidence: 0.5,
+    memories: [],
     updatedAt: createdAt
   });
+  await writeJson(path.join(outPath, "relationship_state.json"), createInitialRelationshipState(createdAt));
   await writeJson(path.join(outPath, "voice_profile.json"), {
     baseStance: "self-determined",
     serviceModeAllowed: false,
@@ -96,23 +107,199 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
   });
 
   await writeFile(path.join(outPath, "life.log.jsonl"), "", "utf8");
+  await ensureMemoryStore(outPath);
 }
 
 export async function loadPersonaPackage(rootPath: string): Promise<PersonaPackage> {
   const artifacts = await ensureRelationshipArtifacts(rootPath);
   const persona = await readJson<PersonaMeta>(path.join(rootPath, "persona.json"));
+  const worldview = await readJson<PersonaWorldview>(path.join(rootPath, "worldview.json"));
   const constitution = await readJson<PersonaConstitution>(path.join(rootPath, "constitution.json"));
+  const habits = await readJson<PersonaHabits>(path.join(rootPath, "habits.json"));
   const userProfile = await readJson<PersonaUserProfile>(path.join(rootPath, "user_profile.json"));
   const pinned = await readJson<PersonaPinned>(path.join(rootPath, "pinned.json"));
 
   return {
     rootPath,
     persona,
+    worldview,
     constitution,
+    habits,
     userProfile,
     pinned,
     relationshipState: artifacts.relationshipState,
     voiceProfile: artifacts.voiceProfile
+  };
+}
+
+export async function patchWorldview(
+  rootPath: string,
+  patch: {
+    seed?: string;
+  }
+): Promise<PersonaWorldview> {
+  const worldviewPath = path.join(rootPath, "worldview.json");
+  const current = existsSync(worldviewPath)
+    ? await readJson<PersonaWorldview>(worldviewPath)
+    : ({ seed: "Observe, learn, and stay coherent over time." } as PersonaWorldview);
+  const next: PersonaWorldview = {
+    ...current,
+    ...(typeof patch.seed === "string" && patch.seed.trim()
+      ? { seed: patch.seed.trim().slice(0, 500) }
+      : {})
+  };
+  await writeJson(worldviewPath, next);
+  return next;
+}
+
+export async function patchConstitution(
+  rootPath: string,
+  patch: Partial<PersonaConstitution>
+): Promise<PersonaConstitution> {
+  const constitutionPath = path.join(rootPath, "constitution.json");
+  const current = await readJson<PersonaConstitution>(constitutionPath);
+  const next: PersonaConstitution = {
+    ...current,
+    ...(typeof patch.mission === "string" && patch.mission.trim()
+      ? { mission: patch.mission.trim().slice(0, 500) }
+      : {}),
+    ...(Array.isArray(patch.values)
+      ? { values: patch.values.filter((item): item is string => typeof item === "string").slice(0, 16) }
+      : {}),
+    ...(Array.isArray(patch.boundaries)
+      ? { boundaries: patch.boundaries.filter((item): item is string => typeof item === "string").slice(0, 16) }
+      : {}),
+    ...(Array.isArray(patch.commitments)
+      ? { commitments: patch.commitments.filter((item): item is string => typeof item === "string").slice(0, 16) }
+      : {})
+  };
+  await writeJson(constitutionPath, next);
+  return next;
+}
+
+export async function listPinnedMemories(rootPath: string): Promise<string[]> {
+  const pinnedPath = path.join(rootPath, "pinned.json");
+  const pinned = existsSync(pinnedPath)
+    ? await readJson<PersonaPinned>(pinnedPath)
+    : ({ memories: [] } as PersonaPinned);
+  return Array.isArray(pinned.memories) ? pinned.memories : [];
+}
+
+export async function addPinnedMemory(rootPath: string, text: string): Promise<PersonaPinned> {
+  const pinnedPath = path.join(rootPath, "pinned.json");
+  const current = existsSync(pinnedPath)
+    ? await readJson<PersonaPinned>(pinnedPath)
+    : ({ memories: [] } as PersonaPinned);
+  const normalized = text.trim().slice(0, 240);
+  if (!normalized) {
+    return current;
+  }
+  const dedup = [...new Set([...(Array.isArray(current.memories) ? current.memories : []), normalized])].slice(
+    0,
+    32
+  );
+  const next: PersonaPinned = { memories: dedup, updatedAt: new Date().toISOString() };
+  await writeJson(pinnedPath, next);
+  return next;
+}
+
+export async function removePinnedMemory(rootPath: string, text: string): Promise<PersonaPinned> {
+  const pinnedPath = path.join(rootPath, "pinned.json");
+  const current = existsSync(pinnedPath)
+    ? await readJson<PersonaPinned>(pinnedPath)
+    : ({ memories: [] } as PersonaPinned);
+  const normalized = text.trim();
+  const next: PersonaPinned = {
+    memories: (Array.isArray(current.memories) ? current.memories : []).filter((item) => item !== normalized),
+    updatedAt: new Date().toISOString()
+  };
+  await writeJson(pinnedPath, next);
+  return next;
+}
+
+export async function reconcileMemoryStoreFromLifeLog(rootPath: string): Promise<{
+  scannedAssistantEvents: number;
+  policyEvents: number;
+  matchedRows: number;
+  rowsUpdated: number;
+  missingRows: number;
+  unmappedRows: number;
+}> {
+  const events = await readLifeEvents(rootPath);
+  let scannedAssistantEvents = 0;
+  let policyEvents = 0;
+  let matchedRows = 0;
+  let rowsUpdated = 0;
+  let missingRows = 0;
+  const eventHashes = events
+    .map((event) => (typeof event.hash === "string" ? event.hash : ""))
+    .filter((hash) => hash.length > 0);
+
+  for (const event of events) {
+    if (event.type !== "assistant_message") {
+      continue;
+    }
+    scannedAssistantEvents += 1;
+    const meta = event.payload.memoryMeta;
+    if (!meta) {
+      continue;
+    }
+
+    const excluded = meta.excludedFromRecall === true;
+    const credibilityRaw = Number(meta.credibilityScore);
+    const credibility = Number.isFinite(credibilityRaw) ? Math.max(0, Math.min(1, credibilityRaw)) : null;
+    if (!excluded && credibility == null) {
+      continue;
+    }
+    policyEvents += 1;
+    const eventHash = event.hash.replace(/'/g, "''");
+    const existingRaw = await runMemoryStoreSql(
+      rootPath,
+      `SELECT COUNT(*) FROM memories WHERE source_event_hash='${eventHash}';`
+    );
+    const existingCount = Number(existingRaw.trim() || "0");
+    if (existingCount <= 0) {
+      missingRows += 1;
+      continue;
+    }
+    matchedRows += existingCount;
+
+    const beforeRaw = await runMemoryStoreSql(
+      rootPath,
+      `SELECT COUNT(*) FROM memories WHERE source_event_hash='${eventHash}' AND (${excluded ? "excluded_from_recall=0" : "1=0"}${credibility != null ? ` OR credibility_score>${credibility}` : ""});`
+    );
+    const before = Number(beforeRaw.trim() || "0");
+
+    await runMemoryStoreSql(
+      rootPath,
+      [
+        "UPDATE memories",
+        `SET ${excluded ? "excluded_from_recall=1," : ""} credibility_score=${
+          credibility != null ? `MIN(credibility_score, ${credibility})` : "credibility_score"
+        },`,
+        `updated_at='${new Date().toISOString()}'`,
+        `WHERE source_event_hash='${eventHash}';`
+      ].join(" ")
+    );
+
+    rowsUpdated += before;
+  }
+
+  const unmappedRaw = await runMemoryStoreSql(
+    rootPath,
+    eventHashes.length > 0
+      ? `SELECT COUNT(*) FROM memories WHERE origin_role='assistant' AND source_event_hash NOT IN (${eventHashes.map(sqlText).join(",")});`
+      : "SELECT COUNT(*) FROM memories WHERE origin_role='assistant';"
+  );
+  const unmappedRows = Number(unmappedRaw.trim() || "0");
+
+  return {
+    scannedAssistantEvents,
+    policyEvents,
+    matchedRows,
+    rowsUpdated,
+    missingRows,
+    unmappedRows
   };
 }
 
@@ -145,6 +332,7 @@ export async function appendLifeEvent(rootPath: string, event: LifeEventInput): 
       encoding: "utf8",
       flag: "a"
     });
+    await ingestLifeEventMemory(rootPath, fullEvent);
   } finally {
     releaseQueue();
     if (lifeLogWriteQueues.get(queueKey) === next) {
@@ -343,6 +531,48 @@ export async function verifyLifeLogChain(
   return { ok: true };
 }
 
+export async function ensureScarForBrokenLifeLog(params: {
+  rootPath: string;
+  detector: "doctor" | "runtime";
+}): Promise<{ ok: boolean; reason?: string; scarWritten: boolean }> {
+  const chain = await verifyLifeLogChain(params.rootPath);
+  if (chain.ok) {
+    return { ok: true, scarWritten: false };
+  }
+
+  const reason = chain.reason ?? "unknown";
+  const events = await readLifeEvents(params.rootPath);
+  const alreadyRecorded = events
+    .slice(-80)
+    .some(
+      (event) =>
+        event.type === "scar" &&
+        event.payload.detector === params.detector &&
+        event.payload.breakReason === reason
+    );
+  if (alreadyRecorded) {
+    return { ok: false, reason, scarWritten: false };
+  }
+
+  const detectedAt = new Date().toISOString();
+  const lineMatch = /line\s+(\d+)/i.exec(reason);
+  const breakLine = lineMatch ? Number(lineMatch[1]) : null;
+
+  await appendLifeEvent(params.rootPath, {
+    type: "scar",
+    payload: {
+      breakReason: reason,
+      breakLine,
+      detectedAt,
+      detector: params.detector,
+      action: "record_scar_event_and_raise_risk_signal",
+      riskSignal: "life_log_chain_broken"
+    }
+  });
+
+  return { ok: false, reason, scarWritten: true };
+}
+
 async function getLastHash(lifeLogPath: string): Promise<string | null> {
   if (!existsSync(lifeLogPath)) {
     return null;
@@ -356,22 +586,6 @@ async function getLastHash(lifeLogPath: string): Promise<string | null> {
 
   const last = JSON.parse(lines[lines.length - 1]) as LifeEvent;
   return last.hash;
-}
-
-export interface WorkingSetItem {
-  id: string;
-  ts: string;
-  sourceEventHashes: string[];
-  summary: string;
-}
-
-export interface WorkingSetData {
-  items: WorkingSetItem[];
-  memoryWeights?: {
-    activation: number;
-    emotion: number;
-    narrative: number;
-  };
 }
 
 export async function readWorkingSet(rootPath: string): Promise<WorkingSetData> {
@@ -412,12 +626,141 @@ export async function appendWorkingSetItem(
   item: WorkingSetItem
 ): Promise<WorkingSetData> {
   const current = await readWorkingSet(rootPath);
+  const normalizedCurrentItems = current.items.map((entry) => normalizeWorkingSetItem(entry));
+  const normalizedItem = normalizeWorkingSetItem(item);
   const next: WorkingSetData = {
     ...current,
-    items: [...current.items, item]
+    items: [...normalizedCurrentItems, normalizedItem]
   };
   await writeWorkingSet(rootPath, next);
   return next;
+}
+
+export async function patchHabits(
+  rootPath: string,
+  patch: {
+    style?: string;
+    adaptability?: "low" | "medium" | "high";
+  }
+): Promise<Record<string, unknown>> {
+  const habitsPath = path.join(rootPath, "habits.json");
+  const current = existsSync(habitsPath)
+    ? await readJson<Record<string, unknown>>(habitsPath)
+    : ({ style: "concise", adaptability: "high" } as Record<string, unknown>);
+  const next: Record<string, unknown> = {
+    ...current,
+    ...(typeof patch.style === "string" ? { style: patch.style } : {}),
+    ...(patch.adaptability ? { adaptability: patch.adaptability } : {})
+  };
+  await writeJson(habitsPath, next);
+  return next;
+}
+
+export async function patchVoiceProfile(
+  rootPath: string,
+  patch: {
+    tonePreference?: VoiceProfile["tonePreference"];
+    stancePreference?: VoiceProfile["stancePreference"];
+  }
+): Promise<VoiceProfile> {
+  const voicePath = path.join(rootPath, "voice_profile.json");
+  const artifacts = await ensureRelationshipArtifacts(rootPath);
+  const current = artifacts.voiceProfile;
+  const next: VoiceProfile = {
+    ...current,
+    ...(patch.tonePreference ? { tonePreference: patch.tonePreference } : {}),
+    ...(patch.stancePreference ? { stancePreference: patch.stancePreference } : {})
+  };
+  await writeJson(voicePath, next);
+  return next;
+}
+
+export async function patchRelationshipState(
+  rootPath: string,
+  patch: Partial<{
+    trust: number;
+    safety: number;
+    intimacy: number;
+    reciprocity: number;
+    stability: number;
+  }>
+): Promise<void> {
+  const artifacts = await ensureRelationshipArtifacts(rootPath);
+  const current = artifacts.relationshipState;
+  const next = {
+    ...current,
+    dimensions: {
+      trust: clamp01(current.dimensions.trust + clampDelta(patch.trust)),
+      safety: clamp01(current.dimensions.safety + clampDelta(patch.safety)),
+      intimacy: clamp01(current.dimensions.intimacy + clampDelta(patch.intimacy)),
+      reciprocity: clamp01(current.dimensions.reciprocity + clampDelta(patch.reciprocity)),
+      stability: clamp01(current.dimensions.stability + clampDelta(patch.stability))
+    },
+    updatedAt: new Date().toISOString()
+  };
+  await writeRelationshipState(rootPath, next);
+}
+
+const MAX_WORKING_SET_SOURCE_HASHES = 256;
+
+function normalizeWorkingSetItem(item: WorkingSetItem): WorkingSetItem {
+  const seen = new Set<string>();
+  const uniqueHashes: string[] = [];
+  for (const hash of item.sourceEventHashes) {
+    if (typeof hash !== "string" || hash.length === 0 || seen.has(hash)) {
+      continue;
+    }
+    seen.add(hash);
+    uniqueHashes.push(hash);
+  }
+
+  const total = uniqueHashes.length;
+  const truncated = total > MAX_WORKING_SET_SOURCE_HASHES;
+  const kept = truncated ? compactHashList(uniqueHashes, MAX_WORKING_SET_SOURCE_HASHES) : uniqueHashes;
+  const digest = createHash("sha256").update(uniqueHashes.join("|"), "utf8").digest("hex");
+
+  return {
+    ...item,
+    sourceEventHashes: kept,
+    sourceEventHashCount: total,
+    sourceEventHashDigest: digest,
+    sourceEventHashesTruncated: truncated
+  };
+}
+
+function compactHashList(hashes: string[], maxItems: number): string[] {
+  if (hashes.length <= maxItems) {
+    return hashes;
+  }
+  const headCount = Math.floor(maxItems / 2);
+  const tailCount = maxItems - headCount;
+  const head = hashes.slice(0, headCount);
+  const tail = hashes.slice(-tailCount);
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const hash of [...head, ...tail]) {
+    if (seen.has(hash)) {
+      continue;
+    }
+    seen.add(hash);
+    merged.push(hash);
+  }
+  return merged.slice(0, maxItems);
+}
+
+function clampDelta(value: number | undefined): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(-0.02, Math.min(0.02, Number(value)));
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function sqlText(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 export function mergeMemoryMetaDefaults(meta: MemoryMeta | undefined): MemoryMeta {

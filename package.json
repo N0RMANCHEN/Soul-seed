@@ -6,10 +6,10 @@
     "packages/*"
   ],
   "scripts": {
-    "lint": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/cli/tsconfig.json --noEmit",
-    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/cli/tsconfig.json --noEmit",
-    "build": "tsc -p packages/core/tsconfig.build.json && tsc -p packages/cli/tsconfig.build.json",
-    "test": "npm run test -w @soulseed/core && npm run test -w @soulseed/cli",
+    "lint": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/cli/tsconfig.json --noEmit && tsc -p packages/mcp-server/tsconfig.json --noEmit",
+    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/cli/tsconfig.json --noEmit && tsc -p packages/mcp-server/tsconfig.json --noEmit",
+    "build": "tsc -p packages/core/tsconfig.build.json && tsc -p packages/cli/tsconfig.build.json && tsc -p packages/mcp-server/tsconfig.build.json",
+    "test": "npm run test -w @soulseed/core && npm run test -w @soulseed/cli && npm run test -w @soulseed/mcp-server",
     "acceptance": "./scripts/acceptance.sh",
     "verify": "./scripts/verify.sh"
   },

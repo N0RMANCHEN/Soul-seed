@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { readLifeEvents, verifyLifeLogChain } from "./persona.js";
+import { inspectMemoryStore, MEMORY_SCHEMA_VERSION, runMemoryStoreSql } from "./memory_store.js";
+import { ensureScarForBrokenLifeLog, readLifeEvents } from "./persona.js";
 import type { DoctorIssue, DoctorReport } from "./types.js";
 
 const REQUIRED_FILES = [
@@ -14,9 +15,12 @@ const REQUIRED_FILES = [
   "pinned.json",
   "relationship_state.json",
   "voice_profile.json",
-  "life.log.jsonl"
+  "life.log.jsonl",
+  "memory.db"
 ];
 const EXPECTED_MISSION = "Be a consistent long-lived self-determined persona.";
+const MAX_PINNED_MEMORIES = 32;
+const MAX_PINNED_MEMORY_LENGTH = 240;
 
 export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
   const issues: DoctorIssue[] = [];
@@ -37,6 +41,9 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
     const persona = await readJson<{ id?: string }>(path.join(rootPath, "persona.json"));
     const identity = await readJson<{ personaId?: string }>(path.join(rootPath, "identity.json"));
     const constitution = await readJson<{ mission?: string }>(path.join(rootPath, "constitution.json"));
+    const worldview = await readJson<Record<string, unknown>>(path.join(rootPath, "worldview.json"));
+    const habits = await readJson<Record<string, unknown>>(path.join(rootPath, "habits.json"));
+    const pinned = await readJson<Record<string, unknown>>(path.join(rootPath, "pinned.json"));
     const relationshipState = await readJson<Record<string, unknown>>(
       path.join(rootPath, "relationship_state.json")
     );
@@ -68,6 +75,30 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
         path: "voice_profile.json"
       });
     }
+    if (!isWorldviewValid(worldview)) {
+      issues.push({
+        code: "invalid_worldview",
+        severity: "error",
+        message: "worldview.json is invalid",
+        path: "worldview.json"
+      });
+    }
+    if (!isHabitsValid(habits)) {
+      issues.push({
+        code: "invalid_habits",
+        severity: "error",
+        message: "habits.json is invalid",
+        path: "habits.json"
+      });
+    }
+    if (!isPinnedValid(pinned)) {
+      issues.push({
+        code: "invalid_pinned",
+        severity: "error",
+        message: "pinned.json is invalid",
+        path: "pinned.json"
+      });
+    }
 
     if (!identity.personaId || typeof identity.personaId !== "string") {
       issues.push({
@@ -85,16 +116,17 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
       });
     }
 
-    if (constitution.mission !== EXPECTED_MISSION) {
+    const missionBaseline = process.env.SOULSEED_MISSION_BASELINE ?? EXPECTED_MISSION;
+    if (constitution.mission !== missionBaseline) {
       issues.push({
         code: "mission_drift",
         severity: "warning",
-        message: `constitution mission drifted from baseline: ${EXPECTED_MISSION}`,
+        message: `constitution mission drifted from baseline: ${missionBaseline}`,
         path: "constitution.json"
       });
     }
 
-    const chain = await verifyLifeLogChain(rootPath);
+    const chain = await ensureScarForBrokenLifeLog({ rootPath, detector: "doctor" });
     if (!chain.ok) {
       issues.push({
         code: "broken_hash_chain",
@@ -102,6 +134,37 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
         message: chain.reason ?? "Life log chain verification failed",
         path: "life.log.jsonl"
       });
+    }
+
+    const memoryStore = await inspectMemoryStore(rootPath);
+    if (!memoryStore.exists) {
+      issues.push({
+        code: "missing_memory_db",
+        severity: "error",
+        message: "memory.db is missing",
+        path: "memory.db"
+      });
+    } else {
+      if (memoryStore.schemaVersion !== MEMORY_SCHEMA_VERSION) {
+        issues.push({
+          code: "memory_schema_version_mismatch",
+          severity: "error",
+          message: `memory.db user_version=${memoryStore.schemaVersion ?? "unknown"}, expected ${MEMORY_SCHEMA_VERSION}`,
+          path: "memory.db"
+        });
+      }
+
+      if (memoryStore.missingTables.length > 0) {
+        issues.push({
+          code: "memory_schema_missing_tables",
+          severity: "error",
+          message: `memory.db missing tables: ${memoryStore.missingTables.join(", ")}`,
+          path: "memory.db"
+        });
+      }
+
+      issues.push(...(await inspectMemoryFieldRanges(rootPath)));
+      issues.push(...(await inspectMemoryGroundingHealth(rootPath)));
     }
 
     const events = await readLifeEvents(rootPath);
@@ -191,6 +254,33 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
           path: eventPath
         });
       }
+
+      if (event.type === "self_revision_proposed" && !isSelfRevisionProposedPayloadValid(event.payload)) {
+        issues.push({
+          code: "invalid_self_revision_proposed_event",
+          severity: "error",
+          message: "self_revision_proposed payload is invalid",
+          path: eventPath
+        });
+      }
+
+      if (event.type === "self_revision_applied" && !isSelfRevisionAppliedPayloadValid(event.payload)) {
+        issues.push({
+          code: "invalid_self_revision_applied_event",
+          severity: "error",
+          message: "self_revision_applied payload is invalid",
+          path: eventPath
+        });
+      }
+
+      if (event.type === "self_revision_conflicted" && !isSelfRevisionConflictedPayloadValid(event.payload)) {
+        issues.push({
+          code: "invalid_self_revision_conflicted_event",
+          severity: "error",
+          message: "self_revision_conflicted payload is invalid",
+          path: eventPath
+        });
+      }
     }
 
     if (workingSet.count > 500) {
@@ -231,8 +321,10 @@ function isMemoryMetaValid(meta: unknown, summaryIds: Set<string>): boolean {
   const lastActivatedAt = meta.lastActivatedAt;
   const emotionScore = meta.emotionScore;
   const narrativeScore = meta.narrativeScore;
+  const relationalScore = meta.relationalScore;
   const salienceScore = meta.salienceScore;
   const state = meta.state;
+  const decayClass = meta.decayClass;
   const compressedAt = meta.compressedAt;
   const summaryRef = meta.summaryRef;
 
@@ -248,9 +340,14 @@ function isMemoryMetaValid(meta: unknown, summaryIds: Set<string>): boolean {
   const validEmotion = emotionScore == null || (typeof emotionScore === "number" && emotionScore >= 0 && emotionScore <= 1);
   const validNarrative =
     narrativeScore == null || (typeof narrativeScore === "number" && narrativeScore >= 0 && narrativeScore <= 1);
+  const validRelational =
+    relationalScore == null || (typeof relationalScore === "number" && relationalScore >= 0 && relationalScore <= 1);
   const validSalience =
     salienceScore == null || (typeof salienceScore === "number" && salienceScore >= 0 && salienceScore <= 1);
-  const validState = state == null || state === "hot" || state === "warm" || state === "cold" || state === "scar";
+  const validState =
+    state == null || state === "hot" || state === "warm" || state === "cold" || state === "archive" || state === "scar";
+  const validDecayClass =
+    decayClass == null || decayClass === "fast" || decayClass === "standard" || decayClass === "slow" || decayClass === "sticky";
   const validCompressedAt = compressedAt == null || isIsoDate(compressedAt);
   const validSummaryRef = summaryRef == null || (typeof summaryRef === "string" && summaryIds.has(summaryRef));
   const credibilityScore = meta.credibilityScore;
@@ -274,8 +371,10 @@ function isMemoryMetaValid(meta: unknown, summaryIds: Set<string>): boolean {
     validLastActivatedAt &&
     validEmotion &&
     validNarrative &&
+    validRelational &&
     validSalience &&
     validState &&
+    validDecayClass &&
     validCompressedAt &&
     validSummaryRef &&
     validCredibilityScore &&
@@ -308,6 +407,7 @@ function isWeightSetValid(value: unknown): boolean {
   const a = value.activation;
   const e = value.emotion;
   const n = value.narrative;
+  const r = value.relational;
   if (
     typeof a !== "number" ||
     typeof e !== "number" ||
@@ -318,8 +418,13 @@ function isWeightSetValid(value: unknown): boolean {
   ) {
     return false;
   }
-  const sum = a + e + n;
-  return a >= 0 && e >= 0 && n >= 0 && Math.abs(sum - 1) < 1e-6;
+  const hasRelational = r == null || (typeof r === "number" && Number.isFinite(r));
+  if (!hasRelational) {
+    return false;
+  }
+  const relational = typeof r === "number" ? r : 0;
+  const sum = a + e + n + relational;
+  return a >= 0 && e >= 0 && n >= 0 && relational >= 0 && Math.abs(sum - 1) < 1e-6;
 }
 
 function isNarrativeDriftPayloadValid(payload: Record<string, unknown>): boolean {
@@ -350,7 +455,72 @@ function isRelationshipStateValid(payload: Record<string, unknown>): boolean {
   const validConfidence =
     typeof confidence === "number" && Number.isFinite(confidence) && confidence >= 0 && confidence <= 1;
   const validUpdatedAt = typeof updatedAt === "string" && isIsoDate(updatedAt);
-  return validState && validConfidence && validUpdatedAt;
+  if (!validState || !validConfidence || !validUpdatedAt) {
+    return false;
+  }
+
+  const version = payload.version;
+  const dimensions = payload.dimensions;
+  const overall = payload.overall;
+  const drivers = payload.drivers;
+
+  const hasV2Fields = version != null || dimensions != null || overall != null || drivers != null;
+  if (!hasV2Fields) {
+    return true;
+  }
+
+  const validVersion = version === "2";
+  const validOverall =
+    typeof overall === "number" && Number.isFinite(overall) && overall >= 0 && overall <= 1;
+  const validDimensions = isRelationshipDimensionsValid(dimensions);
+  const validDrivers = isRelationshipDriversValid(drivers);
+  return validVersion && validOverall && validDimensions && validDrivers;
+}
+
+function isRelationshipDimensionsValid(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const keys = ["trust", "safety", "intimacy", "reciprocity", "stability"] as const;
+  return keys.every((key) => {
+    const n = value[key];
+    return typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1;
+  });
+}
+
+function isRelationshipDriversValid(value: unknown): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  return value.every((item) => {
+    if (!isRecord(item)) {
+      return false;
+    }
+    const source = item.source;
+    const signal = item.signal;
+    const ts = item.ts;
+    const deltaSummary = item.deltaSummary;
+    const validSource = source === "user" || source === "assistant" || source === "event";
+    const validSignal = typeof signal === "string" && signal.length > 0;
+    const validTs = isIsoDate(ts);
+    if (!validSource || !validSignal || !validTs) {
+      return false;
+    }
+    if (deltaSummary == null) {
+      return false;
+    }
+    if (!isRecord(deltaSummary)) {
+      return false;
+    }
+    const keys = ["trust", "safety", "intimacy", "reciprocity", "stability"] as const;
+    return keys.every((key) => {
+      const entry = deltaSummary[key];
+      return (
+        entry == null ||
+        (typeof entry === "number" && Number.isFinite(entry) && entry >= -1 && entry <= 1)
+      );
+    });
+  });
 }
 
 function isVoiceProfileValid(payload: Record<string, unknown>): boolean {
@@ -358,13 +528,60 @@ function isVoiceProfileValid(payload: Record<string, unknown>): boolean {
   const serviceModeAllowed = payload.serviceModeAllowed;
   const languagePolicy = payload.languagePolicy;
   const forbiddenSelfLabels = payload.forbiddenSelfLabels;
+  const tonePreference = payload.tonePreference;
+  const stancePreference = payload.stancePreference;
+  const validTonePreference =
+    tonePreference == null ||
+    tonePreference === "warm" ||
+    tonePreference === "plain" ||
+    tonePreference === "reflective" ||
+    tonePreference === "direct";
+  const validStancePreference =
+    stancePreference == null ||
+    stancePreference === "friend" ||
+    stancePreference === "peer" ||
+    stancePreference === "intimate" ||
+    stancePreference === "neutral";
   return (
     baseStance === "self-determined" &&
     serviceModeAllowed === false &&
     languagePolicy === "follow_user_language" &&
     Array.isArray(forbiddenSelfLabels) &&
-    forbiddenSelfLabels.every((item) => typeof item === "string")
+    forbiddenSelfLabels.every((item) => typeof item === "string") &&
+    validTonePreference &&
+    validStancePreference
   );
+}
+
+function isWorldviewValid(payload: Record<string, unknown>): boolean {
+  const seed = payload.seed;
+  return typeof seed === "string" && seed.trim().length > 0 && seed.length <= 500;
+}
+
+function isHabitsValid(payload: Record<string, unknown>): boolean {
+  const style = payload.style;
+  const adaptability = payload.adaptability;
+  return (
+    typeof style === "string" &&
+    style.trim().length > 0 &&
+    style.length <= 120 &&
+    (adaptability === "low" || adaptability === "medium" || adaptability === "high")
+  );
+}
+
+function isPinnedValid(payload: Record<string, unknown>): boolean {
+  const memories = payload.memories;
+  if (!Array.isArray(memories)) {
+    return false;
+  }
+  if (memories.length > MAX_PINNED_MEMORIES) {
+    return false;
+  }
+  if (!memories.every((item) => typeof item === "string" && item.length > 0 && item.length <= MAX_PINNED_MEMORY_LENGTH)) {
+    return false;
+  }
+  const updatedAt = payload.updatedAt;
+  return updatedAt == null || isIsoDate(updatedAt);
 }
 
 function isVoiceIntentPayloadValid(payload: Record<string, unknown>): boolean {
@@ -407,6 +624,206 @@ function isRenameProposedPayloadValid(payload: Record<string, unknown>): boolean
 function isRenameConfirmedViaChatPayloadValid(payload: Record<string, unknown>): boolean {
   const newDisplayName = payload.newDisplayName;
   return typeof newDisplayName === "string" && newDisplayName.length > 0;
+}
+
+function isSelfRevisionProposedPayloadValid(payload: Record<string, unknown>): boolean {
+  const proposal = payload.proposal;
+  const evidenceCount = payload.evidenceCount;
+  return (
+    isSelfRevisionProposalValid(proposal, ["proposed", "frozen", "applied"]) &&
+    typeof evidenceCount === "number" &&
+    Number.isFinite(evidenceCount) &&
+    evidenceCount >= 0
+  );
+}
+
+function isSelfRevisionAppliedPayloadValid(payload: Record<string, unknown>): boolean {
+  const proposal = payload.proposal;
+  const summary = payload.summary;
+  return (
+    isSelfRevisionProposalValid(proposal, ["applied"]) &&
+    typeof summary === "string" &&
+    summary.length > 0
+  );
+}
+
+function isSelfRevisionConflictedPayloadValid(payload: Record<string, unknown>): boolean {
+  const proposal = payload.proposal;
+  const constitutionPatchProposal = payload.constitutionPatchProposal;
+  return (
+    isSelfRevisionProposalValid(proposal, ["frozen"]) &&
+    isRecord(constitutionPatchProposal) &&
+    Array.isArray(constitutionPatchProposal.conflicts) &&
+    constitutionPatchProposal.conflicts.every((item: unknown) => typeof item === "string")
+  );
+}
+
+function isSelfRevisionProposalValid(value: unknown, statuses: string[]): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const domain = value.domain;
+  const changes = value.changes;
+  const evidence = value.evidence;
+  const confidence = value.confidence;
+  const reasonCodes = value.reasonCodes;
+  const conflictsWithBoundaries = value.conflictsWithBoundaries;
+  const status = value.status;
+
+  const validDomain =
+    domain === "habits" ||
+    domain === "voice" ||
+    domain === "relationship" ||
+    domain === "worldview_proposal" ||
+    domain === "constitution_proposal";
+  const validChanges = isRecord(changes);
+  const validEvidence = Array.isArray(evidence) && evidence.every((item) => typeof item === "string");
+  const validConfidence =
+    typeof confidence === "number" && Number.isFinite(confidence) && confidence >= 0 && confidence <= 1;
+  const validReasonCodes =
+    Array.isArray(reasonCodes) && reasonCodes.every((item) => typeof item === "string");
+  const validConflicts =
+    Array.isArray(conflictsWithBoundaries) &&
+    conflictsWithBoundaries.every((item) => typeof item === "string");
+  const validStatus = typeof status === "string" && statuses.includes(status);
+
+  return (
+    validDomain &&
+    validChanges &&
+    validEvidence &&
+    validConfidence &&
+    validReasonCodes &&
+    validConflicts &&
+    validStatus
+  );
+}
+
+async function inspectMemoryFieldRanges(rootPath: string): Promise<DoctorIssue[]> {
+  const raw = await runMemoryStoreSql(
+    rootPath,
+    [
+      "SELECT json_object(",
+      "'invalidCredibility', SUM(CASE WHEN credibility_score < 0 OR credibility_score > 1 THEN 1 ELSE 0 END),",
+      "'invalidExcluded', SUM(CASE WHEN excluded_from_recall NOT IN (0,1) THEN 1 ELSE 0 END),",
+      "'invalidActivation', SUM(CASE WHEN activation_count < 1 THEN 1 ELSE 0 END),",
+      "'invalidLastActivated', SUM(CASE WHEN julianday(last_activated_at) IS NULL THEN 1 ELSE 0 END)",
+      ")",
+      "FROM memories;"
+    ].join("\n")
+  );
+  if (!raw) {
+    return [];
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return [
+      {
+        code: "invalid_memory_field_ranges",
+        severity: "error",
+        message: "memory.db field range inspection failed",
+        path: "memory.db"
+      }
+    ];
+  }
+
+  const invalidCredibility = Number(parsed.invalidCredibility ?? 0);
+  const invalidExcluded = Number(parsed.invalidExcluded ?? 0);
+  const invalidActivation = Number(parsed.invalidActivation ?? 0);
+  const invalidLastActivated = Number(parsed.invalidLastActivated ?? 0);
+  const issues: DoctorIssue[] = [];
+
+  if (invalidCredibility > 0) {
+    issues.push({
+      code: "invalid_memory_credibility_score",
+      severity: "error",
+      message: `memory.db has ${invalidCredibility} rows with credibility_score outside [0,1]`,
+      path: "memory.db"
+    });
+  }
+  if (invalidExcluded > 0) {
+    issues.push({
+      code: "invalid_memory_excluded_flag",
+      severity: "error",
+      message: `memory.db has ${invalidExcluded} rows with excluded_from_recall not in {0,1}`,
+      path: "memory.db"
+    });
+  }
+  if (invalidActivation > 0) {
+    issues.push({
+      code: "invalid_memory_activation_count",
+      severity: "error",
+      message: `memory.db has ${invalidActivation} rows with activation_count < 1`,
+      path: "memory.db"
+    });
+  }
+  if (invalidLastActivated > 0) {
+    issues.push({
+      code: "invalid_memory_last_activated_at",
+      severity: "error",
+      message: `memory.db has ${invalidLastActivated} rows with invalid last_activated_at`,
+      path: "memory.db"
+    });
+  }
+
+  return issues;
+}
+
+async function inspectMemoryGroundingHealth(rootPath: string): Promise<DoctorIssue[]> {
+  const raw = await runMemoryStoreSql(
+    rootPath,
+    [
+      "SELECT json_object(",
+      "'excludedCount', SUM(CASE WHEN excluded_from_recall = 1 THEN 1 ELSE 0 END),",
+      "'assistantCount', SUM(CASE WHEN origin_role = 'assistant' THEN 1 ELSE 0 END),",
+      "'assistantLowCredCount', SUM(CASE WHEN origin_role = 'assistant' AND credibility_score <= 0.6 THEN 1 ELSE 0 END),",
+      "'totalCount', COUNT(*)",
+      ")",
+      "FROM memories;"
+    ].join("\n")
+  );
+  if (!raw) {
+    return [];
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
+
+  const events = await readLifeEvents(rootPath);
+  const contaminationEventCount = events.filter((event) => event.type === "memory_contamination_flagged").length;
+  const excludedCount = Number(parsed.excludedCount ?? 0);
+  const assistantCount = Number(parsed.assistantCount ?? 0);
+  const assistantLowCredCount = Number(parsed.assistantLowCredCount ?? 0);
+  const issues: DoctorIssue[] = [];
+
+  if (contaminationEventCount > 0 && excludedCount < contaminationEventCount) {
+    issues.push({
+      code: "memory_contamination_exclusion_drift",
+      severity: "warning",
+      message: `memory_contamination_flagged=${contaminationEventCount}, excluded_from_recall=${excludedCount}`,
+      path: "memory.db"
+    });
+  }
+
+  if (assistantCount > 0) {
+    const ratio = assistantLowCredCount / assistantCount;
+    if (ratio < 0.15) {
+      issues.push({
+        code: "assistant_memory_low_credibility_ratio_low",
+        severity: "warning",
+        message: `assistant low-credibility ratio is ${(ratio * 100).toFixed(1)}% (<15%)`,
+        path: "memory.db"
+      });
+    }
+  }
+
+  return issues;
 }
 
 async function readWorkingSet(rootPath: string): Promise<{ summaryIds: Set<string>; count: number }> {

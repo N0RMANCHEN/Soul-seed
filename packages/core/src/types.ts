@@ -16,6 +16,16 @@ export interface PersonaConstitution {
   values: string[];
   boundaries: string[];
   mission: string;
+  commitments?: string[];
+}
+
+export interface PersonaWorldview {
+  seed: string;
+}
+
+export interface PersonaHabits {
+  style: string;
+  adaptability: "low" | "medium" | "high";
 }
 
 export interface PersonaUserProfile {
@@ -25,21 +35,43 @@ export interface PersonaUserProfile {
 
 export interface PersonaPinned {
   memories: string[];
+  updatedAt?: string;
 }
 
 export interface PersonaPackage {
   rootPath: string;
   persona: PersonaMeta;
+  worldview?: PersonaWorldview;
   constitution: PersonaConstitution;
+  habits?: PersonaHabits;
   userProfile: PersonaUserProfile;
   pinned: PersonaPinned;
   relationshipState?: RelationshipState;
   voiceProfile?: VoiceProfile;
 }
 
+export interface RelationshipDimensions {
+  trust: number;
+  safety: number;
+  intimacy: number;
+  reciprocity: number;
+  stability: number;
+}
+
+export interface RelationshipDriver {
+  ts: string;
+  source: "user" | "assistant" | "event";
+  signal: string;
+  deltaSummary: Partial<RelationshipDimensions>;
+}
+
 export interface RelationshipState {
   state: "neutral-unknown" | "friend" | "peer" | "intimate";
   confidence: number;
+  overall: number;
+  dimensions: RelationshipDimensions;
+  drivers: RelationshipDriver[];
+  version: "2";
   updatedAt: string;
 }
 
@@ -48,6 +80,8 @@ export interface VoiceProfile {
   serviceModeAllowed: boolean;
   languagePolicy: "follow_user_language";
   forbiddenSelfLabels: string[];
+  tonePreference?: "warm" | "plain" | "reflective" | "direct";
+  stancePreference?: "friend" | "peer" | "intimate" | "neutral";
 }
 
 export interface VoiceIntent {
@@ -57,10 +91,17 @@ export interface VoiceIntent {
   language: "zh" | "en" | "mixed";
 }
 
+export interface MemoryEvidenceBlock {
+  id: string;
+  source: "user" | "assistant" | "system";
+  content: string;
+}
+
 export interface DecisionTrace {
   version: string;
   timestamp: string;
   selectedMemories: string[];
+  selectedMemoryBlocks?: MemoryEvidenceBlock[];
   askClarifyingQuestion: boolean;
   refuse: boolean;
   riskLevel: "low" | "medium" | "high";
@@ -80,13 +121,28 @@ export interface DecisionTrace {
     activation: number;
     emotion: number;
     narrative: number;
+    relational: number;
   };
   voiceIntent?: VoiceIntent;
   relationshipStateSnapshot?: RelationshipState;
+  recallTraceId?: string;
+  mcpCall?: McpCallRecord;
+}
+
+export interface McpCallRecord {
+  toolName: string;
+  callId: string;
+  approvalReason: string;
+  budgetSnapshot: {
+    cost: number;
+    sessionCallCount: number;
+    sessionMax: number;
+  };
 }
 
 export type MemoryTier = "highlight" | "pattern" | "error";
 export type MemoryMetaSource = "chat" | "system" | "acceptance";
+export type MemoryDecayClass = "fast" | "standard" | "slow" | "sticky";
 
 export interface MemoryMeta {
   tier: MemoryTier;
@@ -97,8 +153,10 @@ export interface MemoryMeta {
   lastActivatedAt?: string;
   emotionScore?: number;
   narrativeScore?: number;
+  relationalScore?: number;
   salienceScore?: number;
-  state?: "hot" | "warm" | "cold" | "scar";
+  state?: "hot" | "warm" | "cold" | "archive" | "scar";
+  decayClass?: MemoryDecayClass;
   compressedAt?: string;
   summaryRef?: string;
   credibilityScore?: number;
@@ -119,12 +177,38 @@ export type LifeEventType =
   | "rename_confirmed_via_chat"
   | "memory_weight_updated"
   | "memory_compacted"
+  | "memory_soft_forgotten"
+  | "memory_recovered"
   | "memory_contamination_flagged"
   | "relationship_state_updated"
   | "voice_intent_selected"
   | "narrative_drift_detected"
   | "constitution_review_requested"
-  | "scar";
+  | "worldview_revised"
+  | "constitution_revised"
+  | "self_revision_proposed"
+  | "self_revision_applied"
+  | "self_revision_conflicted"
+  | "scar"
+  | "mcp_tool_called"
+  | "mcp_tool_rejected";
+
+export type SelfRevisionDomain =
+  | "habits"
+  | "voice"
+  | "relationship"
+  | "worldview_proposal"
+  | "constitution_proposal";
+
+export interface SelfRevisionProposal {
+  domain: SelfRevisionDomain;
+  changes: Record<string, unknown>;
+  evidence: string[];
+  confidence: number;
+  reasonCodes: string[];
+  conflictsWithBoundaries: string[];
+  status: "proposed" | "applied" | "frozen";
+}
 
 export interface LifeEvent {
   ts: string;
@@ -168,4 +252,24 @@ export interface DoctorReport {
   ok: boolean;
   checkedAt: string;
   issues: DoctorIssue[];
+}
+
+export interface WorkingSetItem {
+  id: string;
+  ts: string;
+  sourceEventHashes: string[];
+  summary: string;
+  sourceEventHashCount?: number;
+  sourceEventHashDigest?: string;
+  sourceEventHashesTruncated?: boolean;
+}
+
+export interface WorkingSetData {
+  items: WorkingSetItem[];
+  memoryWeights?: {
+    activation: number;
+    emotion: number;
+    narrative: number;
+    relational: number;
+  };
 }

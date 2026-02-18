@@ -4,12 +4,24 @@ export interface MemoryWeights {
   activation: number;
   emotion: number;
   narrative: number;
+  relational: number;
+}
+
+export interface StoreMemorySignals {
+  activationCount: number;
+  lastActivatedAt: string;
+  emotionScore: number;
+  narrativeScore: number;
+  memoryType?: string;
+  state?: string;
+  credibilityScore?: number;
 }
 
 export const DEFAULT_MEMORY_WEIGHTS: MemoryWeights = {
-  activation: 0.4,
-  emotion: 0.3,
-  narrative: 0.3
+  activation: 0.32,
+  emotion: 0.2,
+  narrative: 0.2,
+  relational: 0.28
 };
 
 interface NormalizedMemoryMeta extends MemoryMeta {
@@ -17,8 +29,10 @@ interface NormalizedMemoryMeta extends MemoryMeta {
   lastActivatedAt: string;
   emotionScore: number;
   narrativeScore: number;
+  relationalScore: number;
+  decayClass: "fast" | "standard" | "slow" | "sticky";
   salienceScore: number;
-  state: "hot" | "warm" | "cold" | "scar";
+  state: "hot" | "warm" | "cold" | "archive" | "scar";
 }
 
 export function scoreMemory(
@@ -27,11 +41,45 @@ export function scoreMemory(
   weights: MemoryWeights = DEFAULT_MEMORY_WEIGHTS
 ): number {
   const normalized = normalizeMeta(meta);
-  const activation = activationSignal(normalized.activationCount, normalized.lastActivatedAt, nowIso);
+  const activation = activationSignal(
+    normalized.activationCount,
+    normalized.lastActivatedAt,
+    nowIso,
+    normalized.decayClass
+  );
   const emotion = clamp01(normalized.emotionScore);
   const narrative = clamp01(normalized.narrativeScore);
-  const score = weights.activation * activation + weights.emotion * emotion + weights.narrative * narrative;
+  const relational = clamp01(normalized.relationalScore);
+  const score =
+    weights.activation * activation +
+    weights.emotion * emotion +
+    weights.narrative * narrative +
+    weights.relational * relational;
   return clamp01(score);
+}
+
+export function scoreMemoryFromStoreRow(
+  row: StoreMemorySignals,
+  nowIso: string,
+  weights: MemoryWeights = DEFAULT_MEMORY_WEIGHTS
+): number {
+  return scoreMemory(
+    {
+      tier: "pattern",
+      storageCost: 1,
+      retrievalCost: 1,
+      source: "system",
+      activationCount: row.activationCount,
+      lastActivatedAt: row.lastActivatedAt,
+      emotionScore: row.emotionScore,
+      narrativeScore: row.narrativeScore,
+      relationalScore: inferRelationalScore(row.memoryType, row.state),
+      decayClass: inferDecayClass(undefined, row.memoryType),
+      credibilityScore: row.credibilityScore
+    },
+    nowIso,
+    weights
+  );
 }
 
 export function updateActivation(meta: MemoryMeta | undefined, tsIso: string): MemoryMeta {
@@ -42,18 +90,21 @@ export function updateActivation(meta: MemoryMeta | undefined, tsIso: string): M
     lastActivatedAt: tsIso
   };
   next.salienceScore = scoreMemory(next, tsIso);
-  next.state = classifyMemoryState(next.salienceScore);
+  next.state = normalized.state === "scar" ? "scar" : classifyMemoryState(next.salienceScore);
   return next;
 }
 
-export function classifyMemoryState(score: number): "hot" | "warm" | "cold" | "scar" {
-  if (score >= 0.75) {
+export function classifyMemoryState(score: number): "hot" | "warm" | "cold" | "archive" | "scar" {
+  if (score >= 0.78) {
     return "hot";
   }
   if (score >= 0.45) {
     return "warm";
   }
-  return "cold";
+  if (score >= 0.18) {
+    return "cold";
+  }
+  return "archive";
 }
 
 export function selectMemories(
@@ -71,7 +122,7 @@ export function selectMemories(
       const state = classifyMemoryState(score);
       return { event, score, state };
     })
-    .filter((item) => item.state !== "cold")
+    .filter((item) => item.state !== "cold" && item.state !== "archive")
     .sort((a, b) => {
       if (b.score !== a.score) {
         return b.score - a.score;
@@ -95,6 +146,7 @@ export function adaptWeights(
     activationDelta?: number;
     emotionDelta?: number;
     narrativeDelta?: number;
+    relationalDelta?: number;
   }
 ): MemoryWeights {
   const base = current ?? DEFAULT_MEMORY_WEIGHTS;
@@ -102,18 +154,21 @@ export function adaptWeights(
   const nextRaw: MemoryWeights = {
     activation: base.activation + clamp(feedback.activationDelta ?? 0, -step, step),
     emotion: base.emotion + clamp(feedback.emotionDelta ?? 0, -step, step),
-    narrative: base.narrative + clamp(feedback.narrativeDelta ?? 0, -step, step)
+    narrative: base.narrative + clamp(feedback.narrativeDelta ?? 0, -step, step),
+    relational: base.relational + clamp(feedback.relationalDelta ?? 0, -step, step)
   };
   const bounded: MemoryWeights = {
-    activation: clamp(nextRaw.activation, 0.15, 0.7),
-    emotion: clamp(nextRaw.emotion, 0.15, 0.7),
-    narrative: clamp(nextRaw.narrative, 0.15, 0.7)
+    activation: clamp(nextRaw.activation, 0.1, 0.6),
+    emotion: clamp(nextRaw.emotion, 0.1, 0.6),
+    narrative: clamp(nextRaw.narrative, 0.1, 0.6),
+    relational: clamp(nextRaw.relational, 0.1, 0.6)
   };
-  const sum = bounded.activation + bounded.emotion + bounded.narrative;
+  const sum = bounded.activation + bounded.emotion + bounded.narrative + bounded.relational;
   return {
     activation: bounded.activation / sum,
     emotion: bounded.emotion / sum,
-    narrative: bounded.narrative / sum
+    narrative: bounded.narrative / sum,
+    relational: bounded.relational / sum
   };
 }
 
@@ -121,18 +176,30 @@ export function compactColdMemories(events: LifeEvent[]): {
   compactedIds: string[];
   summary: string;
 } {
+  const nowIso = new Date().toISOString();
   const cold = events.filter((event) => {
-    const score = scoreMemory(event.payload.memoryMeta, new Date().toISOString());
-    return classifyMemoryState(score) === "cold";
+    const meta = normalizeMeta(event.payload.memoryMeta);
+    const score = scoreMemory(meta, nowIso);
+    const staleDays = elapsedDays(meta.lastActivatedAt, nowIso);
+    return (classifyMemoryState(score) === "cold" || classifyMemoryState(score) === "archive") &&
+      meta.activationCount <= 2 &&
+      staleDays >= 30;
   });
 
   if (cold.length === 0) {
     return { compactedIds: [], summary: "" };
   }
 
-  const summary = cold
+  const groups = new Map<string, string[]>();
+  for (const event of cold.slice(-80)) {
+    const key = event.type;
+    const list = groups.get(key) ?? [];
+    list.push(String(event.payload.text ?? event.type).slice(0, 80));
+    groups.set(key, list);
+  }
+  const summary = [...groups.entries()]
+    .map(([key, samples]) => `${key}(${samples.length}): ${samples.slice(0, 2).join(" / ")}`)
     .slice(0, 5)
-    .map((event) => String(event.payload.text ?? event.type))
     .join(" | ")
     .slice(0, 300);
 
@@ -150,6 +217,8 @@ function normalizeMeta(meta: MemoryMeta | undefined): NormalizedMemoryMeta {
     lastActivatedAt: meta?.lastActivatedAt ?? new Date(0).toISOString(),
     emotionScore: clamp01(meta?.emotionScore ?? 0.2),
     narrativeScore: clamp01(meta?.narrativeScore ?? 0.2),
+    relationalScore: clamp01(meta?.relationalScore ?? inferRelationalScore(undefined, meta?.state)),
+    decayClass: inferDecayClass(meta, undefined),
     salienceScore: meta?.salienceScore ?? 0.2,
     state: meta?.state ?? "warm",
     compressedAt: meta?.compressedAt,
@@ -157,11 +226,69 @@ function normalizeMeta(meta: MemoryMeta | undefined): NormalizedMemoryMeta {
   };
 }
 
-function activationSignal(count: number, lastActivatedAt: string, nowIso: string): number {
+function activationSignal(
+  count: number,
+  lastActivatedAt: string,
+  nowIso: string,
+  decayClass: "fast" | "standard" | "slow" | "sticky"
+): number {
   const c = clamp(count, 1, 100);
   const days = elapsedDays(lastActivatedAt, nowIso);
-  const recency = Math.exp(-days / 30);
+  const halfLifeDays = decayClassHalfLifeDays(decayClass);
+  const recency = Math.exp(-Math.log(2) * (days / halfLifeDays));
   return clamp01(0.6 * Math.log1p(c) / Math.log(101) + 0.4 * recency);
+}
+
+function decayClassHalfLifeDays(decayClass: "fast" | "standard" | "slow" | "sticky"): number {
+  switch (decayClass) {
+    case "fast":
+      return 10;
+    case "slow":
+      return 60;
+    case "sticky":
+      return 120;
+    default:
+      return 30;
+  }
+}
+
+function inferDecayClass(meta: MemoryMeta | undefined, memoryType?: string): "fast" | "standard" | "slow" | "sticky" {
+  if (meta?.decayClass === "fast" || meta?.decayClass === "standard" || meta?.decayClass === "slow" || meta?.decayClass === "sticky") {
+    return meta.decayClass;
+  }
+  if (meta?.state === "scar") {
+    return "sticky";
+  }
+  if (memoryType === "relational") {
+    return "slow";
+  }
+  if (memoryType === "procedural") {
+    return "slow";
+  }
+  if (meta?.tier === "highlight") {
+    return "slow";
+  }
+  if (meta?.tier === "error") {
+    return "fast";
+  }
+  return "standard";
+}
+
+function inferRelationalScore(memoryType?: string, state?: string): number {
+  let base = 0.2;
+  if (memoryType === "relational") {
+    base = 0.9;
+  } else if (memoryType === "semantic") {
+    base = 0.4;
+  } else if (memoryType === "episodic") {
+    base = 0.3;
+  } else if (memoryType === "procedural") {
+    base = 0.25;
+  }
+  if (state === "scar") {
+    base += 0.1;
+  }
+  return clamp01(base);
 }
 
 function elapsedDays(olderIso: string, newerIso: string): number {

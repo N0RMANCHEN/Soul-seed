@@ -19,6 +19,7 @@ export function enforceRelationalGuard(
   reply: string,
   options?: {
     selectedMemories?: string[];
+    selectedMemoryBlocks?: Array<{ id: string; source: "user" | "assistant" | "system"; content: string }>;
     personaName?: string;
   }
 ): RelationalGuardResult {
@@ -44,7 +45,10 @@ export function enforceRelationalGuard(
   const hasFabricatedRecall = FABRICATED_RECALL_PATTERNS.some((pattern) => pattern.test(next));
   if (hasFabricatedRecall) {
     const selected = options?.selectedMemories ?? [];
-    const canCiteSpecific = selected.some((m) => m.startsWith("life="));
+    const selectedBlocks = options?.selectedMemoryBlocks ?? [];
+    const canCiteSpecific =
+      selectedBlocks.some((m) => m.source === "user" && m.content.trim().length > 0) ||
+      selected.some((m) => m.startsWith("life="));
     if (!canCiteSpecific) {
       flags.push("fabricated_recall");
       next = next.replace(

@@ -1,5 +1,61 @@
 {
   "state": "friend",
-  "confidence": 0.78,
-  "updatedAt": "2026-02-17T14:34:49.081Z"
+  "confidence": 0.56,
+  "overall": 0.5602,
+  "dimensions": {
+    "trust": 0.562,
+    "safety": 0.9096,
+    "intimacy": 0.3,
+    "reciprocity": 0.35,
+    "stability": 0.621
+  },
+  "drivers": [
+    {
+      "ts": "2026-02-18T08:48:19.859Z",
+      "source": "assistant",
+      "signal": "assistant_empathic_response",
+      "deltaSummary": {
+        "trust": 0.008,
+        "intimacy": 0.006
+      }
+    },
+    {
+      "ts": "2026-02-18T09:15:59.947Z",
+      "source": "assistant",
+      "signal": "assistant_empathic_response",
+      "deltaSummary": {
+        "trust": 0.008,
+        "intimacy": 0.006
+      }
+    },
+    {
+      "ts": "2026-02-18T09:16:17.210Z",
+      "source": "assistant",
+      "signal": "assistant_clarification",
+      "deltaSummary": {
+        "safety": 0.012,
+        "stability": 0.01
+      }
+    },
+    {
+      "ts": "2026-02-18T09:16:39.390Z",
+      "source": "assistant",
+      "signal": "assistant_clarification",
+      "deltaSummary": {
+        "safety": 0.012,
+        "stability": 0.01
+      }
+    },
+    {
+      "ts": "2026-02-18T09:18:16.553Z",
+      "source": "assistant",
+      "signal": "assistant_clarification",
+      "deltaSummary": {
+        "safety": 0.012,
+        "stability": 0.01
+      }
+    }
+  ],
+  "version": "2",
+  "updatedAt": "2026-02-18T12:37:00.454Z"
 }
