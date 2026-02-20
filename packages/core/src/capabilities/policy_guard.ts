@@ -7,6 +7,8 @@ export interface CapabilityGuardContext {
   ownerKey?: string;
   ownerSessionAuthorized?: boolean;
   approvedReadPaths?: Set<string>;
+  approvedFetchOrigins?: Set<string>;
+  fetchOriginAllowlist?: Set<string>;
 }
 
 export interface CapabilityGuardResult {
@@ -46,6 +48,35 @@ export function evaluateCapabilityPolicy(
       return confirm(request.name, "first_read_path_confirmation_required", input, false);
     }
     return allow(request.name, "read_path_allowed", input, false);
+  }
+
+  if (request.name === "session.fetch_url") {
+    const rawUrl = typeof input.url === "string" ? input.url.trim() : "";
+    if (!rawUrl) {
+      return reject(request.name, "missing_url", input, false);
+    }
+    let origin = "";
+    try {
+      const parsed = new URL(rawUrl);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return reject(request.name, "invalid_url_scheme", input, false);
+      }
+      origin = parsed.origin;
+    } catch {
+      return reject(request.name, "invalid_url", input, false);
+    }
+    input.url = rawUrl;
+    input.origin = origin;
+    const allowlist = context.fetchOriginAllowlist;
+    if (allowlist && allowlist.size > 0 && !isOriginAllowed(origin, allowlist)) {
+      return reject(request.name, "fetch_origin_not_allowed", input, false);
+    }
+    const confirmed = input.confirmed === true;
+    const approved = origin ? context.approvedFetchOrigins?.has(origin) === true : false;
+    if (!confirmed && !approved) {
+      return confirm(request.name, "first_fetch_origin_confirmation_required", input, false);
+    }
+    return allow(request.name, "fetch_url_allowed", input, false);
   }
 
   if (request.name === "session.exit") {
@@ -113,4 +144,39 @@ function reject(
   requiresOwnerAuth: boolean
 ): CapabilityGuardResult {
   return { status: "rejected", reason, capability, normalizedInput, requiresOwnerAuth };
+}
+
+function isOriginAllowed(origin: string, allowlist: Set<string>): boolean {
+  if (!origin) {
+    return false;
+  }
+  if (allowlist.has(origin)) {
+    return true;
+  }
+  let host = "";
+  try {
+    host = new URL(origin).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  for (const item of allowlist) {
+    const token = item.trim().toLowerCase();
+    if (!token) {
+      continue;
+    }
+    if (token.startsWith("*.")) {
+      const suffix = token.slice(2);
+      if (host === suffix || host.endsWith(`.${suffix}`)) {
+        return true;
+      }
+      continue;
+    }
+    if (token === host) {
+      return true;
+    }
+    if (token === `http://${host}` || token === `https://${host}`) {
+      return true;
+    }
+  }
+  return false;
 }

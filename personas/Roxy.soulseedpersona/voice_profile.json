@@ -8,6 +8,12 @@
     "为你服务",
     "你的助手"
   ],
+  "thinkingPreview": {
+    "enabled": true,
+    "thresholdMs": 1200,
+    "phrasePool": [],
+    "allowFiller": true
+  },
   "tonePreference": "warm",
   "stancePreference": "intimate"
 }

@@ -16,18 +16,19 @@ cp .env.example .env
 # 查看帮助
 ./ss
 
-# 初始化 persona（默认 Roxy）
-./ss init
+# 创建 persona（交互向导）
+./ss new Teddy
 
-# 开始聊天
-./ss chat
+# 直接按名字聊天
+./ss Teddy
 
 # 体检
 ./ss doctor
 ```
 
 说明：
-- 默认 persona 路径：`./personas/Roxy.soulseedpersona`
+- 默认 persona 路径：`./personas/Roxy.soulseedpersona`（兼容模式）
+- 推荐主路径：`./ss new <name>` + `./ss <name>`
 - 验收请使用隔离 QA persona：`npm run acceptance`
 - 涉及在线链路变更时，提交前应附 `reports/acceptance/*` 报告
 
@@ -36,6 +37,7 @@ cp .env.example .env
 ### 3.1 Persona 命令
 
 ```bash
+./ss new <name> [--out <personaPath>] [--template friend|peer|intimate|neutral] [--model deepseek-chat] [--quick]
 ./ss init [--name <displayName>] [--out <personaPath>]
 ./ss rename --to <newName> [--persona <personaPath>]
 ./ss rename --to <newName> [--persona <personaPath>] --confirm
@@ -49,6 +51,9 @@ cp .env.example .env
 ```
 
 说明：
+- `new` 是主入口：
+- 默认交互向导会采集模板、LLM 模型、worldview/mission/values/boundaries/commitments、style/tone/stance
+- `--quick` 跳过交互，按模板默认值快速创建
 - `rename` 是双阶段确认：
 - 第 1 次只写入 rename request
 - 第 2 次加 `--confirm` 才真正应用
@@ -56,8 +61,15 @@ cp .env.example .env
 ### 3.2 会话命令
 
 ```bash
+./ss <name> [--model deepseek-chat] [--strict-memory-grounding true|false]
 ./ss chat [--persona <personaPath>] [--model deepseek-chat] [--strict-memory-grounding true|false]
 ```
+
+说明：
+- `./ss <name>` 是主入口，会映射到 `./personas/<name>.soulseedpersona`
+- 如果人格不存在，会询问是否创建（确认后走 `new` 流程）
+- 模型优先级：`--model` > persona `defaultModel` > `deepseek-chat`
+- `chat` 保留为兼容入口（默认仍可指向 Roxy）
 
 `chat` 内部命令：
 - 主路径：自然语言触发能力（读文件、查看能力、查看模式、退出）
@@ -273,8 +285,11 @@ npm run build -w @soulseed/mcp-server
 ## 4. 常见参数示例
 
 ```bash
-./ss init --name Roxy --out ./personas/Roxy.soulseedpersona
-./ss chat --persona ./personas/Roxy.soulseedpersona --model deepseek-chat
+./ss new Teddy
+./ss new Teddy --quick --template peer --model deepseek-reasoner
+./ss Teddy
+./ss Teddy --model deepseek-chat
+./ss chat --persona ./personas/Roxy.soulseedpersona --model deepseek-chat  # 兼容入口
 ./ss rename --persona ./personas/Roxy.soulseedpersona --to Nova
 ./ss rename --persona ./personas/Roxy.soulseedpersona --to Nova --confirm
 ./ss memory list --persona ./personas/Roxy.soulseedpersona --limit 50 --state warm
@@ -389,7 +404,7 @@ curl http://127.0.0.1:8787/health
 
 - persona 相关错误（例如 `SOULSEED_PERSONA_PATH`）
 - 原因：persona 目录不存在或结构不完整。
-- 检查：先执行 `./ss init`，再用 `--persona` 指向真实路径。
+- 检查：先执行 `./ss new <name>`，再用 `--persona` 指向真实路径，或直接 `./ss <name>`。
 
 - ChatGPT 能连通但“记忆没增长”
 - 原因：只读工具被调用了，但没调用 `conversation.save_turn`。

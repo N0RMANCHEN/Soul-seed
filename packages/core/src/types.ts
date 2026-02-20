@@ -1,4 +1,5 @@
 export type Role = "system" | "user" | "assistant";
+export type MetaCognitionMode = "off" | "shadow" | "active";
 
 export interface ChatMessage {
   role: Role;
@@ -10,6 +11,11 @@ export interface PersonaMeta {
   displayName: string;
   schemaVersion: string;
   createdAt: string;
+  defaultModel?: string;
+  initProfile?: {
+    template: "friend" | "peer" | "intimate" | "neutral" | "custom";
+    initializedAt: string;
+  };
 }
 
 export interface PersonaConstitution {
@@ -21,6 +27,18 @@ export interface PersonaConstitution {
 
 export interface PersonaWorldview {
   seed: string;
+}
+
+export interface PersonaInitOptions {
+  worldview?: PersonaWorldview;
+  constitution?: PersonaConstitution;
+  habits?: PersonaHabits;
+  voiceProfile?: VoiceProfile;
+  defaultModel?: string;
+  initProfile?: {
+    template: "friend" | "peer" | "intimate" | "neutral" | "custom";
+    initializedAt?: string;
+  };
 }
 
 export interface PersonaHabits {
@@ -102,6 +120,12 @@ export interface VoiceProfile {
   forbiddenSelfLabels: string[];
   tonePreference?: "warm" | "plain" | "reflective" | "direct";
   stancePreference?: "friend" | "peer" | "intimate" | "neutral";
+  thinkingPreview?: {
+    enabled?: boolean;
+    thresholdMs?: number;
+    phrasePool?: string[];
+    allowFiller?: boolean;
+  };
 }
 
 export interface VoiceIntent {
@@ -147,6 +171,47 @@ export interface DecisionTrace {
   relationshipStateSnapshot?: RelationshipState;
   recallTraceId?: string;
   mcpCall?: McpCallRecord;
+  metaTraceId?: string;
+}
+
+export type PersonaJudgmentLabel = "fiction" | "non_fiction" | "mixed" | "uncertain";
+
+export interface PersonaJudgmentRecord {
+  id: string;
+  subjectRef: string;
+  label: PersonaJudgmentLabel;
+  confidence: number;
+  rationale: string;
+  evidenceRefs: string[];
+  version: number;
+  supersedesVersion?: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MetaIntentPlan {
+  domain: "dialogue" | "tool";
+  intent: "reply" | "ask_clarify" | "tool_call" | "refuse";
+  rationale: string;
+}
+
+export interface MetaActionDraft {
+  replyDraft?: string;
+  toolDraft?: CapabilityCallRequest;
+  memoryJudgmentDraft?: {
+    label: PersonaJudgmentLabel;
+    confidence: number;
+    rationale: string;
+  };
+}
+
+export interface MetaActionArbitration {
+  traceId: string;
+  finalReply?: string;
+  finalToolCall?: CapabilityCallRequest;
+  summary: string;
+  applied: boolean;
 }
 
 export interface McpCallRecord {
@@ -165,6 +230,7 @@ export type CapabilityName =
   | "session.show_modes"
   | "session.owner_auth"
   | "session.read_file"
+  | "session.fetch_url"
   | "session.proactive_status"
   | "session.proactive_tune"
   | "session.set_mode"
@@ -275,7 +341,13 @@ export type LifeEventType =
   | "owner_auth_succeeded"
   | "owner_auth_failed"
   | "proactive_decision_made"
-  | "proactive_message_emitted";
+  | "proactive_message_emitted"
+  | "meta_intent_planned"
+  | "meta_action_composed"
+  | "meta_action_arbitrated"
+  | "thinking_preview_emitted"
+  | "persona_judgment_updated"
+  | "persona_judgment_superseded";
 
 export type SelfRevisionDomain =
   | "habits"

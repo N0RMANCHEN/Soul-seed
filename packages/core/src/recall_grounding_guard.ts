@@ -9,12 +9,12 @@ export interface RecallGroundingGuardResult {
 }
 
 const RECALL_CLAIM_PATTERNS = [
-  /(上次我们聊到|你之前提到过|我们之前聊过|你刚才说过|你前面说过|你先前说过|你曾说过)/u,
-  /(last time we talked|earlier you said|you mentioned before|as we discussed before|you said earlier|you told me before|we talked about)/i
+  /(上次我们聊到|你之前提到过|我们之前聊过|你刚才说过|你前面说过|你先前说过|你曾说过|你昨天说的|你先提到|你上次推荐的|你之前推荐过)/u,
+  /(last time we talked|earlier you said|you mentioned before|as we discussed before|you said earlier|you told me before|we talked about|you mentioned first|you said yesterday|you recommended before)/i
 ];
 
 const RECALL_SENTENCE_PATTERN =
-  /(?:上次我们聊到|你之前提到过|我们之前聊过|你刚才说过|你前面说过|你先前说过|你曾说过|last time we talked|earlier you said|you mentioned before|as we discussed before|you said earlier|you told me before|we talked about)[^。！？!?]{0,160}[。！？!?]?/giu;
+  /(?:上次我们聊到|你之前提到过|我们之前聊过|你刚才说过|你前面说过|你先前说过|你曾说过|你昨天说的|你先提到|你上次推荐的|你之前推荐过|last time we talked|earlier you said|you mentioned before|as we discussed before|you said earlier|you told me before|we talked about|you mentioned first|you said yesterday|you recommended before)[^。！？!?]{0,160}[。！？!?]?/giu;
 
 const WORD_PATTERN = /[\p{L}\p{N}_]{2,}/gu;
 const RECALL_STOPWORDS = new Set([
@@ -26,7 +26,11 @@ const RECALL_STOPWORDS = new Set([
   "聊到",
   "聊过",
   "提到过",
+  "先提到",
   "说过",
+  "昨天",
+  "上次推荐的",
+  "推荐过",
   "细节",
   "我们",
   "你",

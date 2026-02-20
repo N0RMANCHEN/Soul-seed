@@ -31,6 +31,18 @@ const EXIT_HINTS: RegExp[] = [
   /\bexit\b/i,
   /\bquit\b/i
 ];
+const EXIT_CONFIRMED_HINTS: RegExp[] = [
+  /^我走了[。！!~～]?$/u,
+  /^我走啦[。！!~～]?$/u,
+  /^先走了[。！!~～]?$/u,
+  /^先走啦[。！!~～]?$/u,
+  /^我先走了[。！!~～]?$/u,
+  /^拜拜[。！!~～]?$/u,
+  /^再见[。！!~～]?$/u,
+  /^回头聊[。！!~～]?$/u,
+  /^晚点聊[。！!~～]?$/u,
+  /^先这样[。！!~～]?$/u
+];
 
 const OWNER_PATTERN = /^owner\s+(\S+)\s+(.+)$/i;
 const OWNER_AUTH_PATTERN = /^owner\s+(\S+)$/i;
@@ -68,8 +80,17 @@ export function resolveCapabilityIntent(inputRaw: string): CapabilityIntentResol
     );
   }
 
+  if (EXIT_CONFIRMED_HINTS.some((pattern) => pattern.test(input))) {
+    return buildResolution("session.exit", { confirmed: true }, "rule:exit_direct_confirmed", 0.995);
+  }
+
   if (EXIT_HINTS.some((pattern) => pattern.test(input))) {
     return buildResolution("session.exit", {}, "rule:exit", 0.99);
+  }
+
+  const fetchUrl = extractUrlFromIntent(input);
+  if (fetchUrl) {
+    return buildResolution("session.fetch_url", { url: fetchUrl }, "rule:fetch_url", 0.95);
   }
 
   const readPath = extractReadPathFromIntent(input);
@@ -124,23 +145,76 @@ export function resolveCapabilityIntent(inputRaw: string): CapabilityIntentResol
   return { matched: false, confidence: 0, reason: "no_rule_match" };
 }
 
+export function extractUrlFromIntent(inputRaw: string): string | null {
+  const input = inputRaw.trim();
+  if (!input) return null;
+  if (input.startsWith("/fetch ")) {
+    const candidate = input.slice("/fetch ".length).trim();
+    if (/^https?:\/\//i.test(candidate)) {
+      return sanitizeUrlCandidate(candidate);
+    }
+  }
+  const urlMatch = /https?:\/\/\S+/i.exec(input);
+  if (urlMatch) {
+    return sanitizeUrlCandidate(urlMatch[0]);
+  }
+  return null;
+}
+
 export function extractReadPathFromIntent(inputRaw: string): string | null {
   const input = inputRaw.trim();
   if (!input) {
     return null;
   }
+  if (/https?:\/\//i.test(input)) return null;
+  if (looksLikeDirectPathReadInput(input)) {
+    return extractLeadingAbsolutePath(input);
+  }
   if (input.startsWith("/read ")) {
     return input.slice("/read ".length).trim();
   }
-  const zh = /(?:读取|读一下|帮我读|帮我读取)\s*(?:文件)?\s*[:：]?\s*(.+)$/i.exec(input);
+  const zh = /(?:读取|读一下|帮我读|帮我读取|阅读)\s*(?:文件)?\s*[:：]?\s*(.+)$/i.exec(input);
   if (zh?.[1]) {
-    return zh[1].trim();
+    const candidate = zh[1].trim();
+    if (!/^(吗|嘛|么|呢)[？?]?$/u.test(candidate)) {
+      return candidate;
+    }
   }
   const en = /(?:read|open)\s+(?:file\s+)?(.+)$/i.exec(input);
   if (en?.[1]) {
     return en[1].trim();
   }
+  const hasReadHint = /(?:读取|读一下|帮我读|帮我读取|阅读|read|open)/i.test(input);
+  if (!hasReadHint) {
+    return null;
+  }
+  const quotedPath = /["'“”](\/[^"'“”]+)["'“”]/.exec(input);
+  if (quotedPath?.[1]) {
+    return quotedPath[1].trim();
+  }
+  const absolutePath = /(\/[^\s,，。！？!?；;]+)/.exec(input);
+  if (absolutePath?.[1]) {
+    return absolutePath[1].trim();
+  }
   return null;
+}
+
+function looksLikeDirectPathReadInput(input: string): boolean {
+  if (!input.startsWith("/")) {
+    return false;
+  }
+  if (/^\/(?:read|fetch|exit|files|clearread|proactive|relation|rename|reproduce)\b/i.test(input)) {
+    return false;
+  }
+  return /^\/(?:Users|home|tmp|var|opt|etc)\//.test(input);
+}
+
+function extractLeadingAbsolutePath(input: string): string | null {
+  const match = /^(\/[^\s,，。！？!?；;]+)/.exec(input);
+  if (!match?.[1]) {
+    return null;
+  }
+  return match[1].trim();
 }
 
 function buildResolution(
@@ -163,4 +237,38 @@ function buildResolution(
 
 function parseBooleanFlag(raw: string): boolean {
   return raw === "on" || raw === "true" || raw === "1";
+}
+
+function sanitizeUrlCandidate(raw: string): string | null {
+  let value = raw.trim();
+  if (!value) {
+    return null;
+  }
+
+  // Remove obvious trailing punctuation from natural language input.
+  while (/[，。！？!?；;）)\]】}>、'"`~]+$/u.test(value)) {
+    value = value.replace(/[，。！？!?；;）)\]】}>、'"`~]+$/u, "");
+  }
+  // Keep only URL-safe ASCII characters to avoid swallowing trailing Chinese text.
+  let end = 0;
+  for (const ch of value) {
+    if (/^[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]$/.test(ch)) {
+      end += ch.length;
+      continue;
+    }
+    break;
+  }
+  value = value.slice(0, end);
+  if (!value) {
+    return null;
+  }
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }

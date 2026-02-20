@@ -37,7 +37,13 @@ export const DEFAULT_VOICE_PROFILE: VoiceProfile = {
   baseStance: "self-determined",
   serviceModeAllowed: false,
   languagePolicy: "follow_user_language",
-  forbiddenSelfLabels: ["personal assistant", "local runtime role", "为你服务", "你的助手"]
+  forbiddenSelfLabels: ["personal assistant", "local runtime role", "为你服务", "你的助手"],
+  thinkingPreview: {
+    enabled: true,
+    thresholdMs: 1200,
+    phrasePool: [],
+    allowFiller: true
+  }
 };
 
 export async function ensureRelationshipArtifacts(rootPath: string): Promise<{
@@ -587,11 +593,37 @@ function normalizeVoiceProfile(raw: Record<string, unknown>): VoiceProfile {
     raw.stancePreference === "neutral"
       ? raw.stancePreference
       : undefined;
+  const thinkingRaw = isRecord(raw.thinkingPreview) ? raw.thinkingPreview : {};
+  const thinkingEnabled =
+    typeof thinkingRaw.enabled === "boolean"
+      ? thinkingRaw.enabled
+      : DEFAULT_VOICE_PROFILE.thinkingPreview?.enabled ?? true;
+  const thinkingThresholdRaw = Number(thinkingRaw.thresholdMs);
+  const thinkingThresholdMs = Number.isFinite(thinkingThresholdRaw)
+    ? Math.max(500, Math.min(4000, Math.round(thinkingThresholdRaw)))
+    : DEFAULT_VOICE_PROFILE.thinkingPreview?.thresholdMs ?? 1200;
+  const phrasePool = Array.isArray(thinkingRaw.phrasePool)
+    ? thinkingRaw.phrasePool
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+        .slice(0, 24)
+    : [];
+  const allowFiller =
+    typeof thinkingRaw.allowFiller === "boolean"
+      ? thinkingRaw.allowFiller
+      : DEFAULT_VOICE_PROFILE.thinkingPreview?.allowFiller ?? true;
   return {
     baseStance: "self-determined",
     serviceModeAllowed: false,
     languagePolicy: "follow_user_language",
     forbiddenSelfLabels,
+    thinkingPreview: {
+      enabled: thinkingEnabled,
+      thresholdMs: thinkingThresholdMs,
+      phrasePool,
+      allowFiller
+    },
     ...(tonePreference ? { tonePreference } : {}),
     ...(stancePreference ? { stancePreference } : {})
   };

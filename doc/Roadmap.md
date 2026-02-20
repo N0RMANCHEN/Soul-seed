@@ -139,6 +139,17 @@
   - chat 运行时启动即执行断链检测并写 scar（去重，避免同原因重复刷写）
   - 新增测试：`lifelog_scar.test.mjs`，覆盖“可写 scar + 重复检测不重复写”
 
+### P0-8 CLI 主入口重构（new + persona 名直聊）
+- 状态：`done`
+- 交付：
+  - 新增 `ss new <name>` 交互创建流程（支持 `--quick`）
+  - 新增 `ss <name>` 直聊入口（未知词按人格名路由）
+  - 创建流程补齐人格初始化：模板 + worldview/constitution/habits/voice + defaultModel
+- DoD：
+  - `./ss new Teddy` 可创建并持久化初始化参数
+  - `./ss Teddy` 可直接进入对应人格会话
+  - 旧入口 `init/chat` 仍兼容
+
 ## P1（高优先，形成可用闭环）
 
 ### P1-1 生命周期 v3（激活/情感/叙事/关系）

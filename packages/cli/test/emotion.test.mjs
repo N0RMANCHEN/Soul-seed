@@ -21,6 +21,12 @@ test("parseEmotionTag ignores invalid emotion token", () => {
   assert.equal(parsed.text, "你好呀");
 });
 
+test("parseEmotionTag strips localized chinese emotion tags", () => {
+  const parsed = parseEmotionTag("[困惑 (?_?)] [困惑] 你好呀");
+  assert.equal(parsed.emotion, "confused");
+  assert.equal(parsed.text, "你好呀");
+});
+
 test("renderEmotionPrefix returns localized label", () => {
   assert.equal(renderEmotionPrefix("welcome"), "[欢迎回来 (^o^)/] ");
   assert.equal(renderEmotionPrefix(null), "");

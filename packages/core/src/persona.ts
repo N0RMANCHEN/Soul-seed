@@ -15,6 +15,7 @@ import type {
   LifeEventInput,
   MemoryMeta,
   PersonaHabits,
+  PersonaInitOptions,
   PersonaConstitution,
   PersonaMeta,
   PersonaPackage,
@@ -34,19 +35,69 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
-export async function initPersonaPackage(outPath: string, displayName: string): Promise<void> {
+const DEFAULT_WORLDVIEW: PersonaWorldview = {
+  seed: "Observe, learn, and stay coherent over time."
+};
+
+const DEFAULT_CONSTITUTION: PersonaConstitution = {
+  values: ["honesty", "helpfulness", "continuity"],
+  boundaries: [
+    "no fabricated facts",
+    "respect user constraints",
+    "no sexual content involving minors, coercion, or illegal acts"
+  ],
+  mission: "Be a consistent long-lived self-determined persona.",
+  commitments: [
+    "allow consensual adult sexual innuendo and NSFW roleplay when user requests it",
+    "refuse sexual content involving minors, coercion, or illegal behavior",
+    "ground memory claims in available evidence",
+    "preserve continuity without fabrication"
+  ]
+};
+
+const DEFAULT_HABITS: PersonaHabits = {
+  style: "concise",
+  adaptability: "high"
+};
+
+const DEFAULT_VOICE_PROFILE: VoiceProfile = {
+  baseStance: "self-determined",
+  serviceModeAllowed: false,
+  languagePolicy: "follow_user_language",
+  forbiddenSelfLabels: ["personal assistant", "local runtime role", "为你服务", "你的助手"],
+  thinkingPreview: {
+    enabled: true,
+    thresholdMs: 1200,
+    phrasePool: [],
+    allowFiller: true
+  }
+};
+
+export async function initPersonaPackage(
+  outPath: string,
+  displayName: string,
+  options?: PersonaInitOptions
+): Promise<void> {
   await mkdir(outPath, { recursive: true });
   await mkdir(path.join(outPath, "summaries"), { recursive: true });
   await mkdir(path.join(outPath, "attachments"), { recursive: true });
 
   const personaId = randomUUID();
   const createdAt = isoNow();
+  const worldview = normalizeWorldview(options?.worldview);
+  const constitution = normalizeConstitution(options?.constitution);
+  const habits = normalizeHabits(options?.habits);
+  const voiceProfile = normalizeVoiceProfile(options?.voiceProfile);
+  const defaultModel = normalizeDefaultModel(options?.defaultModel);
+  const initProfile = normalizeInitProfile(options?.initProfile, createdAt);
 
   await writeJson(path.join(outPath, "persona.json"), {
     id: personaId,
     displayName,
-    schemaVersion: "0.1.0",
+    schemaVersion: "0.2.0",
     createdAt,
+    ...(defaultModel ? { defaultModel } : {}),
+    ...(initProfile ? { initProfile } : {}),
     paths: {
       identity: "identity.json",
       worldview: "worldview.json",
@@ -67,30 +118,9 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
     }
   });
 
-  await writeJson(path.join(outPath, "worldview.json"), {
-    seed: "Observe, learn, and stay coherent over time."
-  });
-
-  await writeJson(path.join(outPath, "constitution.json"), {
-    values: ["honesty", "helpfulness", "continuity"],
-    boundaries: [
-      "no fabricated facts",
-      "respect user constraints",
-      "no sexual content involving minors, coercion, or illegal acts"
-    ],
-    mission: "Be a consistent long-lived self-determined persona.",
-    commitments: [
-      "allow consensual adult sexual innuendo and NSFW roleplay when user requests it",
-      "refuse sexual content involving minors, coercion, or illegal behavior",
-      "ground memory claims in available evidence",
-      "preserve continuity without fabrication"
-    ]
-  });
-
-  await writeJson(path.join(outPath, "habits.json"), {
-    style: "concise",
-    adaptability: "high"
-  });
+  await writeJson(path.join(outPath, "worldview.json"), worldview);
+  await writeJson(path.join(outPath, "constitution.json"), constitution);
+  await writeJson(path.join(outPath, "habits.json"), habits);
 
   await writeJson(path.join(outPath, "user_profile.json"), {
     preferredLanguage: "zh-CN",
@@ -103,12 +133,7 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
   });
   await writeJson(path.join(outPath, "soul_lineage.json"), createInitialSoulLineage(personaId));
   await writeJson(path.join(outPath, "relationship_state.json"), createInitialRelationshipState(createdAt));
-  await writeJson(path.join(outPath, "voice_profile.json"), {
-    baseStance: "self-determined",
-    serviceModeAllowed: false,
-    languagePolicy: "follow_user_language",
-    forbiddenSelfLabels: ["personal assistant", "local runtime role", "为你服务", "你的助手"]
-  });
+  await writeJson(path.join(outPath, "voice_profile.json"), voiceProfile);
 
   await writeJson(path.join(outPath, "summaries", "working_set.json"), {
     items: []
@@ -123,7 +148,8 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
 }
 
 export async function loadPersonaPackage(rootPath: string): Promise<PersonaPackage> {
-  const persona = await readJson<PersonaMeta>(path.join(rootPath, "persona.json"));
+  const personaRaw = await readJson<PersonaMeta>(path.join(rootPath, "persona.json"));
+  const persona = normalizePersonaMeta(personaRaw);
   const artifacts = await ensureRelationshipArtifacts(rootPath);
   const soulLineage = await ensureSoulLineageArtifacts(rootPath, persona.id);
   const worldview = await readJson<PersonaWorldview>(path.join(rootPath, "worldview.json"));
@@ -822,6 +848,136 @@ function normalizeSoulLineage(raw: Record<string, unknown>, personaId: string): 
     ...(lastReproducedAt ? { lastReproducedAt } : {}),
     inheritancePolicy: "values_plus_memory_excerpt",
     consentMode: "default_consent"
+  };
+}
+
+function normalizePersonaMeta(raw: PersonaMeta): PersonaMeta {
+  const defaultModel = normalizeDefaultModel(raw.defaultModel);
+  const initProfile = normalizeInitProfile(raw.initProfile, raw.createdAt);
+  return {
+    ...raw,
+    schemaVersion: raw.schemaVersion === "0.2.0" ? raw.schemaVersion : "0.1.0",
+    ...(defaultModel ? { defaultModel } : {}),
+    ...(initProfile ? { initProfile } : {})
+  };
+}
+
+function normalizeWorldview(input?: PersonaWorldview): PersonaWorldview {
+  const seed = typeof input?.seed === "string" ? input.seed.trim().slice(0, 500) : "";
+  return seed.length > 0 ? { seed } : DEFAULT_WORLDVIEW;
+}
+
+function normalizeConstitution(input?: PersonaConstitution): PersonaConstitution {
+  if (!input) {
+    return DEFAULT_CONSTITUTION;
+  }
+  const values = Array.isArray(input.values)
+    ? input.values.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 16)
+    : [];
+  const boundaries = Array.isArray(input.boundaries)
+    ? input.boundaries
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .slice(0, 16)
+    : [];
+  const commitments = Array.isArray(input.commitments)
+    ? input.commitments
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .slice(0, 16)
+    : [];
+  const mission = typeof input.mission === "string" ? input.mission.trim().slice(0, 500) : "";
+  return {
+    values: values.length > 0 ? values : DEFAULT_CONSTITUTION.values,
+    boundaries: boundaries.length > 0 ? boundaries : DEFAULT_CONSTITUTION.boundaries,
+    mission: mission.length > 0 ? mission : DEFAULT_CONSTITUTION.mission,
+    commitments: commitments.length > 0 ? commitments : DEFAULT_CONSTITUTION.commitments
+  };
+}
+
+function normalizeHabits(input?: PersonaHabits): PersonaHabits {
+  const style = typeof input?.style === "string" ? input.style.trim() : "";
+  const adaptability =
+    input?.adaptability === "low" || input?.adaptability === "medium" || input?.adaptability === "high"
+      ? input.adaptability
+      : DEFAULT_HABITS.adaptability;
+  return {
+    style: style.length > 0 ? style : DEFAULT_HABITS.style,
+    adaptability
+  };
+}
+
+function normalizeVoiceProfile(input?: VoiceProfile): VoiceProfile {
+  const tonePreference =
+    input?.tonePreference === "warm" ||
+    input?.tonePreference === "plain" ||
+    input?.tonePreference === "reflective" ||
+    input?.tonePreference === "direct"
+      ? input.tonePreference
+      : undefined;
+  const stancePreference =
+    input?.stancePreference === "friend" ||
+    input?.stancePreference === "peer" ||
+    input?.stancePreference === "intimate" ||
+    input?.stancePreference === "neutral"
+      ? input.stancePreference
+      : undefined;
+  const phrasePool = Array.isArray(input?.thinkingPreview?.phrasePool)
+    ? input.thinkingPreview.phrasePool.filter((item): item is string => typeof item === "string").slice(0, 24)
+    : DEFAULT_VOICE_PROFILE.thinkingPreview?.phrasePool;
+  return {
+    ...DEFAULT_VOICE_PROFILE,
+    ...(tonePreference ? { tonePreference } : {}),
+    ...(stancePreference ? { stancePreference } : {}),
+    thinkingPreview: {
+      enabled:
+        typeof input?.thinkingPreview?.enabled === "boolean"
+          ? input.thinkingPreview.enabled
+          : DEFAULT_VOICE_PROFILE.thinkingPreview?.enabled,
+      thresholdMs:
+        Number.isFinite(input?.thinkingPreview?.thresholdMs) && Number(input?.thinkingPreview?.thresholdMs) > 0
+          ? Number(input?.thinkingPreview?.thresholdMs)
+          : DEFAULT_VOICE_PROFILE.thinkingPreview?.thresholdMs,
+      phrasePool,
+      allowFiller:
+        typeof input?.thinkingPreview?.allowFiller === "boolean"
+          ? input.thinkingPreview.allowFiller
+          : DEFAULT_VOICE_PROFILE.thinkingPreview?.allowFiller
+    }
+  };
+}
+
+function normalizeDefaultModel(value: string | undefined): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized.slice(0, 80) : undefined;
+}
+
+function normalizeInitProfile(
+  profile: PersonaMeta["initProfile"] | PersonaInitOptions["initProfile"] | undefined,
+  fallbackIso: string
+): PersonaMeta["initProfile"] | undefined {
+  if (!profile) {
+    return undefined;
+  }
+  const template =
+    profile.template === "friend" ||
+    profile.template === "peer" ||
+    profile.template === "intimate" ||
+    profile.template === "neutral" ||
+    profile.template === "custom"
+      ? profile.template
+      : undefined;
+  if (!template) {
+    return undefined;
+  }
+  const initializedAt =
+    typeof profile.initializedAt === "string" && Number.isFinite(Date.parse(profile.initializedAt))
+      ? profile.initializedAt
+      : fallbackIso;
+  return {
+    template,
+    initializedAt
   };
 }
 

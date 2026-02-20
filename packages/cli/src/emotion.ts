@@ -44,6 +44,19 @@ function isEmotionToken(value: string): value is EmotionToken {
   return (EMOTION_TOKENS as readonly string[]).includes(value);
 }
 
+function detectLocalizedEmotionToken(tag: string): EmotionToken | null {
+  const normalized = tag.trim();
+  if (!normalized) {
+    return null;
+  }
+  for (const [token, ui] of Object.entries(EMOTION_RENDER) as Array<[EmotionToken, { label: string; icon: string }]>) {
+    if (normalized === ui.label || normalized.startsWith(`${ui.label} `) || normalized.includes(ui.icon)) {
+      return token;
+    }
+  }
+  return null;
+}
+
 export function parseEmotionTag(content: string): { emotion: EmotionToken | null; text: string } {
   let rest = content.trimStart();
   let detected: EmotionToken | null = null;
@@ -61,6 +74,22 @@ export function parseEmotionTag(content: string): { emotion: EmotionToken | null
       detected = tokenRaw;
     }
     rest = rest.slice(match[0].length);
+  }
+
+  for (let i = 0; i < 3; i += 1) {
+    const localized = rest.match(/^\[([^\]\n]{1,24})\]\s*/u);
+    if (!localized) {
+      break;
+    }
+    const localizedToken = detectLocalizedEmotionToken(localized[1] ?? "");
+    if (!localizedToken) {
+      break;
+    }
+    matched = true;
+    if (!detected) {
+      detected = localizedToken;
+    }
+    rest = rest.slice(localized[0].length);
   }
 
   if (!matched) {

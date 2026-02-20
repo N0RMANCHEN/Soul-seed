@@ -38,6 +38,13 @@ const DEFINITIONS: CapabilityDefinition[] = [
     description: "Read local text file by explicit path, first-time path requires confirmation."
   },
   {
+    name: "session.fetch_url",
+    risk: "medium",
+    ownerOnly: false,
+    requiresConfirmation: false,
+    description: "Fetch a URL and extract readable text content for use in conversation context."
+  },
+  {
     name: "session.proactive_status",
     risk: "low",
     ownerOnly: false,

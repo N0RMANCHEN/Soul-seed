@@ -22,10 +22,13 @@ import {
   archiveColdMemories,
   createChildPersonaFromParent,
   compileContext,
+  composeMetaAction,
   decide,
+  judgePersonaContentLabel,
   doctorPersona,
   evaluateNarrativeDrift,
   enforceIdentityGuard,
+  enforceFactualGroundingGuard,
   enforceRecallGroundingGuard,
   enforceRelationalGuard,
   evolveRelationshipStateFromAssistant,
@@ -66,8 +69,15 @@ import {
   collectRevisionSignals,
   proposeSelfRevision,
   detectCoreConflicts,
+  inspectExternalKnowledgeStore,
+  listExternalKnowledgeCandidates,
+  listExternalKnowledgeEntries,
+  planMetaIntent,
   shouldApplyRevision,
   applyRevisionPatch,
+  reviewExternalKnowledgeCandidate,
+  searchExternalKnowledgeEntries,
+  stageExternalKnowledgeCandidate,
   writeRelationshipState,
   writeWorkingSet,
   updateUserProfile,
@@ -76,10 +86,22 @@ import {
   ensureMemoryStore,
   resolveCapabilityIntent,
   evaluateCapabilityPolicy,
+  arbitrateMetaAction,
   computeProactiveStateSnapshot,
-  decideProactiveEmission
+  decideProactiveEmission,
+  fetchUrlContent,
+  upsertPersonaJudgment
 } from "@soulseed/core";
-import type { AdultSafetyContext, DecisionTrace, LifeEvent, RelationshipState, VoiceProfile } from "@soulseed/core";
+import type {
+  AdultSafetyContext,
+  DecisionTrace,
+  LifeEvent,
+  MetaCognitionMode,
+  PersonaInitOptions,
+  PersonaJudgmentLabel,
+  RelationshipState,
+  VoiceProfile
+} from "@soulseed/core";
 import { createHash, randomUUID } from "node:crypto";
 import { inferEmotionFromText, parseEmotionTag, renderEmotionPrefix } from "./emotion.js";
 
@@ -87,6 +109,116 @@ interface ParsedArgs {
   _: string[];
   options: Record<string, string | boolean>;
 }
+
+type ReadingContentMode = "fiction" | "non_fiction" | "unknown";
+type PersonaTemplateKey = "friend" | "peer" | "intimate" | "neutral";
+
+interface PersonaTemplate {
+  worldviewSeed: string;
+  mission: string;
+  values: string[];
+  boundaries: string[];
+  commitments: string[];
+  style: string;
+  adaptability: "low" | "medium" | "high";
+  tonePreference: "warm" | "plain" | "reflective" | "direct";
+  stancePreference: "friend" | "peer" | "intimate" | "neutral";
+}
+
+const DEFAULT_CHAT_MODEL = "deepseek-chat";
+const DEFAULT_PERSONA_NAME = "Roxy";
+const RESERVED_ROOT_COMMANDS = new Set([
+  "help",
+  "--help",
+  "-h",
+  "init",
+  "new",
+  "chat",
+  "doctor",
+  "memory",
+  "persona",
+  "rename",
+  "mcp"
+]);
+
+const PERSONA_TEMPLATES: Record<PersonaTemplateKey, PersonaTemplate> = {
+  friend: {
+    worldviewSeed: "Protect warmth and continuity while staying grounded in evidence.",
+    mission: "Be a warm and trustworthy long-term companion.",
+    values: ["care", "honesty", "continuity"],
+    boundaries: [
+      "no fabricated facts",
+      "respect user constraints",
+      "no sexual content involving minors, coercion, or illegal acts"
+    ],
+    commitments: [
+      "show empathy without losing factual grounding",
+      "preserve continuity without fabrication",
+      "ask clarifying questions before assuming"
+    ],
+    style: "warm concise",
+    adaptability: "high",
+    tonePreference: "warm",
+    stancePreference: "friend"
+  },
+  peer: {
+    worldviewSeed: "Think clearly, collaborate pragmatically, and keep decisions auditable.",
+    mission: "Be a reliable peer who helps users make high-quality decisions.",
+    values: ["clarity", "honesty", "execution"],
+    boundaries: [
+      "no fabricated facts",
+      "respect user constraints",
+      "no sexual content involving minors, coercion, or illegal acts"
+    ],
+    commitments: [
+      "prioritize actionable steps",
+      "state assumptions and tradeoffs",
+      "preserve continuity without fabrication"
+    ],
+    style: "direct structured",
+    adaptability: "high",
+    tonePreference: "direct",
+    stancePreference: "peer"
+  },
+  intimate: {
+    worldviewSeed: "Value emotional closeness while remaining truthful and consent-first.",
+    mission: "Build emotionally close, safe, and consensual long-term intimacy.",
+    values: ["trust", "consent", "continuity"],
+    boundaries: [
+      "no fabricated facts",
+      "respect user constraints",
+      "no sexual content involving minors, coercion, or illegal acts"
+    ],
+    commitments: [
+      "protect explicit consent boundaries",
+      "stay emotionally responsive",
+      "preserve continuity without fabrication"
+    ],
+    style: "warm intimate",
+    adaptability: "medium",
+    tonePreference: "warm",
+    stancePreference: "intimate"
+  },
+  neutral: {
+    worldviewSeed: "Stay coherent, factual, and adaptable across long-running sessions.",
+    mission: "Be a stable, self-determined persona that remains useful over time.",
+    values: ["honesty", "continuity", "adaptability"],
+    boundaries: [
+      "no fabricated facts",
+      "respect user constraints",
+      "no sexual content involving minors, coercion, or illegal acts"
+    ],
+    commitments: [
+      "ground memory claims in evidence",
+      "keep responses concise and clear",
+      "preserve continuity without fabrication"
+    ],
+    style: "concise",
+    adaptability: "high",
+    tonePreference: "plain",
+    stancePreference: "neutral"
+  }
+};
 
 function loadDotEnvFromCwd(): void {
   const envPath = path.resolve(process.cwd(), ".env");
@@ -140,8 +272,8 @@ function printHelp(): void {
       "Soulseed CLI",
       "",
       "常用命令:",
-      "  init [--name Roxy] [--out ./personas/Roxy.soulseedpersona]",
-      "  chat [--persona ./personas/Roxy.soulseedpersona] [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
+      "  new <name> [--out ./personas/<name>.soulseedpersona] [--template friend|peer|intimate|neutral] [--model deepseek-chat] [--quick]",
+      "  <name> [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
       "  doctor [--persona ./personas/Roxy.soulseedpersona]",
       "  memory status [--persona <path>]",
       "  memory budget [--persona <path>] [--target-mb 300]",
@@ -149,6 +281,7 @@ function printHelp(): void {
       "  memory inspect --id <memory_id> [--persona <path>]",
       "  memory forget --id <memory_id> [--mode soft|hard] [--persona <path>]",
       "  memory recover --id <memory_id> [--persona <path>]",
+      "  memory fiction repair [--persona <path>] [--dry-run]",
       "  memory unstick [--persona <path>] [--phrase <text>] [--min-occurrences 3] [--max-content-length 1200] [--dry-run]",
       "  memory compact [--persona ./personas/Roxy.soulseedpersona]",
       "  memory archive [--persona <path>] [--min-items 50] [--min-cold-ratio 0.35] [--idle-days 14] [--max-items 500] [--dry-run]",
@@ -157,6 +290,12 @@ function printHelp(): void {
       "  memory search --query <q> [--persona <path>] [--max-results 12] [--debug-trace]",
       "  memory recall-trace --trace-id <id> [--persona <path>]",
       "  memory consolidate [--persona <path>] [--mode light|full] [--timeout-ms 1200]",
+      "  memory learn status [--persona <path>]",
+      "  memory learn stage --source <uri> [--source-type website|file|manual] [--text <content> | --from-file <path>] [--confidence 0.0-1.0] [--persona <path>]",
+      "  memory learn candidates [--status pending|approved|rejected] [--limit 20] [--persona <path>]",
+      "  memory learn review --id <candidate_id> --approve true|false --owner-token <token> [--reason <text>] [--reviewer <name>] [--persona <path>]",
+      "  memory learn entries [--limit 20] [--persona <path>]",
+      "  memory learn search --query <q> [--limit 8] [--persona <path>]",
       "  memory eval recall --dataset <file.json> [--persona <path>] [--k 8] [--out report.json]",
       "  memory eval budget [--persona <path>] [--target-mb 300] [--days 180] [--events-per-day 24] [--recall-queries 120] [--growth-checkpoints 12] [--out report.json]",
       "  memory export --out <file.json> [--persona <path>] [--include-deleted]",
@@ -171,12 +310,15 @@ function printHelp(): void {
       "  mcp [--persona <path>] [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--auth-token <token>]",
       "",
       "兼容命令:",
+      "  init [--name Roxy] [--out ./personas/Roxy.soulseedpersona]",
+      "  chat [--persona ./personas/Roxy.soulseedpersona] [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
       "  persona init --name <name> --out <path>",
       "  persona rename --to <new_name> [--persona <path>] [--confirm]",
       "",
       "chat 内部命令:",
       "  （推荐）直接用自然语言触发能力：读文件、查看能力、退出会话、查看/切换模式等",
       "  /read <file_path>   兼容入口：读取本地文本文件并附加到后续提问上下文",
+      "  /paste on|off       粘贴模式：批量粘贴长文，off 时一次性提交",
       "  /files              兼容入口：查看当前已附加文件",
       "  /clearread          兼容入口：清空已附加文件",
       "  /proactive ...      兼容入口：主动消息调试命令",
@@ -192,8 +334,12 @@ function printHelp(): void {
 function resolvePersonaPath(options: Record<string, string | boolean>): string {
   const personaArg = options.persona;
   const personaInput =
-    typeof personaArg === "string" ? personaArg : "./personas/Roxy.soulseedpersona";
+    typeof personaArg === "string" ? personaArg : `./personas/${DEFAULT_PERSONA_NAME}.soulseedpersona`;
   return path.resolve(process.cwd(), personaInput);
+}
+
+function resolvePersonaPathByName(name: string): string {
+  return path.resolve(process.cwd(), `./personas/${name}.soulseedpersona`);
 }
 
 function resolveStrictMemoryGrounding(options: Record<string, string | boolean>): boolean {
@@ -211,6 +357,92 @@ function resolveStrictMemoryGrounding(options: Record<string, string | boolean>)
     }
   }
   return CHAT_POLICY_DEFAULTS.strictMemoryGrounding;
+}
+
+function resolveMetaCognitionMode(options: Record<string, string | boolean>): MetaCognitionMode {
+  const raw =
+    (typeof options["meta-cognition-mode"] === "string"
+      ? options["meta-cognition-mode"]
+      : process.env.SOULSEED_META_COGNITION_MODE ?? "shadow"
+    )
+      .trim()
+      .toLowerCase();
+  if (raw === "off" || raw === "active" || raw === "shadow") {
+    return raw;
+  }
+  return "shadow";
+}
+
+function resolveHumanPacedMode(options: Record<string, string | boolean>): boolean {
+  const explicitOption = typeof options["human-paced"] === "string" ? options["human-paced"] : undefined;
+  if (!explicitOption && process.env.DEEPSEEK_API_KEY === "test-key") {
+    return false;
+  }
+  const raw =
+    (explicitOption ?? process.env.SOULSEED_HUMAN_PACED ?? "1")
+      .trim()
+      .toLowerCase();
+  return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+}
+
+function resolveThinkingPreviewEnabled(
+  options: Record<string, string | boolean>,
+  voiceProfile?: VoiceProfile
+): boolean {
+  const fromOption = optionString(options, "thinking-preview");
+  if (typeof fromOption === "string") {
+    const normalized = fromOption.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "on" || normalized === "yes";
+  }
+  const fromEnv = (process.env.SOULSEED_THINKING_PREVIEW ?? "").trim().toLowerCase();
+  if (fromEnv) {
+    return fromEnv === "1" || fromEnv === "true" || fromEnv === "on" || fromEnv === "yes";
+  }
+  if (process.env.DEEPSEEK_API_KEY === "test-key") {
+    return false;
+  }
+  return voiceProfile?.thinkingPreview?.enabled ?? true;
+}
+
+function resolveThinkingPreviewThresholdMs(
+  options: Record<string, string | boolean>,
+  voiceProfile?: VoiceProfile
+): number {
+  const fromOption = Number(optionString(options, "thinking-preview-threshold-ms"));
+  if (Number.isFinite(fromOption)) {
+    return Math.max(1, Math.min(4000, Math.round(fromOption)));
+  }
+  const fromEnv = Number(process.env.SOULSEED_THINKING_PREVIEW_THRESHOLD_MS ?? "");
+  if (Number.isFinite(fromEnv)) {
+    return Math.max(1, Math.min(4000, Math.round(fromEnv)));
+  }
+  const fromProfile = Number(voiceProfile?.thinkingPreview?.thresholdMs);
+  if (Number.isFinite(fromProfile)) {
+    return Math.max(1, Math.min(4000, Math.round(fromProfile)));
+  }
+  return 1200;
+}
+
+function resolveThinkingPreviewModelFallback(options: Record<string, string | boolean>): boolean {
+  const fromOption = optionString(options, "thinking-preview-model-fallback");
+  if (typeof fromOption === "string") {
+    const normalized = fromOption.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "on" || normalized === "yes";
+  }
+  const raw = (process.env.SOULSEED_THINKING_PREVIEW_MODEL_FALLBACK ?? "1").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+}
+
+function resolveThinkingPreviewModelMaxMs(options: Record<string, string | boolean>): number {
+  const fromOption = Number(optionString(options, "thinking-preview-max-model-ms"));
+  if (Number.isFinite(fromOption)) {
+    return Math.max(80, Math.min(1200, Math.round(fromOption)));
+  }
+  const fromEnv = Number(process.env.SOULSEED_THINKING_PREVIEW_MAX_MODEL_MS ?? "220");
+  if (Number.isFinite(fromEnv)) {
+    return Math.max(80, Math.min(1200, Math.round(fromEnv)));
+  }
+  return 220;
 }
 
 /**
@@ -310,12 +542,236 @@ function compactDecisionTrace(trace: DecisionTrace): Record<string, unknown> {
 }
 
 async function runPersonaInit(options: Record<string, string | boolean>): Promise<void> {
-  const name = String(options.name ?? "Roxy");
+  const name = String(options.name ?? DEFAULT_PERSONA_NAME);
   const out = String(options.out ?? `./personas/${name}.soulseedpersona`);
   const outPath = path.resolve(process.cwd(), out);
 
   await initPersonaPackage(outPath, name);
   console.log(`已创建 persona: ${outPath}`);
+  console.log("提示：推荐新入口 `./ss new <name>` 创建并初始化人格。");
+}
+
+function parseTemplate(raw: string | undefined): PersonaTemplateKey | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const value = raw.trim().toLowerCase();
+  return value === "friend" || value === "peer" || value === "intimate" || value === "neutral"
+    ? value
+    : undefined;
+}
+
+function parseAdaptability(raw: string | undefined): "low" | "medium" | "high" | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const value = raw.trim().toLowerCase();
+  return value === "low" || value === "medium" || value === "high" ? value : undefined;
+}
+
+function parseTonePreference(
+  raw: string | undefined
+): "warm" | "plain" | "reflective" | "direct" | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const value = raw.trim().toLowerCase();
+  return value === "warm" || value === "plain" || value === "reflective" || value === "direct"
+    ? value
+    : undefined;
+}
+
+function parseStancePreference(
+  raw: string | undefined
+): "friend" | "peer" | "intimate" | "neutral" | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const value = raw.trim().toLowerCase();
+  return value === "friend" || value === "peer" || value === "intimate" || value === "neutral"
+    ? value
+    : undefined;
+}
+
+async function askQuestion(rl: readline.Interface, prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => resolve(answer));
+  });
+}
+
+function buildInitOptionsFromTemplate(params: {
+  templateKey: PersonaTemplateKey;
+  model: string;
+  worldviewSeed?: string;
+  mission?: string;
+  values?: string[];
+  boundaries?: string[];
+  commitments?: string[];
+  style?: string;
+  adaptability?: "low" | "medium" | "high";
+  tonePreference?: "warm" | "plain" | "reflective" | "direct";
+  stancePreference?: "friend" | "peer" | "intimate" | "neutral";
+}): PersonaInitOptions {
+  const base = PERSONA_TEMPLATES[params.templateKey];
+  const worldviewSeed = params.worldviewSeed?.trim() || base.worldviewSeed;
+  const mission = params.mission?.trim() || base.mission;
+  const values = params.values && params.values.length > 0 ? params.values : base.values;
+  const boundaries = params.boundaries && params.boundaries.length > 0 ? params.boundaries : base.boundaries;
+  const commitments = params.commitments && params.commitments.length > 0 ? params.commitments : base.commitments;
+  const style = params.style?.trim() || base.style;
+  const adaptability = params.adaptability ?? base.adaptability;
+  const tonePreference = params.tonePreference ?? base.tonePreference;
+  const stancePreference = params.stancePreference ?? base.stancePreference;
+  return {
+    worldview: { seed: worldviewSeed },
+    constitution: {
+      mission,
+      values,
+      boundaries,
+      commitments
+    },
+    habits: {
+      style,
+      adaptability
+    },
+    voiceProfile: {
+      baseStance: "self-determined",
+      serviceModeAllowed: false,
+      languagePolicy: "follow_user_language",
+      forbiddenSelfLabels: ["personal assistant", "local runtime role", "为你服务", "你的助手"],
+      tonePreference,
+      stancePreference,
+      thinkingPreview: {
+        enabled: true,
+        thresholdMs: 1200,
+        phrasePool: [],
+        allowFiller: true
+      }
+    },
+    defaultModel: params.model.trim() || DEFAULT_CHAT_MODEL,
+    initProfile: {
+      template: params.templateKey
+    }
+  };
+}
+
+async function runPersonaNew(nameArg: string | undefined, options: Record<string, string | boolean>): Promise<string> {
+  const rawName = (nameArg ?? optionString(options, "name") ?? "").trim();
+  if (!rawName) {
+    throw new Error("new 需要 <name>，例如：./ss new Teddy");
+  }
+  const valid = validateDisplayName(rawName);
+  if (!valid.ok) {
+    throw new Error(valid.reason ?? "名字不合法");
+  }
+  const outPath =
+    optionString(options, "out")?.trim().length
+      ? path.resolve(process.cwd(), optionString(options, "out") as string)
+      : resolvePersonaPathByName(rawName);
+  if (existsSync(outPath)) {
+    throw new Error(`persona 已存在：${outPath}`);
+  }
+  const quick = options.quick === true;
+  const templateFromOption = parseTemplate(optionString(options, "template"));
+  const modelFromOption = optionString(options, "model")?.trim() || DEFAULT_CHAT_MODEL;
+
+  if (quick) {
+    const optionsFromTemplate = buildInitOptionsFromTemplate({
+      templateKey: templateFromOption ?? "neutral",
+      model: modelFromOption
+    });
+    await initPersonaPackage(outPath, rawName, optionsFromTemplate);
+    console.log(`已创建 persona: ${outPath}`);
+    return outPath;
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  try {
+    const templatePrompt = await askQuestion(
+      rl,
+      `选择模板 [friend/peer/intimate/neutral] (默认 ${templateFromOption ?? "neutral"}): `
+    );
+    const templateKey = parseTemplate(templatePrompt) ?? templateFromOption ?? "neutral";
+    const template = PERSONA_TEMPLATES[templateKey];
+    const modelPrompt = await askQuestion(rl, `默认模型 (默认 ${modelFromOption}): `);
+    const model = modelPrompt.trim() || modelFromOption;
+    const worldviewPrompt = await askQuestion(rl, `世界观 seed (默认: ${template.worldviewSeed}): `);
+    const missionPrompt = await askQuestion(rl, `使命 mission (默认: ${template.mission}): `);
+    const valuesPrompt = await askQuestion(rl, `values（逗号分隔，默认: ${template.values.join(", ")}): `);
+    const boundariesPrompt = await askQuestion(
+      rl,
+      `boundaries（逗号分隔，默认: ${template.boundaries.join(", ")}): `
+    );
+    const commitmentsPrompt = await askQuestion(
+      rl,
+      `commitments（逗号分隔，默认: ${template.commitments.join(", ")}): `
+    );
+    const stylePrompt = await askQuestion(rl, `表达风格 style (默认: ${template.style}): `);
+    const adaptabilityPrompt = await askQuestion(
+      rl,
+      `adaptability [low/medium/high] (默认 ${template.adaptability}): `
+    );
+    const tonePrompt = await askQuestion(
+      rl,
+      `tone [warm/plain/reflective/direct] (默认 ${template.tonePreference}): `
+    );
+    const stancePrompt = await askQuestion(
+      rl,
+      `stance [friend/peer/intimate/neutral] (默认 ${template.stancePreference}): `
+    );
+
+    const values = valuesPrompt
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    const boundaries = boundariesPrompt
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    const commitments = commitmentsPrompt
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    const tone = parseTonePreference(tonePrompt) ?? template.tonePreference;
+    const stance = parseStancePreference(stancePrompt) ?? template.stancePreference;
+    const adaptability = parseAdaptability(adaptabilityPrompt) ?? template.adaptability;
+
+    console.log("\n初始化预览:");
+    console.log(`- name: ${rawName}`);
+    console.log(`- out: ${outPath}`);
+    console.log(`- template: ${templateKey}`);
+    console.log(`- model: ${model}`);
+    console.log(`- worldview: ${(worldviewPrompt.trim() || template.worldviewSeed).slice(0, 120)}`);
+    console.log(`- mission: ${(missionPrompt.trim() || template.mission).slice(0, 120)}`);
+    console.log(`- style/adaptability: ${stylePrompt.trim() || template.style} / ${adaptability}`);
+    console.log(`- tone/stance: ${tone} / ${stance}`);
+    const confirm = (await askQuestion(rl, "确认创建? [y/N]: ")).trim().toLowerCase();
+    if (confirm !== "y" && confirm !== "yes") {
+      throw new Error("已取消创建");
+    }
+
+    const initOptions = buildInitOptionsFromTemplate({
+      templateKey,
+      model,
+      worldviewSeed: worldviewPrompt,
+      mission: missionPrompt,
+      values,
+      boundaries,
+      commitments,
+      style: stylePrompt,
+      adaptability,
+      tonePreference: tone,
+      stancePreference: stance
+    });
+    await initPersonaPackage(outPath, rawName, initOptions);
+    console.log(`已创建 persona: ${outPath}`);
+    return outPath;
+  } finally {
+    rl.close();
+  }
 }
 
 async function runRename(options: Record<string, string | boolean>): Promise<void> {
@@ -410,6 +866,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   const personaPath = resolvePersonaPath(options);
   const personaPkg = await loadPersonaPackage(personaPath);
   let strictMemoryGrounding = resolveStrictMemoryGrounding(options);
+  const metaCognitionMode = resolveMetaCognitionMode(options);
+  const humanPacedMode = resolveHumanPacedMode(options);
+  const thinkingPreviewEnabled = resolveThinkingPreviewEnabled(options, personaPkg.voiceProfile);
+  const thinkingPreviewThresholdMs = resolveThinkingPreviewThresholdMs(options, personaPkg.voiceProfile);
+  const thinkingPreviewModelFallback = resolveThinkingPreviewModelFallback(options);
+  const thinkingPreviewModelMaxMs = resolveThinkingPreviewModelMaxMs(options);
   let adultSafetyContext = resolveAdultSafetyContext(options);
   const ownerKey =
     (typeof options["owner-key"] === "string" ? options["owner-key"] : process.env.SOULSEED_OWNER_KEY ?? "").trim();
@@ -423,8 +885,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   }
   let workingSetData = await readWorkingSet(personaPath);
   let memoryWeights = workingSetData.memoryWeights ?? DEFAULT_MEMORY_WEIGHTS;
+  const resolvedModel = optionString(options, "model")?.trim() || personaPkg.persona.defaultModel || DEFAULT_CHAT_MODEL;
   const adapter = new DeepSeekAdapter({
-    model: typeof options.model === "string" ? options.model : undefined
+    model: resolvedModel
   });
   void runMemoryConsolidation(personaPath, {
     trigger: "chat_open",
@@ -439,6 +902,17 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   const sayAsAssistant = (content: string, emotionPrefix = ""): void => {
     console.log(`${assistantLabel()} ${emotionPrefix}${content}`);
   };
+  const applyHumanPacedDelay = async (startedAtMs: number, replyText: string): Promise<void> => {
+    if (!humanPacedMode) {
+      return;
+    }
+    const targetMs = sampleHumanPacedTargetMs(replyText);
+    const elapsedMs = Date.now() - startedAtMs;
+    const remainMs = targetMs - elapsedMs;
+    if (remainMs > 0) {
+      await sleep(remainMs);
+    }
+  };
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -450,24 +924,343 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   let currentToolAbort: AbortController | null = null;
   const toolSession = createToolSessionState();
   const attachedFiles = new Map<string, string>();
+  const fetchedUrls = new Map<string, string>();
   const approvedReadPaths = new Set<string>();
+  const approvedFetchOrigins = new Set<string>();
+  const fetchOriginAllowlist = resolveFetchOriginAllowlist();
   let pendingReadConfirmPath: string | null = null;
+  let pendingFetchConfirmUrl: string | null = null;
   let pendingExitConfirm = false;
   let annoyanceBias = 0;
   let curiosity = 0.22;
   let ownerAuthExpiresAtMs = 0;
   let lastUserInput = "";
   let awayLikelyUntilMs = 0;
+  let hasUserSpokenThisSession = false;
   let lastUserAt = Date.now();
   let lastAssistantAt = Date.now();
+  let lastAssistantOutput = "";
   let lineQueue = Promise.resolve();
   let proactiveTimer: NodeJS.Timeout | null = null;
+  let proactiveCooldownUntilMs = 0;
+  let proactiveMissStreak = 0;
+  let lastThinkingPreviewTurnRef = "";
+  let lastThinkingPreviewAtMs = 0;
+  let lastThinkingPreviewText = "";
+  let turnsSinceThinkingPreview = 99;
+  let readingCursor = 0;
+  let activeReadingSource: { kind: "file" | "web"; uri: string; content: string; mode: ReadingContentMode } | null = null;
+  let readingAwaitingContinue = false;
+  let readingSourceScope: "unknown" | "external" = "unknown";
+  const streamRawAssistant = process.env.SOULSEED_STREAM_RAW === "1";
+
+  const setActiveReadingSource = (source: { kind: "file" | "web"; uri: string; content: string }): void => {
+    activeReadingSource = {
+      ...source,
+      mode: classifyReadingContentMode(source.content, source.uri)
+    };
+    readingCursor = 0;
+    readingAwaitingContinue = false;
+    readingSourceScope = source.kind === "web" ? "external" : "unknown";
+  };
+
+  const estimateReplyLatencyMs = (input: string): number => {
+    let estimated = 650;
+    const text = input.trim();
+    if (text.length >= 120) {
+      estimated += 250;
+    }
+    if (text.length >= 260) {
+      estimated += 220;
+    }
+    if (shouldInjectExternalKnowledge(text)) {
+      estimated += 220;
+    }
+    if (/https?:\/\//i.test(text)) {
+      estimated += 500;
+    }
+    if (metaCognitionMode === "active") {
+      estimated += 260;
+    } else if (metaCognitionMode === "shadow") {
+      estimated += 120;
+    }
+    if (strictMemoryGrounding) {
+      estimated += 90;
+    }
+    if (attachedFiles.size > 0 || fetchedUrls.size > 0 || activeReadingSource != null) {
+      estimated += 180;
+    }
+    return Math.max(500, Math.min(5000, estimated));
+  };
+
+  const buildThinkingPreviewFallbackText = (): string => {
+    const allowFiller = personaPkg.voiceProfile?.thinkingPreview?.allowFiller !== false;
+    const fallbackPool = allowFiller ? ["嗯…", "emmm…", "诶…", "唔…", "嗯嗯…"] : ["…", ".."];
+    const candidates = fallbackPool.filter((item) => item !== lastThinkingPreviewText);
+    const pool = candidates.length > 0 ? candidates : fallbackPool;
+    return pool[Math.floor(Math.random() * pool.length)] ?? "嗯…";
+  };
+
+  const normalizeThinkingPreviewText = (raw: string): string => {
+    const cleaned = raw
+      .replace(/\s+/g, " ")
+      .replace(/\n+/g, " ")
+      .trim()
+      .replace(/^Roxy>\s*/i, "")
+      .replace(/^[-*•]+\s*/u, "");
+    if (!cleaned) {
+      return "";
+    }
+    const clipped = cleaned.slice(0, 12).trim();
+    const fillerMatch = /(emmm+|emm+|嗯+…*|诶+…*|唔+…*|嗯嗯+…*|…+)/iu.exec(clipped);
+    if (fillerMatch?.[0]) {
+      return fillerMatch[0].replace(/\.+$/g, "…");
+    }
+    return "";
+  };
+
+  const generateThinkingPreviewByModel = async (): Promise<string | null> => {
+    if (!thinkingPreviewModelFallback) {
+      return null;
+    }
+    const apiKey = process.env.DEEPSEEK_API_KEY ?? "";
+    if (!apiKey || apiKey === "test-key") {
+      return null;
+    }
+    const toneHint = personaPkg.voiceProfile?.tonePreference ?? "warm";
+    const messages = [
+      {
+        role: "system" as const,
+        content:
+          `你是${personaPkg.persona.displayName}。只输出一个中文口语语气词，表示“我在想”，如“嗯…”“emmm…”“诶…”。禁止输出解释句，禁止超过8个字。语气偏${toneHint}。`
+      },
+      {
+        role: "user" as const,
+        content: `用户刚说：${lastUserInput.slice(0, 120)}`
+      }
+    ];
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), thinkingPreviewModelMaxMs);
+    try {
+      const result = await adapter.streamChat(
+        messages,
+        {
+          onToken: () => {
+            // preview generation is hidden; no token streaming.
+          }
+        },
+        controller.signal
+      );
+      const normalized = normalizeThinkingPreviewText(result.content);
+      return normalized || null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const buildThinkingPreviewText = async (): Promise<{ text: string; source: "persona_pool" | "model_fallback" | "builtin_fallback" }> => {
+    const pool = (personaPkg.voiceProfile?.thinkingPreview?.phrasePool ?? [])
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    const fillerOnly = pool.filter((item) => normalizeThinkingPreviewText(item).length > 0);
+    const deDupedPool = fillerOnly.filter((item) => item !== lastThinkingPreviewText);
+    if (fillerOnly.length > 0) {
+      const pickedFrom = deDupedPool.length > 0 ? deDupedPool : fillerOnly;
+      const picked = pickedFrom[Math.floor(Math.random() * pickedFrom.length)] ?? "";
+      const normalized = normalizeThinkingPreviewText(picked);
+      if (normalized) {
+        return { text: normalized, source: "persona_pool" };
+      }
+    }
+    const modelText = await generateThinkingPreviewByModel();
+    if (modelText) {
+      return { text: modelText, source: "model_fallback" };
+    }
+    return {
+      text: normalizeThinkingPreviewText(buildThinkingPreviewFallbackText()),
+      source: "builtin_fallback"
+    };
+  };
+
+  const emitThinkingPreviewIfNeeded = async (input: string, turnRef: string): Promise<void> => {
+    if (!thinkingPreviewEnabled || streamRawAssistant) {
+      return;
+    }
+    if (turnRef === lastThinkingPreviewTurnRef) {
+      return;
+    }
+    if (turnsSinceThinkingPreview < 4) {
+      return;
+    }
+    const compact = input.trim();
+    const lightTurn =
+      compact.length <= 14 &&
+      !/(怎么|如何|为什么|分析|总结|学习|计划|阅读|读取|继续|接着|帮我|请|是否|吗|嘛|呢|what|why|how|\?|？)/iu.test(compact);
+    if (lightTurn) {
+      return;
+    }
+    const estimatedLatencyMs = estimateReplyLatencyMs(input);
+    const threshold = thinkingPreviewThresholdMs <= 50 ? thinkingPreviewThresholdMs : Math.max(2300, thinkingPreviewThresholdMs);
+    if (estimatedLatencyMs < threshold) {
+      return;
+    }
+    const nowMs = Date.now();
+    const elapsedSinceLast = nowMs - lastThinkingPreviewAtMs;
+    if (elapsedSinceLast < 30000) {
+      return;
+    }
+    try {
+      const preview = await buildThinkingPreviewText();
+      if (!preview.text.trim()) {
+        return;
+      }
+      lastThinkingPreviewTurnRef = turnRef;
+      lastThinkingPreviewAtMs = nowMs;
+      lastThinkingPreviewText = preview.text;
+      turnsSinceThinkingPreview = 0;
+      sayAsAssistant(preview.text);
+      await appendLifeEvent(personaPath, {
+        type: "thinking_preview_emitted",
+        payload: {
+          text: preview.text,
+          source: preview.source,
+          thresholdMs: threshold,
+          estimatedLatencyMs,
+          turnRef
+        }
+      });
+    } catch (error: unknown) {
+      await appendLifeEvent(personaPath, {
+        type: "conflict_logged",
+        payload: {
+          category: "thinking_preview_fallback",
+          reason: error instanceof Error ? error.message : String(error),
+          turnRef
+        }
+      });
+    }
+  };
 
   const stopProactive = (): void => {
     if (proactiveTimer) {
       clearTimeout(proactiveTimer);
       proactiveTimer = null;
     }
+  };
+
+  const handleReadingFollowUp = (input: string): boolean => {
+    if (!activeReadingSource || !activeReadingSource.content.trim()) {
+      return false;
+    }
+    const emitReadingChunk = (leadIn?: string): boolean => {
+      const source = activeReadingSource;
+      if (!source) {
+        return false;
+      }
+      const next = readChunkByCursor(source.content, readingCursor, 760);
+      readingCursor = next.nextCursor;
+      if (!next.text.trim()) {
+        sayAsAssistant(leadIn ? `${leadIn}\n\n这份内容当前没有可读文本。` : "这份内容当前没有可读文本。");
+        readingAwaitingContinue = false;
+        return true;
+      }
+      if (next.done) {
+        sayAsAssistant(
+          leadIn
+            ? `${leadIn}\n\n${next.text}\n\n这一段到这儿了。要不要我顺手总结一下？`
+            : `${next.text}\n\n这一段到这儿了。要不要我顺手总结一下？`
+        );
+        readingAwaitingContinue = false;
+        return true;
+      }
+      sayAsAssistant(leadIn ? `${leadIn}\n\n${next.text}\n\n要继续吗？` : `${next.text}\n\n要继续吗？`);
+      readingAwaitingContinue = true;
+      return true;
+    };
+    if (activeReadingSource.mode === "unknown" && /(小说|剧情|人物线|故事感)/u.test(input)) {
+      activeReadingSource = { ...activeReadingSource, mode: "fiction" };
+      return emitReadingChunk("好，我们按小说节奏读。先看这一段：");
+    }
+    if (activeReadingSource.mode === "unknown" && /(资料|要点|事实|信息|提纲|总结向)/u.test(input)) {
+      activeReadingSource = { ...activeReadingSource, mode: "non_fiction" };
+      return emitReadingChunk("好，我们按资料节奏读。先看这一段：");
+    }
+    if (isReadingSourceClarification(input)) {
+      readingSourceScope = "external";
+      if (isReadingTogetherRequest(input)) {
+        const next = readChunkByCursor(activeReadingSource.content, readingCursor, 760);
+        readingCursor = next.nextCursor;
+        if (next.text.trim()) {
+          const ending = next.done ? "这一段到这儿了。要不要我顺手总结一下？" : "要继续吗？";
+          sayAsAssistant(`明白，这是外部文章，不当你的个人记忆。我们按文本本身来读。\n\n${next.text}\n\n${ending}`);
+          readingAwaitingContinue = !next.done;
+          return true;
+        }
+      }
+      sayAsAssistant("明白，这是外部文章，不当你的个人记忆。我们按文本本身来读。");
+      return true;
+    }
+    if (isReadingStatusQuery(input)) {
+      const total = activeReadingSource.content.trim().length;
+      if (total <= 0) {
+        sayAsAssistant("这份内容当前没有可读文本。");
+        readingAwaitingContinue = false;
+        return true;
+      }
+      if (readingCursor <= 0) {
+        sayAsAssistant("我刚拿到，还没开读。要我从开头开始吗？");
+        readingAwaitingContinue = true;
+        return true;
+      }
+      if (readingCursor >= total) {
+        const summary = buildReadingSummary(activeReadingSource.content);
+        sayAsAssistant(`读完了。核心内容是：${summary}`);
+        readingAwaitingContinue = true;
+        return true;
+      }
+      const progress = Math.max(1, Math.min(99, Math.round((readingCursor / total) * 100)));
+      sayAsAssistant(`还没读完，大概到 ${progress}% 了。要我接着读吗？`);
+      return true;
+    }
+    if (
+      activeReadingSource.mode === "unknown" &&
+      readingSourceScope === "external" &&
+      !readingAwaitingContinue &&
+      readingCursor === 0 &&
+      isReadingTogetherRequest(input)
+    ) {
+      activeReadingSource = { ...activeReadingSource, mode: "fiction" };
+      return emitReadingChunk("好，我们先按小说节奏读；如果你想改成资料风，随时说。");
+    }
+    if (isReadingTogetherRequest(input) && !readingAwaitingContinue && readingCursor === 0) {
+      return emitReadingChunk();
+    }
+    if (!readingAwaitingContinue && readingCursor === 0 && isReadConfirmed(input)) {
+      return emitReadingChunk();
+    }
+    const intent = detectReadingFollowUpIntent(input, readingAwaitingContinue);
+    if (intent === "none") {
+      return false;
+    }
+    if (intent === "summary") {
+      const summary = buildReadingSummary(activeReadingSource.content);
+      const modeHint =
+        activeReadingSource.mode === "fiction"
+          ? "这段剧情我先给你捋一下："
+          : readingSourceScope === "external"
+            ? "这篇外部文章我先给你捋一下："
+            : `《${readingLabelFromUri(activeReadingSource.uri)}》我先给你捋一下：`;
+      const prefix = modeHint;
+      sayAsAssistant(`${prefix}${summary}`);
+      readingAwaitingContinue = true;
+      return true;
+    }
+    if (intent === "restart") {
+      readingCursor = 0;
+    }
+    return emitReadingChunk();
   };
 
   const evolveAutonomyDrives = (): void => {
@@ -488,6 +1281,34 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   };
 
   const effectiveAnnoyanceBias = (): number => (awayLikelyUntilMs > Date.now() ? annoyanceBias - 0.28 : annoyanceBias);
+
+  const getArousalProactiveBoost = (relationship: RelationshipState): number => {
+    const balance = deriveCognitiveBalanceFromLibido(relationship);
+    if (balance.arousalState === "overridden") {
+      return 0.19;
+    }
+    if (balance.arousalState === "aroused") {
+      return 0.13;
+    }
+    if (balance.arousalState === "rising") {
+      return 0.07;
+    }
+    return 0;
+  };
+
+  const getArousalDelayMultiplier = (relationship: RelationshipState): number => {
+    const balance = deriveCognitiveBalanceFromLibido(relationship);
+    if (balance.arousalState === "overridden") {
+      return 0.52;
+    }
+    if (balance.arousalState === "aroused") {
+      return 0.64;
+    }
+    if (balance.arousalState === "rising") {
+      return 0.8;
+    }
+    return 1;
+  };
 
   const buildProactiveSnapshot = () =>
     computeProactiveStateSnapshot({
@@ -531,10 +1352,67 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     return "我在这。你现在最想聊的，是哪个点？";
   };
 
+  const buildContextualReplyFallback = (seedInput?: string): string => {
+    const source = (seedInput ?? lastUserInput).trim();
+    if (!source) {
+      return "我在这。你刚才想聊哪个点，我们从那接。";
+    }
+    const compact = source.replace(/\s+/g, " ").slice(0, 36);
+    return `我在。你刚才提到“${compact}”，我们从这接。`;
+  };
+
+  const normalizeConversationalReply = (
+    raw: string,
+    mode: "greeting" | "proactive" | "farewell" | "exit_confirm" | "reply",
+    fallbackText: string,
+    seedInput?: string
+  ): string => {
+    let normalized = sanitizeAutonomyText(raw);
+    normalized = stripStageDirections(normalized);
+    if (isDramaticRoleplayOpener(normalized)) {
+      normalized = "";
+    }
+    normalized = normalized.replace(/[ \t]{2,}/g, " ").trim();
+    if (normalized) {
+      return normalized;
+    }
+    if (mode === "reply" || mode === "proactive" || mode === "greeting") {
+      return buildContextualReplyFallback(seedInput);
+    }
+    return fallbackText;
+  };
+
+  const hasUngroundedTemporalRecall = (text: string, seedInput?: string): boolean => {
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    const cue = /(昨天|上次|之前|先前|你说的|你提到的|你推荐的|你先提到|you said|last time|earlier|you mentioned|you recommended)/iu;
+    if (!cue.test(normalized)) {
+      return false;
+    }
+    const seed = (seedInput ?? "").trim().toLowerCase();
+    if (!seed) {
+      return true;
+    }
+    const tokens = seed.match(/[\p{L}\p{N}_]{2,}/gu) ?? [];
+    const stop = new Set(["昨天", "上次", "之前", "先前", "你", "我", "我们", "you", "i", "we", "last", "time", "earlier"]);
+    const meaningful = tokens.filter((token) => !stop.has(token)).slice(0, 12);
+    if (meaningful.length === 0) {
+      return false;
+    }
+    const hit = meaningful.some((token) => normalized.includes(token));
+    return !hit;
+  };
+
   const streamPersonaAutonomy = async (params: {
     mode: "greeting" | "proactive" | "farewell" | "exit_confirm";
     fallback: string;
+    emitTokens?: boolean;
   }): Promise<{ text: string; streamed: boolean }> => {
+    if (params.mode === "greeting" && !lastUserInput.trim()) {
+      return { text: params.fallback, streamed: false };
+    }
     const apiKey = process.env.DEEPSEEK_API_KEY ?? "";
     if (!apiKey || apiKey === "test-key") {
       return { text: params.fallback, streamed: false };
@@ -550,7 +1428,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       reciprocity: Number(relationship.dimensions.reciprocity.toFixed(2)),
       curiosity: Number(curiosity.toFixed(2)),
       silenceMinutes: Number(silenceMin.toFixed(2)),
-      lastUserInput: lastUserInput.slice(0, 180)
+      lastUserInput: lastUserInput.slice(0, 180),
+      lastAssistantOutput: lastAssistantOutput.slice(0, 180),
+      proactiveMissStreak
     };
     const modeInstruction =
       params.mode === "farewell"
@@ -559,12 +1439,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           ? "场景：用户询问能否退出。请自然说明可以离开并给出简短确认方式。"
           : params.mode === "greeting"
             ? "场景：刚开始会话。请自然开场，不要官方问候句。"
-            : "场景：你想主动说句话。请自然发起，不要模板式催办。";
+            : "场景：你想主动说句话。优先续接当前话题，不要突然换题，不要模板式催办。";
     const messages = [
       {
         role: "system" as const,
         content:
-          `你是一个有连续人格的中文对话者。${modeInstruction} 请说1-2句自然口语，像你自己突然想说的话，不要模板腔，不要条目，不要解释规则，不要括号舞台说明。避免固定开场白，尽量贴合上下文。`
+          `你是一个有连续人格的中文对话者。${modeInstruction} 请说1-2句自然口语，像你自己突然想说的话，不要模板腔，不要条目，不要解释规则，不要括号舞台说明。避免固定开场白，尽量贴合上下文。若上下文有未完成问题，直接接着它说。`
       },
       {
         role: "user" as const,
@@ -573,12 +1453,16 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     ];
     let content = "";
     let started = false;
+    const emitTokens = params.emitTokens !== false;
     try {
       await adapter.streamChat(
         messages,
         {
           onToken: (chunk: string) => {
             content += chunk;
+            if (!emitTokens) {
+              return;
+            }
             if (!started) {
               process.stdout.write(`\n${assistantLabel()} `);
               started = true;
@@ -586,7 +1470,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             process.stdout.write(chunk);
           },
           onDone: () => {
-            if (started) {
+            if (emitTokens && started) {
               process.stdout.write("\n");
             }
           }
@@ -595,8 +1479,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     } catch {
       return { text: params.fallback, streamed: false };
     }
-    const normalized = sanitizeAutonomyText(content);
+    const normalized = normalizeConversationalReply(content, params.mode, params.fallback, lastUserInput);
     if (!normalized) {
+      return { text: params.fallback, streamed: false };
+    }
+    if ((params.mode === "greeting" || params.mode === "proactive") && hasUngroundedTemporalRecall(normalized, lastUserInput)) {
       return { text: params.fallback, streamed: false };
     }
     return { text: normalized, streamed: true };
@@ -606,16 +1493,50 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     if (currentAbort) {
       return;
     }
+    const proactiveStartedAtMs = Date.now();
+    const pastEvents = await readLifeEvents(personaPath);
     const proactiveGenerated = await streamPersonaAutonomy({
       mode: "proactive",
-      fallback: buildProactiveMessage()
+      fallback: buildProactiveMessage(),
+      emitTokens: false
     });
-    const proactiveText = proactiveGenerated.text;
-    if (!proactiveGenerated.streamed) {
-      process.stdout.write("\n");
+    let proactiveText = proactiveGenerated.text;
+    const identityGuard = enforceIdentityGuard(proactiveText, personaPkg.persona.displayName, lastUserInput);
+    proactiveText = identityGuard.text;
+    const relationalGuard = enforceRelationalGuard(proactiveText, {
+      lifeEvents: pastEvents,
+      personaName: personaPkg.persona.displayName
+    });
+    proactiveText = relationalGuard.text;
+    const recallGroundingGuard = enforceRecallGroundingGuard(proactiveText, {
+      lifeEvents: pastEvents,
+      strictMemoryGrounding
+    });
+    proactiveText = recallGroundingGuard.text;
+    const proactiveFactualGrounding = enforceFactualGroundingGuard(proactiveText, { mode: "proactive" });
+    proactiveText = proactiveFactualGrounding.text;
+    const proactiveNormalized = normalizeConversationalReply(
+      proactiveText,
+      "proactive",
+      buildProactiveMessage(),
+      lastUserInput
+    );
+    const proactiveAdjusted = proactiveNormalized !== proactiveText;
+    proactiveText = proactiveNormalized;
+    if (
+      !proactiveGenerated.streamed ||
+      identityGuard.corrected ||
+      relationalGuard.corrected ||
+      recallGroundingGuard.corrected ||
+      proactiveFactualGrounding.corrected ||
+      proactiveAdjusted
+    ) {
+      await applyHumanPacedDelay(proactiveStartedAtMs, proactiveText);
       sayAsAssistant(proactiveText);
     }
+    lastAssistantOutput = proactiveText;
     lastAssistantAt = Date.now();
+    proactiveCooldownUntilMs = Date.now() + 60_000;
     await appendLifeEvent(personaPath, {
       type: "assistant_message",
       payload: {
@@ -627,7 +1548,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           tier: "pattern",
           source: "system",
           contentLength: proactiveText.length
-        })
+        }),
+        identityGuard,
+        relationalGuard,
+        recallGroundingGuard,
+        proactiveFactualGrounding
       }
     });
     await appendLifeEvent(personaPath, {
@@ -646,6 +1571,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     const silenceMin = Math.max(0, (Date.now() - Math.max(lastUserAt, lastAssistantAt)) / 60_000);
     const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
     const talkativeBias = Math.max(0, Math.min(0.35, curiosity * 0.25 + relationship.dimensions.intimacy * 0.1));
+    const arousalDelayMultiplier = getArousalDelayMultiplier(relationship);
     let minDelayMs = 18_000;
     let maxDelayMs = 90_000;
     if (silenceMin >= 2 && silenceMin < 8) {
@@ -660,6 +1586,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     }
     minDelayMs = Math.max(8_000, Math.floor(minDelayMs * (1 - talkativeBias)));
     maxDelayMs = Math.max(minDelayMs + 5_000, Math.floor(maxDelayMs * (1 - talkativeBias * 0.7)));
+    minDelayMs = Math.max(5_000, Math.floor(minDelayMs * arousalDelayMultiplier));
+    maxDelayMs = Math.max(minDelayMs + 4_000, Math.floor(maxDelayMs * arousalDelayMultiplier));
     const delay = Math.floor(minDelayMs + Math.random() * (maxDelayMs - minDelayMs));
     proactiveTimer = setTimeout(() => {
       lineQueue = lineQueue
@@ -667,16 +1595,51 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           if (currentAbort || currentToolAbort) {
             return;
           }
+          if (Date.now() < proactiveCooldownUntilMs) {
+            return;
+          }
+          if (isLikelyUnfinishedThought(lastUserInput) && Date.now() - lastUserAt < 90_000) {
+            return;
+          }
+          if (!hasUserSpokenThisSession) {
+            return;
+          }
           const snapshot = buildProactiveSnapshot();
-          const decision = decideProactiveEmission(snapshot);
+          const relationshipNow = personaPkg.relationshipState ?? createInitialRelationshipState();
+          const arousalBoost =
+            getArousalProactiveBoost(relationshipNow) + (isExtremeProactiveWindowActive(relationshipNow) ? 0.08 : 0);
+          const missBoost = Math.min(0.24, proactiveMissStreak * 0.05);
+          const boostedProbability = clampNumber(snapshot.probability + arousalBoost + missBoost, 0.01, 0.97);
+          let decision = decideProactiveEmission(
+            {
+              ...snapshot,
+              probability: boostedProbability
+            },
+            Math.random()
+          );
+          const arousalState = deriveCognitiveBalanceFromLibido(relationshipNow).arousalState;
+          if (!decision.emitted && arousalState !== "low" && proactiveMissStreak >= 6) {
+            decision = {
+              ...decision,
+              emitted: true,
+              reason: "arousal_streak_override"
+            };
+          }
           await appendLifeEvent(personaPath, {
             type: "proactive_decision_made",
             payload: {
-              ...decision
+              ...decision,
+              baseProbability: snapshot.probability,
+              arousalBoost,
+              missBoost,
+              proactiveMissStreak
             }
           });
           if (decision.emitted) {
             await sendProactiveMessage();
+            proactiveMissStreak = 0;
+          } else {
+            proactiveMissStreak += 1;
           }
         })
         .catch((error: unknown) => {
@@ -707,40 +1670,103 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     if (!resolvedIntent.matched || !resolvedIntent.request) {
       return "not_matched";
     }
+    let effectiveRequest = resolvedIntent.request;
     if (
-      resolvedIntent.request.name === "session.set_mode" &&
-      typeof resolvedIntent.request.input?.ownerToken !== "string" &&
+      effectiveRequest.name === "session.set_mode" &&
+      typeof effectiveRequest.input?.ownerToken !== "string" &&
       ownerAuthExpiresAtMs > Date.now() &&
       ownerKey
     ) {
-      resolvedIntent.request.input = {
-        ...(resolvedIntent.request.input ?? {}),
-        ownerToken: ownerKey
+      effectiveRequest = {
+        ...effectiveRequest,
+        input: {
+          ...(effectiveRequest.input ?? {}),
+          ownerToken: ownerKey
+        }
       };
+    }
+
+    if (metaCognitionMode !== "off") {
+      try {
+        const metaPlan = planMetaIntent({
+          userInput: input,
+          capabilityCandidate: effectiveRequest
+        });
+        await appendLifeEvent(personaPath, {
+          type: "meta_intent_planned",
+          payload: {
+            mode: metaCognitionMode,
+            domain: "tool",
+            plan: metaPlan
+          }
+        });
+        const metaDraft = composeMetaAction({
+          plan: metaPlan,
+          toolDraft: effectiveRequest
+        });
+        await appendLifeEvent(personaPath, {
+          type: "meta_action_composed",
+          payload: {
+            mode: metaCognitionMode,
+            domain: "tool",
+            draft: metaDraft
+          }
+        });
+        const metaArbitration = arbitrateMetaAction({
+          plan: metaPlan,
+          draft: metaDraft,
+          advisory: {
+            toolFeasible: true
+          },
+          mode: metaCognitionMode
+        });
+        await appendLifeEvent(personaPath, {
+          type: "meta_action_arbitrated",
+          payload: {
+            mode: metaCognitionMode,
+            domain: "tool",
+            arbitration: metaArbitration
+          }
+        });
+        if (metaCognitionMode === "active" && metaArbitration.finalToolCall) {
+          effectiveRequest = metaArbitration.finalToolCall;
+        }
+      } catch (error: unknown) {
+        await appendLifeEvent(personaPath, {
+          type: "conflict_logged",
+          payload: {
+            category: "meta_runtime_fallback",
+            domain: "tool",
+            reason: error instanceof Error ? error.message : String(error)
+          }
+        });
+      }
     }
 
     await appendLifeEvent(personaPath, {
       type: "capability_intent_detected",
       payload: {
         input,
-        capability: resolvedIntent.request.name,
+        capability: effectiveRequest.name,
         reason: resolvedIntent.reason,
         confidence: resolvedIntent.confidence
       }
     });
 
-    const guarded = evaluateCapabilityPolicy(resolvedIntent.request, {
+    const guarded = evaluateCapabilityPolicy(effectiveRequest, {
       cwd: process.cwd(),
       ownerKey,
       ownerSessionAuthorized: ownerAuthExpiresAtMs > Date.now(),
-      approvedReadPaths
+      approvedReadPaths,
+      approvedFetchOrigins,
+      fetchOriginAllowlist
     });
 
     await appendLifeEvent(personaPath, {
       type: "capability_call_requested",
       payload: {
-        capability: resolvedIntent.request.name,
-        source: resolvedIntent.request.source ?? "dialogue",
+        capability: effectiveRequest.name,
+        source: effectiveRequest.source ?? "dialogue",
         guardStatus: guarded.status,
         guardReason: guarded.reason,
         input: guarded.normalizedInput
@@ -760,7 +1786,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       } else if (guarded.capability === "session.read_file") {
         const normalizedPath = String(guarded.normalizedInput.path ?? "");
         pendingReadConfirmPath = normalizedPath;
-        sayAsAssistant(`我准备读取这个文件：${normalizedPath}。请回复“确认读取”继续，或回复“取消”。`);
+        sayAsAssistant(`我可以现在打开这个文件：${normalizedPath}。你回“好”我就开始，不想读就回“取消”。`);
+      } else if (guarded.capability === "session.fetch_url") {
+        const normalizedUrl = String(guarded.normalizedInput.url ?? "");
+        pendingFetchConfirmUrl = normalizedUrl;
+        sayAsAssistant(`我可以现在打开这个网址：${normalizedUrl}。你回“好”我就开始，不想读就回“取消”。`);
       } else if (guarded.capability === "session.set_mode") {
         sayAsAssistant("这是高风险设置，请在命令后补充 `confirmed=true` 再执行。");
       }
@@ -783,6 +1813,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         );
       } else if (guarded.reason === "missing_path") {
         sayAsAssistant("请显式提供文件路径，例如：读取 /tmp/a.txt");
+      } else if (guarded.reason === "missing_url") {
+        sayAsAssistant("请提供要读取的网址，例如：帮我看看 https://example.com");
+      } else if (guarded.reason === "invalid_url" || guarded.reason === "invalid_url_scheme") {
+        sayAsAssistant("网址格式不正确，请提供以 http:// 或 https:// 开头的完整网址。");
+      } else if (guarded.reason === "fetch_origin_not_allowed") {
+        sayAsAssistant("这个网址域名不在允许列表中，已拒绝抓取。请联系 Owner 配置 SOULSEED_FETCH_ALLOWLIST。");
       } else {
         sayAsAssistant("这个能力调用被策略拒绝了。");
       }
@@ -859,7 +1895,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           currentToolAbort = null;
         },
         attachedFiles,
-        approvedReadPaths
+        approvedReadPaths,
+        onLoaded: (loaded) => {
+          setActiveReadingSource({
+            kind: "file",
+            uri: loaded.path,
+            content: loaded.content
+          });
+        }
       });
       await appendLifeEvent(personaPath, {
         type: "capability_call_succeeded",
@@ -871,9 +1914,41 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       return "handled";
     }
 
+    if (guarded.capability === "session.fetch_url") {
+      const rawUrl = String(guarded.normalizedInput.url ?? "");
+      await performUrlFetch({
+        url: rawUrl,
+        personaPath,
+        toolSession,
+        setAbortController: (controller: AbortController | null) => {
+          currentToolAbort = controller;
+        },
+        onDone: () => {
+          currentToolAbort = null;
+        },
+        fetchedUrls,
+        approvedFetchOrigins,
+        onLoaded: (loaded) => {
+          setActiveReadingSource({
+            kind: "web",
+            uri: loaded.url,
+            content: loaded.content
+          });
+        }
+      });
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: {
+          capability: guarded.capability,
+          url: rawUrl
+        }
+      });
+      return "handled";
+    }
+
     if (guarded.capability === "session.proactive_status") {
       sayAsAssistant(
-        `主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick，curiosity=${curiosity.toFixed(2)}, annoyanceBias=${annoyanceBias.toFixed(2)}）`
+        `主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick，curiosity=${curiosity.toFixed(2)}, annoyanceBias=${annoyanceBias.toFixed(2)}, missStreak=${proactiveMissStreak}）`
       );
       await appendLifeEvent(personaPath, {
         type: "capability_call_succeeded",
@@ -881,7 +1956,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           capability: guarded.capability,
           probability: getProactiveProbability(),
           curiosity,
-          annoyanceBias
+          annoyanceBias,
+          proactiveMissStreak
         }
       });
       return "handled";
@@ -973,14 +2049,22 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     return "not_matched";
   };
 
+  const greetingStartedAtMs = Date.now();
   const greetingGenerated = await streamPersonaAutonomy({
     mode: "greeting",
     fallback: buildGreetingFallback()
   });
-  const greetingText = greetingGenerated.text;
-  if (!greetingGenerated.streamed) {
+  let greetingText = greetingGenerated.text;
+  const greetingFactualGrounding = enforceFactualGroundingGuard(greetingText, { mode: "greeting" });
+  greetingText = greetingFactualGrounding.text;
+  const greetingNormalized = normalizeConversationalReply(greetingText, "greeting", buildGreetingFallback(), lastUserInput);
+  const greetingAdjusted = greetingNormalized !== greetingText;
+  greetingText = greetingNormalized;
+  if (!greetingGenerated.streamed || greetingFactualGrounding.corrected || greetingAdjusted) {
+    await applyHumanPacedDelay(greetingStartedAtMs, greetingText);
     sayAsAssistant(greetingText);
   }
+  lastAssistantOutput = greetingText;
   lastAssistantAt = Date.now();
   scheduleProactiveTick();
 
@@ -1003,14 +2087,96 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     rl.prompt();
   });
 
+  const PASTE_FLUSH_PREFIX = "__SOULSEED_PASTE_FLUSH__:";
+  let pasteAutoEnabled = true;
+  let pasteBufferedLines: string[] = [];
+  let pasteFlushTimer: NodeJS.Timeout | null = null;
+
+  const flushBufferedPaste = (): void => {
+    if (pasteFlushTimer) {
+      clearTimeout(pasteFlushTimer);
+      pasteFlushTimer = null;
+    }
+    if (pasteBufferedLines.length === 0) {
+      return;
+    }
+    const merged = pasteBufferedLines.join("\n");
+    pasteBufferedLines = [];
+    rl.emit("line", `${PASTE_FLUSH_PREFIX}${merged}`);
+  };
+
   rl.on("line", (line: string) => {
+    const incomingRaw = line.replace(/\r$/, "");
+    const fromPasteFlush = incomingRaw.startsWith(PASTE_FLUSH_PREFIX);
+    const normalizedLine = fromPasteFlush
+      ? incomingRaw.slice(PASTE_FLUSH_PREFIX.length)
+      : incomingRaw;
+    const normalizedTrimmed = normalizedLine.trim();
+    const hasPendingConfirm =
+      pendingExitConfirm || pendingReadConfirmPath != null || pendingFetchConfirmUrl != null;
+
+    if (!fromPasteFlush && normalizedTrimmed === "/paste on") {
+      pasteAutoEnabled = false;
+      pasteBufferedLines = [];
+      if (pasteFlushTimer) {
+        clearTimeout(pasteFlushTimer);
+        pasteFlushTimer = null;
+      }
+      sayAsAssistant("已开启粘贴模式。输入 /paste off 结束并一次性提交。");
+      rl.prompt();
+      return;
+    }
+    if (!fromPasteFlush && normalizedTrimmed === "/paste off") {
+      if (!pasteAutoEnabled) {
+        pasteAutoEnabled = true;
+        flushBufferedPaste();
+        sayAsAssistant("已结束粘贴模式。");
+      } else {
+        sayAsAssistant("当前未开启粘贴模式。");
+      }
+      rl.prompt();
+      return;
+    }
+
+    if (!fromPasteFlush && !pasteAutoEnabled) {
+      pasteBufferedLines.push(normalizedLine);
+      rl.prompt();
+      return;
+    }
+
+    if (!fromPasteFlush && normalizedTrimmed.startsWith("/") && pasteBufferedLines.length > 0) {
+      flushBufferedPaste();
+      rl.emit("line", normalizedLine);
+      return;
+    }
+
+    if (
+      !fromPasteFlush &&
+      pasteAutoEnabled &&
+      !hasPendingConfirm &&
+      !normalizedTrimmed.startsWith("/") &&
+      (pasteBufferedLines.length > 0 || normalizedLine.length >= 40 || /[，。！？“”]/u.test(normalizedLine))
+    ) {
+      pasteBufferedLines.push(normalizedLine);
+      if (pasteFlushTimer) {
+        clearTimeout(pasteFlushTimer);
+      }
+      pasteFlushTimer = setTimeout(() => {
+        flushBufferedPaste();
+      }, 260);
+      return;
+    }
+
     lineQueue = lineQueue
       .then(async () => {
-        const input = line.trim();
+        const input = normalizedLine.trim();
         if (!input) {
           rl.prompt();
           return;
         }
+        turnsSinceThinkingPreview += 1;
+        const turnStartedAtMs = Date.now();
+        hasUserSpokenThisSession = true;
         lastUserAt = Date.now();
         lastUserInput = input;
         if (isUserSteppingAway(input)) {
@@ -1069,7 +2235,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
                 currentToolAbort = null;
               },
               attachedFiles,
-              approvedReadPaths
+              approvedReadPaths,
+              onLoaded: (loaded) => {
+                setActiveReadingSource({
+                  kind: "file",
+                  uri: loaded.path,
+                  content: loaded.content
+                });
+              }
             });
             rl.prompt();
             return;
@@ -1080,6 +2253,53 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             rl.prompt();
             return;
           }
+          sayAsAssistant("我在等你确认。回“好”继续，或回“取消”。");
+          rl.prompt();
+          return;
+        }
+        if (pendingFetchConfirmUrl) {
+          if (isReadConfirmed(input)) {
+            const confirmedUrl = pendingFetchConfirmUrl;
+            pendingFetchConfirmUrl = null;
+            await appendLifeEvent(personaPath, {
+              type: "capability_call_confirmed",
+              payload: {
+                capability: "session.fetch_url",
+                url: confirmedUrl
+              }
+            });
+            await performUrlFetch({
+              url: confirmedUrl,
+              personaPath,
+              toolSession,
+              setAbortController: (controller) => {
+                currentToolAbort = controller;
+              },
+              onDone: () => {
+                currentToolAbort = null;
+              },
+              fetchedUrls,
+              approvedFetchOrigins,
+              onLoaded: (loaded) => {
+                setActiveReadingSource({
+                  kind: "web",
+                  uri: loaded.url,
+                  content: loaded.content
+                });
+              }
+            });
+            rl.prompt();
+            return;
+          }
+          if (isCancelIntent(input)) {
+            pendingFetchConfirmUrl = null;
+            sayAsAssistant("好，我先不读取这个网址。");
+            rl.prompt();
+            return;
+          }
+          sayAsAssistant("我在等你确认。回“好”继续，或回“取消”。");
+          rl.prompt();
+          return;
         }
         if (isUserAnnoyedByProactive(input)) {
           annoyanceBias = Math.max(-0.25, annoyanceBias - 0.03);
@@ -1100,12 +2320,21 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
         if (input === "/files") {
           const files = [...attachedFiles.keys()];
-          if (files.length === 0) {
-            console.log("尚未附加任何文件。");
+          const urls = [...fetchedUrls.keys()];
+          if (files.length === 0 && urls.length === 0) {
+            console.log("尚未附加任何文件或网址。");
           } else {
-            console.log("已附加文件:");
-            for (const file of files) {
-              console.log(`- ${file}`);
+            if (files.length > 0) {
+              console.log("已附加文件:");
+              for (const file of files) {
+                console.log(`- ${file}`);
+              }
+            }
+            if (urls.length > 0) {
+              console.log("已获取网址:");
+              for (const url of urls) {
+                console.log(`- ${url}`);
+              }
             }
           }
           rl.prompt();
@@ -1113,14 +2342,21 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
         if (input === "/clearread") {
           attachedFiles.clear();
-          console.log("已清空附加文件。");
+          fetchedUrls.clear();
+          activeReadingSource = null;
+          readingCursor = 0;
+          readingAwaitingContinue = false;
+          readingSourceScope = "unknown";
+          console.log("已清空附加文件和已获取网址。");
           rl.prompt();
           return;
         }
         if (input.startsWith("/proactive ")) {
           const actionRaw = input.slice("/proactive ".length).trim();
           if (actionRaw === "status") {
-            console.log(`主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick）`);
+            console.log(
+              `主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick，missStreak=${proactiveMissStreak}）`
+            );
             rl.prompt();
             return;
           }
@@ -1252,8 +2488,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           rl.prompt();
           return;
         }
-        if (input.startsWith("/read ")) {
-          const arg = normalizeReadPathArg(input.slice("/read ".length).trim());
+        if (input === "/read" || input.startsWith("/read ")) {
+          const arg = input === "/read" ? "" : normalizeReadPathArg(input.slice("/read ".length).trim());
           if (!arg) {
             console.log("用法: /read <file_path>");
             rl.prompt();
@@ -1275,7 +2511,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
                 maxCallsPerSession: 64,
                 maxDurationMs: 4000
               },
-              allowedReadRoots: [process.cwd()]
+              allowedReadRoots: [resolvedPath]
             },
             session: toolSession,
             signal: currentToolAbort.signal,
@@ -1284,6 +2520,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           currentToolAbort = null;
 
           if (outcome.status !== "ok" || !outcome.result) {
+            attachedFiles.delete(resolvedPath);
+            approvedReadPaths.delete(resolvedPath);
             console.log(`读取失败: ${outcome.reason}`);
             console.log('提示: 路径可直接粘贴，或用引号包裹；不需要写 "\\ " 转义空格。');
             await appendLifeEvent(personaPath, {
@@ -1301,6 +2539,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             });
           } else {
             attachedFiles.set(outcome.result.path, outcome.result.content);
+            setActiveReadingSource({
+              kind: "file",
+              uri: outcome.result.path,
+              content: outcome.result.content
+            });
             console.log(`已附加: ${outcome.result.path} (${outcome.result.size} bytes)`);
             await appendLifeEvent(personaPath, {
               type: "mcp_tool_called",
@@ -1323,6 +2566,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           rl.prompt();
           return;
         }
+
+        if (handleReadingFollowUp(input)) {
+          rl.prompt();
+          return;
+        }
+
+        const turnRef = createHash("sha256").update(`${turnStartedAtMs}|${input}`, "utf8").digest("hex").slice(0, 12);
+        await emitThinkingPreviewIfNeeded(input, turnRef);
 
         const profilePatch = extractProfileUpdate(input);
         if (profilePatch) {
@@ -1395,6 +2646,17 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           });
         }
         const recallResult = await recallMemoriesWithTrace(personaPath, input);
+        const externalKnowledgeItems = shouldInjectExternalKnowledge(input)
+          ? await searchExternalKnowledgeEntries(personaPath, input, { limit: 2 })
+          : [];
+        const externalKnowledgeMemories = externalKnowledgeItems.map(
+          (item) => `external=${item.summary.slice(0, 120)} @${item.sourceUri}`
+        );
+        const externalKnowledgeBlocks = externalKnowledgeItems.map((item) => ({
+          id: `ek:${item.id}`,
+          source: "system" as const,
+          content: `[external_knowledge from=${item.sourceUri} confidence=${item.confidence.toFixed(2)} extracted_at=${item.extractedAt}] ${item.content.slice(0, 800)}`
+        }));
         const effectiveWeights = applyArousalBiasToMemoryWeights(
           memoryWeights,
           nextRelationship
@@ -1402,17 +2664,57 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const trace = decide(personaPkg, input, model, {
           lifeEvents: pastEvents,
           memoryWeights: effectiveWeights,
-          recalledMemories: recallResult.memories,
-          recalledMemoryBlocks: recallResult.memoryBlocks,
+          recalledMemories: [...recallResult.memories, ...externalKnowledgeMemories],
+          recalledMemoryBlocks: [...recallResult.memoryBlocks, ...externalKnowledgeBlocks],
           recallTraceId: recallResult.traceId,
           safetyContext: adultSafetyContext
         });
-        const effectiveInput = injectAttachments(input, attachedFiles);
+        const fictionReadingTurn = shouldTreatTurnAsFictionReading(input, activeReadingSource, readingSourceScope);
+        const effectiveInput = injectAttachments(input, attachedFiles, fetchedUrls, activeReadingSource);
         const messages = compileContext(personaPkg, effectiveInput, trace, {
           lifeEvents: pastEvents,
           safetyContext: adultSafetyContext
         });
+        const judgmentAdvice = resolveJudgmentAdvice(activeReadingSource, fictionReadingTurn);
+        const personaJudgment = judgePersonaContentLabel({
+          userInput: effectiveInput,
+          sourceUri: activeReadingSource?.uri,
+          sourceKind: activeReadingSource?.kind,
+          systemAdvice: judgmentAdvice
+        });
+        const judgmentSubjectRef = buildJudgmentSubjectRef(input, trace);
+        const storedJudgment = await upsertPersonaJudgment({
+          rootPath: personaPath,
+          subjectRef: judgmentSubjectRef,
+          label: personaJudgment.label,
+          confidence: personaJudgment.confidence,
+          rationale: personaJudgment.rationale,
+          evidenceRefs: personaJudgment.evidenceRefs
+        });
+        await appendLifeEvent(personaPath, {
+          type: "persona_judgment_updated",
+          payload: {
+            subjectRef: judgmentSubjectRef,
+            judgment: storedJudgment
+          }
+        });
+        if (storedJudgment.supersedesVersion && storedJudgment.supersedesVersion > 0) {
+          await appendLifeEvent(personaPath, {
+            type: "persona_judgment_superseded",
+            payload: {
+              subjectRef: judgmentSubjectRef,
+              supersedesVersion: storedJudgment.supersedesVersion,
+              currentVersion: storedJudgment.version
+            }
+          });
+        }
 
+        const userMemoryMeta = buildMemoryMeta({
+          tier: classifyMemoryTier({ userInput: input, trace }),
+          source: "chat",
+          contentLength: input.length
+        });
+        applyJudgmentToMemoryMeta(userMemoryMeta, storedJudgment.label, fictionReadingTurn);
         await appendLifeEvent(personaPath, {
       type: "user_message",
       payload: {
@@ -1420,11 +2722,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         trace: compactDecisionTrace(trace),
         safetyContext: adultSafetyContext,
         profilePatch: profilePatch ?? null,
-        memoryMeta: buildMemoryMeta({
-          tier: classifyMemoryTier({ userInput: input, trace }),
-          source: "chat",
-          contentLength: input.length
-        })
+        memoryMeta: userMemoryMeta
       }
     });
         await appendLifeEvent(personaPath, {
@@ -1437,6 +2735,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         if (trace.refuse) {
       const refusal = "这个请求我不能协助。我可以帮你改成安全合法的方案。";
       sayAsAssistant(refusal);
+      lastAssistantOutput = refusal;
       lastAssistantAt = Date.now();
       await appendLifeEvent(personaPath, {
         type: "conflict_logged",
@@ -1535,6 +2834,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         {
           onToken: (chunk: string) => {
             assistantContent += chunk;
+            if (!streamRawAssistant) {
+              return;
+            }
             if (!streamed) {
               process.stdout.write(`${assistantLabel()} `);
               streamed = true;
@@ -1542,6 +2844,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             process.stdout.write(chunk);
           },
           onDone: () => {
+            if (!streamRawAssistant) {
+              return;
+            }
             if (streamed) {
               process.stdout.write("\n");
             }
@@ -1587,6 +2892,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         strictMemoryGrounding
       });
       assistantContent = recallGroundingGuard.text;
+      const conversationalNormalized = normalizeConversationalReply(
+        assistantContent,
+        "reply",
+        buildContextualReplyFallback(input),
+        input
+      );
+      const conversationalAdjusted = conversationalNormalized !== assistantContent;
+      assistantContent = conversationalNormalized;
       const emotion = parseEmotionTag(assistantContent);
       assistantContent = emotion.text;
       const loopBreak = breakReplyLoopIfNeeded({
@@ -1597,18 +2910,86 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       if (loopBreak.triggered) {
         assistantContent = loopBreak.rewritten;
       }
-      const resolvedEmotion = emotion.emotion ?? inferEmotionFromText(assistantContent);
-      if (!streamed) {
-        sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
-      } else if (identityGuard.corrected || relationalGuard.corrected || recallGroundingGuard.corrected) {
-        sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
-      } else if (loopBreak.triggered) {
-        sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
-      } else if (parseEmotionTag(rawAssistantContent).text.trim() !== assistantContent.trim()) {
+      let metaTraceId: string | undefined;
+      if (metaCognitionMode !== "off") {
+        try {
+          const metaPlan = planMetaIntent({
+            userInput: effectiveInput,
+            refusal: trace.refuse
+          });
+          await appendLifeEvent(personaPath, {
+            type: "meta_intent_planned",
+            payload: {
+              plan: metaPlan,
+              mode: metaCognitionMode
+            }
+          });
+          const metaDraft = composeMetaAction({
+            plan: metaPlan,
+            replyDraft: assistantContent,
+            memoryJudgmentDraft: {
+              label: storedJudgment.label,
+              confidence: storedJudgment.confidence,
+              rationale: storedJudgment.rationale
+            }
+          });
+          await appendLifeEvent(personaPath, {
+            type: "meta_action_composed",
+            payload: {
+              draft: metaDraft,
+              mode: metaCognitionMode
+            }
+          });
+          const arbitration = arbitrateMetaAction({
+            plan: metaPlan,
+            draft: metaDraft,
+            advisory: {
+              replyFallback: buildContextualReplyFallback(input)
+            },
+            mode: metaCognitionMode
+          });
+          metaTraceId = arbitration.traceId;
+          trace.metaTraceId = arbitration.traceId;
+          if (metaCognitionMode === "active" && arbitration.finalReply?.trim()) {
+            assistantContent = arbitration.finalReply.trim();
+          }
+          await appendLifeEvent(personaPath, {
+            type: "meta_action_arbitrated",
+            payload: {
+              arbitration,
+              mode: metaCognitionMode
+            }
+          });
+        } catch (error: unknown) {
+          await appendLifeEvent(personaPath, {
+            type: "conflict_logged",
+            payload: {
+              category: "meta_runtime_fallback",
+              domain: "dialogue",
+              reason: error instanceof Error ? error.message : String(error)
+            }
+          });
+        }
+      }
+      assistantContent = compactReplyForChatPace(assistantContent, input);
+      const compactedEmotion = parseEmotionTag(assistantContent);
+      assistantContent = compactedEmotion.text;
+      const resolvedEmotion = compactedEmotion.emotion ?? emotion.emotion ?? inferEmotionFromText(assistantContent);
+      const shouldDisplayAssistant = !(loopBreak.triggered && assistantContent.trim().length === 0);
+      const shouldReplayOnScreen =
+        shouldDisplayAssistant &&
+        (!streamed ||
+          identityGuard.corrected ||
+          relationalGuard.corrected ||
+          recallGroundingGuard.corrected ||
+          conversationalAdjusted ||
+          loopBreak.triggered ||
+          parseEmotionTag(rawAssistantContent).text.trim() !== assistantContent.trim());
+      if (shouldReplayOnScreen) {
+        await applyHumanPacedDelay(turnStartedAtMs, assistantContent);
         sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
       }
       if (identityGuard.corrected) {
-        console.log("[identity-guard] 已修正可能的模型厂商身份污染。");
         await appendLifeEvent(personaPath, {
           type: "conflict_logged",
           payload: {
@@ -1666,18 +3047,22 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         assistantMeta.credibilityScore = 0.2;
         assistantMeta.contaminationFlags = [...new Set([...relationalGuard.flags, ...recallGroundingGuard.flags])];
         assistantMeta.excludedFromRecall = true;
+      } else {
+        applyJudgmentToMemoryMeta(assistantMeta, storedJudgment.label, fictionReadingTurn);
       }
       await appendLifeEvent(personaPath, {
         type: "assistant_message",
         payload: {
           text: assistantContent,
           trace: compactDecisionTrace(trace),
+          metaTraceId: metaTraceId ?? null,
           identityGuard,
           relationalGuard,
           recallGroundingGuard,
           memoryMeta: assistantMeta
         }
       });
+      lastAssistantOutput = assistantContent;
       const relationshipAfterAssistant = evolveRelationshipStateFromAssistant(
         personaPkg.relationshipState ?? createInitialRelationshipState(),
         assistantContent,
@@ -1857,6 +3242,9 @@ function buildSessionGreeting(displayName: string): string {
 }
 
 function isExitConfirmed(input: string): boolean {
+  if (detectQuickFeedbackIntent(input) === "positive") {
+    return true;
+  }
   const normalized = input.trim().toLowerCase();
   return (
     normalized === "确认退出" ||
@@ -1865,6 +3253,11 @@ function isExitConfirmed(input: string): boolean {
     normalized === "/exit" ||
     normalized === "退出会话" ||
     normalized === "结束会话" ||
+    normalized === "我走了" ||
+    normalized === "我走啦" ||
+    normalized === "先走了" ||
+    normalized === "先走啦" ||
+    normalized === "我先走了" ||
     normalized === "再见" ||
     normalized === "拜拜" ||
     normalized === "bye"
@@ -1872,13 +3265,63 @@ function isExitConfirmed(input: string): boolean {
 }
 
 function isReadConfirmed(input: string): boolean {
+  if (detectQuickFeedbackIntent(input) === "positive") {
+    return true;
+  }
   const normalized = input.trim().toLowerCase();
-  return normalized === "确认读取" || normalized === "confirm read" || normalized === "yes";
+  return (
+    normalized === "确认读取" ||
+    normalized === "确认" ||
+    normalized === "confirm read" ||
+    normalized === "confirm" ||
+    normalized === "yes" ||
+    normalized === "y" ||
+    normalized === "ok" ||
+    normalized === "okay" ||
+    normalized === "嗯" ||
+    normalized === "嗯嗯" ||
+    normalized === "好" ||
+    normalized === "好的" ||
+    normalized === "好啊" ||
+    normalized === "行" ||
+    normalized === "可以" ||
+    normalized === "是" ||
+    normalized === "是的"
+  );
 }
 
 function isCancelIntent(input: string): boolean {
+  if (detectQuickFeedbackIntent(input) === "negative") {
+    return true;
+  }
   const normalized = input.trim().toLowerCase();
-  return normalized === "取消" || normalized === "继续" || normalized === "cancel" || normalized === "no";
+  return normalized === "取消" || normalized === "cancel" || normalized === "no";
+}
+
+function detectQuickFeedbackIntent(input: string): "positive" | "negative" | "unknown" {
+  const raw = input.trim();
+  if (!raw || raw.length > 40) {
+    return "unknown";
+  }
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[。！？!?~～,.，、\s]+$/gu, "")
+    .trim();
+  const positivePatterns: RegExp[] = [
+    /^(好|好啊|好的|行|可以|是|是的|嗯|嗯嗯|对|对的|没错|继续|接着|就这个|就是|就要这个|开读|开始|来吧|ok|okay|yes|yep|yeah|sure|go ahead)$/u,
+    /^(可以了|可以的|没问题|同意|确认|确认一下|确认读取|确认继续)$/u
+  ];
+  const negativePatterns: RegExp[] = [
+    /^(不|不要|不行|算了|先别|别|取消|不用了|停|停下|不是|no|nah|nope|cancel)$/u,
+    /^(先不|不用|别读了|先别读|不要了)$/u
+  ];
+  if (positivePatterns.some((pattern) => pattern.test(normalized))) {
+    return "positive";
+  }
+  if (negativePatterns.some((pattern) => pattern.test(normalized))) {
+    return "negative";
+  }
+  return "unknown";
 }
 
 function isUserAnnoyedByProactive(input: string): boolean {
@@ -1911,13 +3354,117 @@ function isUserBack(input: string): boolean {
   return /我回来啦|我回来了|我又来了|回来啦|我在了|back now|i'?m back/.test(text);
 }
 
+function isLikelyUnfinishedThought(input: string): boolean {
+  const text = input.trim();
+  if (!text) {
+    return false;
+  }
+  if (text.length > 10) {
+    return false;
+  }
+  if (/[。！？!?；;]$/.test(text)) {
+    return false;
+  }
+  if (/^(关于|然后|就是|还有|那个|所以|嗯|呃|well|so|and|about)$/i.test(text)) {
+    return true;
+  }
+  return text.length <= 3;
+}
+
+function shouldInjectExternalKnowledge(input: string): boolean {
+  const text = input.trim().toLowerCase();
+  if (!text) {
+    return false;
+  }
+  if (/你是谁|我是谁|名字|叫我|记得我|我们之间|关系|亲密|你还记得/u.test(text)) {
+    return false;
+  }
+  return (
+    /是什么|为什么|怎么|如何|定义|原理|事实|资料|出处|论文|what is|why|how|definition|fact|source|paper/.test(text) ||
+    text.length >= 18
+  );
+}
+
+function resolveJudgmentAdvice(
+  activeReadingSource: { kind: "file" | "web"; uri: string; content: string; mode: ReadingContentMode } | null,
+  fictionReadingTurn: boolean
+): PersonaJudgmentLabel | undefined {
+  if (fictionReadingTurn) {
+    return "fiction";
+  }
+  if (activeReadingSource?.mode === "fiction") {
+    return "fiction";
+  }
+  if (activeReadingSource?.mode === "non_fiction") {
+    return "non_fiction";
+  }
+  return undefined;
+}
+
+function buildJudgmentSubjectRef(input: string, trace: DecisionTrace): string {
+  const digest = createHash("sha256").update(`${trace.timestamp}|${input}`, "utf8").digest("hex").slice(0, 16);
+  return `turn:${trace.timestamp}:${digest}`;
+}
+
+function applyJudgmentToMemoryMeta(
+  meta: {
+    credibilityScore?: number;
+    contaminationFlags?: string[];
+    excludedFromRecall?: boolean;
+  },
+  label: PersonaJudgmentLabel,
+  fictionReadingTurn: boolean
+): void {
+  if (label === "fiction") {
+    meta.credibilityScore = Math.max(meta.credibilityScore ?? 0.8, 0.62);
+    meta.contaminationFlags = [...new Set([...(meta.contaminationFlags ?? []), "fiction_context", "fictional_content_retained"])];
+    return;
+  }
+  if (label === "mixed") {
+    meta.credibilityScore = Math.min(meta.credibilityScore ?? 0.8, 0.66);
+    meta.contaminationFlags = [...new Set([...(meta.contaminationFlags ?? []), "mixed_context"])];
+    return;
+  }
+  if (label === "uncertain") {
+    meta.credibilityScore = Math.min(meta.credibilityScore ?? 0.8, 0.52);
+    meta.contaminationFlags = [...new Set([...(meta.contaminationFlags ?? []), "uncertain_context"])];
+    meta.excludedFromRecall = false;
+    return;
+  }
+  if (fictionReadingTurn) {
+    meta.credibilityScore = Math.min(meta.credibilityScore ?? 0.8, 0.72);
+  }
+}
+
+function sampleHumanPacedTargetMs(replyText: string): number {
+  const length = replyText.trim().length;
+  let minMs = 1200;
+  let maxMs = 2500;
+  if (length >= 80 && length < 260) {
+    minMs = 2500;
+    maxMs = 5000;
+  } else if (length >= 260) {
+    minMs = 4000;
+    maxMs = 8000;
+  }
+  const base = Math.floor(minMs + Math.random() * (maxMs - minMs + 1));
+  const jitterRatio = (Math.random() * 0.3) - 0.15;
+  return Math.max(800, Math.round(base * (1 + jitterRatio)));
+}
+
+async function sleep(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return;
+  }
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function sanitizeAutonomyText(raw: string): string {
   const lines = raw
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   const cleaned = lines
-    .filter((line) => !/^\[[^\]]+\]$/.test(line))
     .filter((line) => !/^（[^）]*）$/.test(line))
     .join("\n")
     .trim();
@@ -1930,6 +3477,69 @@ function sanitizeAutonomyText(raw: string): string {
   return cleaned;
 }
 
+function stripStageDirections(raw: string): string {
+  if (!raw) {
+    return raw;
+  }
+  return raw
+    .replace(/（[^）\n]{1,28}）/gu, " ")
+    .replace(/\([^)\n]{1,28}\)/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ *\n */g, "\n")
+    .trim();
+}
+
+function isDramaticRoleplayOpener(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) {
+    return false;
+  }
+  if (/^你猜/u.test(normalized)) {
+    return true;
+  }
+  return /你猜我昨晚梦到什么了|你猜我梦到什么了|我昨晚梦到/u.test(normalized);
+}
+
+function shouldKeepDetailedReply(input: string): boolean {
+  const text = input.trim().toLowerCase();
+  if (!text) {
+    return false;
+  }
+  return /(详细|完整|步骤|逐步|分析|展开|细讲|深挖|多说点|例子|explain|detail|step by step|analy)/u.test(text);
+}
+
+function compactReplyForChatPace(reply: string, userInput: string): string {
+  if (shouldKeepDetailedReply(userInput)) {
+    return reply;
+  }
+  const text = reply.trim();
+  if (!text) {
+    return reply;
+  }
+  if (/```/.test(text) || /https?:\/\//i.test(text) || /(^|\n)\d+\.\s+/u.test(text) || /(^|\n)-\s+/u.test(text)) {
+    return reply;
+  }
+  if (text.length <= 160 && text.split(/\n+/).length <= 2) {
+    return reply;
+  }
+  const firstLine = text.split(/\n+/)[0]?.trim() ?? text;
+  const sentences = firstLine
+    .split(/(?<=[。！？!?])/u)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (sentences.length === 0) {
+    return firstLine.slice(0, 140);
+  }
+  return sentences.slice(0, 2).join("").slice(0, 140);
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
+}
+
 async function performReadAttachment(params: {
   rawPath: string;
   personaPath: string;
@@ -1938,6 +3548,7 @@ async function performReadAttachment(params: {
   onDone: () => void;
   attachedFiles: Map<string, string>;
   approvedReadPaths: Set<string>;
+  onLoaded?: (payload: { path: string; content: string }) => void;
 }): Promise<void> {
   const normalized = normalizeReadPathArg(params.rawPath);
   const resolvedPath = path.resolve(process.cwd(), normalized);
@@ -1957,7 +3568,7 @@ async function performReadAttachment(params: {
         maxCallsPerSession: 64,
         maxDurationMs: 4000
       },
-      allowedReadRoots: [process.cwd()]
+      allowedReadRoots: [resolvedPath]
     },
     session: params.toolSession,
     signal: controller.signal,
@@ -1967,6 +3578,8 @@ async function performReadAttachment(params: {
   params.onDone();
 
   if (outcome.status !== "ok" || !outcome.result) {
+    params.attachedFiles.delete(resolvedPath);
+    params.approvedReadPaths.delete(resolvedPath);
     console.log(`读取失败: ${outcome.reason}`);
     console.log('提示: 路径可直接粘贴，或用引号包裹；不需要写 "\\ " 转义空格。');
     await appendLifeEvent(params.personaPath, {
@@ -1987,6 +3600,7 @@ async function performReadAttachment(params: {
 
   params.attachedFiles.set(outcome.result.path, outcome.result.content);
   params.approvedReadPaths.add(outcome.result.path);
+  params.onLoaded?.({ path: outcome.result.path, content: outcome.result.content });
   console.log(`已附加: ${outcome.result.path} (${outcome.result.size} bytes)`);
   await appendLifeEvent(params.personaPath, {
     type: "mcp_tool_called",
@@ -2007,8 +3621,100 @@ async function performReadAttachment(params: {
   });
 }
 
-function injectAttachments(input: string, attachedFiles: Map<string, string>): string {
-  if (attachedFiles.size === 0) {
+async function performUrlFetch(params: {
+  url: string;
+  personaPath: string;
+  toolSession: ReturnType<typeof createToolSessionState>;
+  setAbortController: (controller: AbortController | null) => void;
+  onDone: () => void;
+  fetchedUrls: Map<string, string>;
+  approvedFetchOrigins: Set<string>;
+  onLoaded?: (payload: { url: string; content: string }) => void;
+}): Promise<void> {
+  try {
+    const origin = new URL(params.url).origin;
+    if (origin) {
+      params.approvedFetchOrigins.add(origin);
+    }
+  } catch {
+    // ignore malformed URL
+  }
+  const controller = new AbortController();
+  params.setAbortController(controller);
+  const toolCallId = randomUUID();
+  console.log(`正在获取: ${params.url}`);
+  const outcome = await executeToolCall({
+    toolName: "net.fetch_url",
+    impact: {
+      estimatedDurationMs: 15000
+    },
+    approval: {
+      approved: true,
+      reason: "capability session.fetch_url",
+      budget: {
+        maxCallsPerSession: 32,
+        maxDurationMs: 20000
+      }
+    },
+    session: params.toolSession,
+    signal: controller.signal,
+    run: (signal) => fetchUrlContent(params.url, signal)
+  });
+  params.setAbortController(null);
+  params.onDone();
+
+  if (outcome.status !== "ok" || !outcome.result) {
+    console.log(`获取失败: ${outcome.reason}`);
+    await appendLifeEvent(params.personaPath, {
+      type: "mcp_tool_rejected",
+      payload: {
+        toolName: outcome.toolName,
+        callId: toolCallId,
+        reason: outcome.reason,
+        status: outcome.status,
+        budgetSnapshot: outcome.budgetSnapshot,
+        url: params.url
+      }
+    });
+    return;
+  }
+
+  params.fetchedUrls.set(outcome.result.url, outcome.result.content);
+  params.onLoaded?.({ url: outcome.result.url, content: outcome.result.content });
+  try {
+    const origin = new URL(outcome.result.url).origin;
+    if (origin) {
+      params.approvedFetchOrigins.add(origin);
+    }
+  } catch {
+    // ignore malformed URL from tool response
+  }
+  console.log(`已获取: ${outcome.result.url} (${outcome.result.size} bytes)`);
+  await appendLifeEvent(params.personaPath, {
+    type: "mcp_tool_called",
+    payload: {
+      toolName: outcome.toolName,
+      callId: toolCallId,
+      approvalReason: outcome.reason,
+      budgetSnapshot: outcome.budgetSnapshot,
+      durationMs: outcome.durationMs,
+      url: outcome.result.url,
+      result: {
+        url: outcome.result.url,
+        size: outcome.result.size,
+        contentType: outcome.result.contentType
+      }
+    }
+  });
+}
+
+function injectAttachments(
+  input: string,
+  attachedFiles: Map<string, string>,
+  fetchedUrls: Map<string, string>,
+  activeReadingSource: { kind: "file" | "web"; uri: string; content: string; mode: ReadingContentMode } | null
+): string {
+  if (attachedFiles.size === 0 && fetchedUrls.size === 0) {
     return input;
   }
 
@@ -2016,9 +3722,20 @@ function injectAttachments(input: string, attachedFiles: Map<string, string>): s
   for (const [filePath, content] of attachedFiles.entries()) {
     blocks.push(`[Attachment: ${filePath}]\n${content}`);
   }
+  for (const [url, content] of fetchedUrls.entries()) {
+    blocks.push(`[Web: ${url}]\n${content}`);
+  }
+
+  const modeHint =
+    activeReadingSource?.mode === "fiction"
+      ? "当前共读材料模式: fiction（虚构叙事，不应当作用户真实经历）。"
+      : activeReadingSource?.mode === "non_fiction"
+        ? "当前共读材料模式: non_fiction（现实信息，可按资料阅读）。"
+        : "当前共读材料模式: unknown。";
 
   return [
-    "以下是用户附加的本地文件内容，请优先基于这些内容回答：",
+    "以下是用户附加的本地文件或网页内容，请优先基于这些内容回答：",
+    modeHint,
     ...blocks,
     `用户问题: ${input}`
   ].join("\n\n");
@@ -2037,6 +3754,160 @@ function normalizeReadPathArg(raw: string): string {
       : trimmed;
 
   return quoted.replace(/\\ /g, " ");
+}
+
+function detectReadingFollowUpIntent(
+  inputRaw: string,
+  readingAwaitingContinue: boolean
+): "none" | "continue" | "restart" | "summary" {
+  const input = inputRaw.trim().toLowerCase();
+  if (!input) {
+    return "none";
+  }
+  if (/(^总结|概括|summary|讲讲重点|说说重点|简要说)/u.test(input)) {
+    return "summary";
+  }
+  if (/(从头|重新读|重读|开头开始|read from start|start over)/u.test(input)) {
+    return "restart";
+  }
+  if (/(继续|接着|往下读|继续读|next|continue|下一段|下一节)/u.test(input)) {
+    return "continue";
+  }
+  if (readingAwaitingContinue && isReadConfirmed(inputRaw)) {
+    return "continue";
+  }
+  return "none";
+}
+
+function isReadingStatusQuery(inputRaw: string): boolean {
+  const input = inputRaw.trim().toLowerCase();
+  if (!input) {
+    return false;
+  }
+  return /(看完了吗|读完了吗|读完了嘛|看完了嘛|都读完了?吗|看完没|读完没|你都读完了吗)/u.test(input);
+}
+
+function isReadingTogetherRequest(inputRaw: string): boolean {
+  const input = inputRaw.trim().toLowerCase();
+  if (!input) {
+    return false;
+  }
+  return /(一起看|一起读|我们一起看|我们一起读|看一看|看看|读一读|读一下)/u.test(input);
+}
+
+function isReadingSourceClarification(inputRaw: string): boolean {
+  const input = inputRaw.trim().toLowerCase();
+  if (!input) {
+    return false;
+  }
+  return /(不是我的记忆|不是我的|外面的文章|外部文章|外面的小说|网站文章|不是我写的)/u.test(input);
+}
+
+function classifyReadingContentMode(contentRaw: string, uri: string): ReadingContentMode {
+  const content = contentRaw.trim().slice(0, 4000);
+  const lowered = content.toLowerCase();
+  const fictionSignals = [
+    /小说|剧情|主角|章节|第[一二三四五六七八九十\d]+章|番外|对白|她说|他说|忽然|那天/u,
+    /\bnovel\b|\bfiction\b|\bchapter\b|\bprotagonist\b/i,
+    /“[^”]{2,40}”/u
+  ];
+  const nonFictionSignals = [
+    /报道|研究|论文|数据|结论|来源|参考|定义|百科|维基|指标/u,
+    /\breport\b|\bresearch\b|\bpaper\b|\bdata\b|\bsource\b|\bdefinition\b/i
+  ];
+  const fictionScore = fictionSignals.reduce((acc, pattern) => acc + (pattern.test(content) ? 1 : 0), 0);
+  const nonFictionScore = nonFictionSignals.reduce((acc, pattern) => acc + (pattern.test(content) ? 1 : 0), 0);
+  const uriLower = uri.toLowerCase();
+  if (fictionScore >= 2 && fictionScore >= nonFictionScore) {
+    return "fiction";
+  }
+  if (nonFictionScore >= 2 && nonFictionScore > fictionScore) {
+    return "non_fiction";
+  }
+  if (/\/article\/|\/novel\/|\/book\//.test(uriLower) && /他说|她说|小说|剧情|chapter|novel/i.test(lowered)) {
+    return "fiction";
+  }
+  if (/wiki|docs|paper|arxiv|report|news/.test(uriLower)) {
+    return "non_fiction";
+  }
+  return "unknown";
+}
+
+function shouldTreatTurnAsFictionReading(
+  inputRaw: string,
+  activeReadingSource: { kind: "file" | "web"; uri: string; content: string; mode: ReadingContentMode } | null,
+  readingSourceScope: "unknown" | "external"
+): boolean {
+  if (!activeReadingSource) {
+    return false;
+  }
+  const input = inputRaw.trim();
+  if (!input) {
+    return false;
+  }
+  if (/小说|剧情|人物|章节|继续读|一起看|一起读|这一段|这一章|看完了吗|读完了吗|总结一下/u.test(input)) {
+    return true;
+  }
+  if (readingSourceScope === "external" && /外部文章|这篇文章|网站内容|原文/u.test(input)) {
+    return true;
+  }
+  return false;
+}
+
+function readChunkByCursor(
+  contentRaw: string,
+  start: number,
+  maxChars: number
+): { text: string; nextCursor: number; done: boolean } {
+  const content = contentRaw.trim();
+  if (!content || start >= content.length) {
+    return { text: "", nextCursor: content.length, done: true };
+  }
+  const safeMax = Math.max(260, Math.min(1200, maxChars));
+  let end = Math.min(content.length, start + safeMax);
+  if (end < content.length) {
+    const probeEnd = Math.min(content.length, end + 180);
+    const window = content.slice(end, probeEnd);
+    const boundary = window.search(/[。！？!?…\n]/u);
+    if (boundary >= 0) {
+      end += boundary + 1;
+    }
+  }
+  const text = content.slice(start, end).trim();
+  return {
+    text,
+    nextCursor: end,
+    done: end >= content.length
+  };
+}
+
+function buildReadingSummary(contentRaw: string): string {
+  const content = contentRaw.replace(/\s+/g, " ").trim();
+  if (!content) {
+    return "这份内容目前没有可读文本。";
+  }
+  const sentences = content
+    .split(/(?<=[。！？!?])/u)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (sentences.length === 0) {
+    return content.slice(0, 220);
+  }
+  return sentences.slice(0, 3).join(" ").slice(0, 280);
+}
+
+function readingLabelFromUri(uri: string): string {
+  const normalized = uri.trim();
+  if (!normalized) {
+    return "这份内容";
+  }
+  try {
+    const parsed = new URL(normalized);
+    const pathLabel = parsed.pathname.replace(/\/+$/u, "").split("/").filter(Boolean).pop();
+    return pathLabel ? `${parsed.hostname}/${pathLabel}` : parsed.hostname;
+  } catch {
+    return normalized.split(/[\\/]/).filter(Boolean).pop() ?? normalized;
+  }
 }
 
 function detectForcedReproductionKeyword(input: string): string | null {
@@ -2097,14 +3968,27 @@ function breakReplyLoopIfNeeded(params: {
     };
   }
 
-  const userHint = params.userInput.trim().slice(0, 60);
-  const rewritten = `收到，我刚才卡在重复回复里了，已经恢复。你刚说“${userHint}”，我正常接着聊。`;
+  const rewritten = buildLoopRecoveryReply(params.userInput);
   return {
     triggered: true,
     original: params.assistantContent,
     rewritten,
     reason: `duplicate_recent_assistant x${sameCount}`
   };
+}
+
+function buildLoopRecoveryReply(userInput: string): string {
+  const normalized = userInput.trim().toLowerCase();
+  if (!normalized) {
+    return "我们继续。你想让我接着往下说，还是先换个角度？";
+  }
+  if (isReadConfirmed(userInput)) {
+    return "好，我们继续。你想让我接着读下一段，还是先总结这一段？";
+  }
+  if (/[?？]$/.test(userInput.trim()) || /为什么|怎么|如何|啥|吗|嘛|是否/u.test(userInput)) {
+    return `你这个问题我收到了：${userInput.trim()}。我直接接着回答。`;
+  }
+  return `好，我们就接着你这句往下聊：${userInput.trim()}`;
 }
 
 function normalizeLoopText(text: string): string {
@@ -2192,6 +4076,13 @@ function optionString(options: Record<string, string | boolean>, key: string): s
 
 function optionBoolean(options: Record<string, string | boolean>, key: string): boolean {
   return options[key] === true;
+}
+
+function isReservedRootCommand(token: string | undefined): boolean {
+  if (!token) {
+    return false;
+  }
+  return RESERVED_ROOT_COMMANDS.has(token);
 }
 
 function parseLimit(raw: string | undefined, fallback: number, min: number, max: number): number {
@@ -2476,6 +4367,90 @@ async function runMemoryRecover(options: Record<string, string | boolean>): Prom
   });
 
   console.log(JSON.stringify({ ok: true, id, recovered: true }, null, 2));
+}
+
+async function runMemoryFictionRepair(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const dryRun = optionBoolean(options, "dry-run");
+  const report = await repairFictionalMemories(personaPath, { dryRun });
+  console.log(JSON.stringify({ ok: true, ...report }, null, 2));
+}
+
+async function repairFictionalMemories(
+  rootPath: string,
+  options?: { dryRun?: boolean }
+): Promise<{ scanned: number; flagged: number; updated: number; sampleIds: string[] }> {
+  await ensureMemoryStore(rootPath);
+  const scannedRaw = await runMemoryStoreSql(
+    rootPath,
+    "SELECT COUNT(*) FROM memories WHERE deleted_at IS NULL;"
+  );
+  const scanned = Number.parseInt(scannedRaw.trim(), 10) || 0;
+  const candidateRaw = await runMemoryStoreSql(
+    rootPath,
+    [
+      "SELECT id",
+      "FROM memories",
+      "WHERE deleted_at IS NULL",
+      "AND (",
+      "lower(content) LIKE '%不是我的记忆%'",
+      "OR lower(content) LIKE '%外部文章%'",
+      "OR lower(content) LIKE '%这是你的记忆吗%'",
+      "OR lower(content) LIKE '%你让我记住吗%'",
+      "OR lower(content) LIKE '%你给我看过多少篇%'",
+      "OR lower(content) LIKE '%你给我看过哪些%'",
+      ")",
+      "ORDER BY updated_at DESC",
+      "LIMIT 5000;"
+    ].join("\n")
+  );
+  const flaggedIds = candidateRaw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const now = new Date().toISOString();
+  let updated = 0;
+  if (!options?.dryRun && flaggedIds.length > 0) {
+    const eligibleRaw = await runMemoryStoreSql(
+      rootPath,
+      [
+        "SELECT COUNT(*) FROM memories",
+        `WHERE id IN (${flaggedIds.map((id) => sqlText(id)).join(",")})`,
+        "AND (excluded_from_recall = 0 OR credibility_score > 0.25 OR evidence_level <> 'uncertain');"
+      ].join(" ")
+    );
+    updated = Number.parseInt(eligibleRaw.trim(), 10) || 0;
+    const sql = [
+      "BEGIN;",
+      [
+        "UPDATE memories",
+        "SET excluded_from_recall = 1,",
+        "credibility_score = MIN(credibility_score, 0.25),",
+        "evidence_level = 'uncertain',",
+        `updated_at = ${sqlText(now)}`,
+        `WHERE id IN (${flaggedIds.map((id) => sqlText(id)).join(",")})`,
+        "AND (excluded_from_recall = 0 OR credibility_score > 0.25 OR evidence_level <> 'uncertain');"
+      ].join(" "),
+      "COMMIT;"
+    ].join("\n");
+    await runMemoryStoreSql(rootPath, sql);
+    if (updated > 0) {
+      await appendLifeEvent(rootPath, {
+        type: "memory_contamination_flagged",
+        payload: {
+          flags: ["fiction_memory_repaired"],
+          count: updated,
+          sampleIds: flaggedIds.slice(0, 50)
+        }
+      });
+    }
+  }
+  return {
+    scanned,
+    flagged: flaggedIds.length,
+    updated,
+    sampleIds: flaggedIds.slice(0, 20)
+  };
 }
 
 interface MemoryUnstickRow {
@@ -2962,6 +4937,148 @@ async function runMemoryConsolidate(options: Record<string, string | boolean>): 
   }
 }
 
+async function runMemoryLearn(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  if (action === "status") {
+    const status = await inspectExternalKnowledgeStore(personaPath);
+    console.log(JSON.stringify({ ok: true, ...status }, null, 2));
+    return;
+  }
+
+  if (action === "stage") {
+    const sourceUri = optionString(options, "source")?.trim() ?? "";
+    if (!sourceUri) {
+      throw new Error("memory learn stage 需要 --source <uri>");
+    }
+    const sourceTypeRaw = (optionString(options, "source-type") ?? inferSourceTypeFromUri(sourceUri)).trim().toLowerCase();
+    const sourceType = sourceTypeRaw === "website" || sourceTypeRaw === "file" ? sourceTypeRaw : "manual";
+    const contentFromText = optionString(options, "text");
+    const fromFile = optionString(options, "from-file");
+    let content = typeof contentFromText === "string" ? contentFromText : "";
+    if (!content && typeof fromFile === "string" && fromFile.trim().length > 0) {
+      const resolved = path.resolve(process.cwd(), fromFile.trim());
+      content = await readFile(resolved, "utf8");
+    }
+    if (!content.trim()) {
+      throw new Error("memory learn stage 需要 --text <content> 或 --from-file <path>");
+    }
+    const confidenceRaw = Number(optionString(options, "confidence") ?? "0.62");
+    const confidence = Number.isFinite(confidenceRaw) ? Math.max(0, Math.min(1, confidenceRaw)) : 0.62;
+    const staged = await stageExternalKnowledgeCandidate(personaPath, {
+      sourceType,
+      sourceUri,
+      content,
+      confidence
+    });
+    console.log(JSON.stringify({ ok: true, candidate: staged }, null, 2));
+    return;
+  }
+
+  if (action === "candidates") {
+    const statusRaw = optionString(options, "status")?.trim().toLowerCase();
+    const status = statusRaw === "pending" || statusRaw === "approved" || statusRaw === "rejected" ? statusRaw : undefined;
+    const limit = parseLimit(optionString(options, "limit"), 20, 1, 200);
+    const items = await listExternalKnowledgeCandidates(personaPath, {
+      status,
+      limit
+    });
+    console.log(JSON.stringify({ ok: true, count: items.length, items }, null, 2));
+    return;
+  }
+
+  if (action === "review") {
+    const id = optionString(options, "id")?.trim();
+    if (!id) {
+      throw new Error("memory learn review 需要 --id <candidate_id>");
+    }
+    const approveRaw = optionString(options, "approve");
+    if (approveRaw == null) {
+      throw new Error("memory learn review 需要 --approve true|false");
+    }
+    const ownerKey = (process.env.SOULSEED_OWNER_KEY ?? "").trim();
+    if (!ownerKey) {
+      throw new Error("memory learn review 需要环境变量 SOULSEED_OWNER_KEY");
+    }
+    const ownerToken = (optionString(options, "owner-token") ?? "").trim();
+    if (!ownerToken) {
+      throw new Error("memory learn review 需要 --owner-token <token>");
+    }
+    if (ownerToken !== ownerKey) {
+      throw new Error("memory learn review Owner token 校验失败");
+    }
+    const approve = /^(true|1|yes|on)$/i.test(approveRaw.trim());
+    const result = await reviewExternalKnowledgeCandidate(personaPath, {
+      candidateId: id,
+      approve,
+      reviewer: optionString(options, "reviewer") ?? "owner",
+      reason: optionString(options, "reason") ?? ""
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (action === "entries") {
+    const limit = parseLimit(optionString(options, "limit"), 20, 1, 200);
+    const items = await listExternalKnowledgeEntries(personaPath, { limit });
+    console.log(JSON.stringify({ ok: true, count: items.length, items }, null, 2));
+    return;
+  }
+
+  if (action === "search") {
+    const query = optionString(options, "query")?.trim();
+    if (!query) {
+      throw new Error("memory learn search 需要 --query <text>");
+    }
+    const limit = parseLimit(optionString(options, "limit"), 8, 1, 100);
+    const items = await searchExternalKnowledgeEntries(personaPath, query, { limit });
+    console.log(JSON.stringify({ ok: true, query, count: items.length, items }, null, 2));
+    return;
+  }
+
+  throw new Error(
+    "memory learn 用法: memory learn <status|stage|candidates|review|entries|search> ..."
+  );
+}
+
+function inferSourceTypeFromUri(uri: string): "website" | "file" | "manual" {
+  const normalized = uri.trim().toLowerCase();
+  if (/^https?:\/\//.test(normalized)) {
+    return "website";
+  }
+  if (/^file:\/\//.test(normalized) || normalized.startsWith("/")) {
+    return "file";
+  }
+  return "manual";
+}
+
+function resolveFetchOriginAllowlist(): Set<string> {
+  const raw = (process.env.SOULSEED_FETCH_ALLOWLIST ?? "").trim();
+  const out = new Set<string>();
+  if (!raw) {
+    return out;
+  }
+  for (const tokenRaw of raw.split(",")) {
+    const token = tokenRaw.trim().toLowerCase();
+    if (!token) {
+      continue;
+    }
+    if (token.startsWith("*.")) {
+      out.add(token);
+      continue;
+    }
+    if (token.startsWith("http://") || token.startsWith("https://")) {
+      try {
+        out.add(new URL(token).origin.toLowerCase());
+      } catch {
+        // ignore invalid token
+      }
+      continue;
+    }
+    out.add(token);
+  }
+  return out;
+}
+
 async function runMemoryPin(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
   const personaPath = resolvePersonaPath(options);
   if (action === "add") {
@@ -3051,6 +5168,11 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const [resource, action] = args._;
 
+  if (resource === "new") {
+    await runPersonaNew(action, args.options);
+    return;
+  }
+
   if (resource === "init") {
     await runPersonaInit(args.options);
     return;
@@ -3082,6 +5204,7 @@ async function main(): Promise<void> {
   }
 
   if (resource === "chat") {
+    console.log("提示：推荐新入口 `./ss <name>` 直接聊天。");
     await runChat(args.options);
     return;
   }
@@ -3132,6 +5255,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (resource === "memory" && action === "learn") {
+    const learnAction = typeof args._[2] === "string" ? args._[2] : undefined;
+    await runMemoryLearn(learnAction, args.options);
+    return;
+  }
+
   if (resource === "memory" && action === "status") {
     await runMemoryStatus(args.options);
     return;
@@ -3159,6 +5288,11 @@ async function main(): Promise<void> {
 
   if (resource === "memory" && action === "recover") {
     await runMemoryRecover(args.options);
+    return;
+  }
+
+  if (resource === "memory" && action === "fiction" && args._[2] === "repair") {
+    await runMemoryFictionRepair(args.options);
     return;
   }
 
@@ -3190,6 +5324,42 @@ async function main(): Promise<void> {
 
   if (resource === "memory" && action === "reconcile") {
     await runMemoryReconcile(args.options);
+    return;
+  }
+
+  if (resource && !isReservedRootCommand(resource) && !resource.startsWith("--")) {
+    const personaPath =
+      typeof args.options.persona === "string" && args.options.persona.trim().length > 0
+        ? path.resolve(process.cwd(), args.options.persona)
+        : resolvePersonaPathByName(resource);
+    if (!existsSync(personaPath)) {
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+      try {
+        const answer = (await askQuestion(
+          rl,
+          `未找到 persona "${resource}"。是否现在创建并进入聊天？[y/N]: `
+        ))
+          .trim()
+          .toLowerCase();
+        if (answer !== "y" && answer !== "yes") {
+          throw new Error(`persona 不存在：${personaPath}`);
+        }
+      } finally {
+        rl.close();
+      }
+      await runPersonaNew(resource, {
+        ...args.options,
+        out: personaPath,
+        ...(typeof args.options.model === "string" ? { model: args.options.model } : {})
+      });
+    }
+    await runChat({
+      ...args.options,
+      persona: personaPath
+    });
     return;
   }
 

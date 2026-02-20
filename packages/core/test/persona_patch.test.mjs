@@ -62,3 +62,45 @@ test("patchWorldview and patchConstitution persist revisions", async () => {
   assert.equal(constitution.mission, "Maintain verifiable continuity.");
   assert.deepEqual(constitution.commitments, ["never fabricate past dialogue"]);
 });
+
+test("initPersonaPackage persists optional init profile and default model", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-persona-init-options-"));
+  const personaPath = path.join(tmpDir, "Teddy.soulseedpersona");
+  await initPersonaPackage(personaPath, "Teddy", {
+    worldview: { seed: "custom worldview" },
+    constitution: {
+      mission: "custom mission",
+      values: ["clarity"],
+      boundaries: ["no fabrication"],
+      commitments: ["stay grounded"]
+    },
+    habits: {
+      style: "direct",
+      adaptability: "medium"
+    },
+    voiceProfile: {
+      baseStance: "self-determined",
+      serviceModeAllowed: false,
+      languagePolicy: "follow_user_language",
+      forbiddenSelfLabels: ["personal assistant"],
+      tonePreference: "direct",
+      stancePreference: "peer"
+    },
+    defaultModel: "deepseek-reasoner",
+    initProfile: {
+      template: "peer"
+    }
+  });
+
+  const persona = JSON.parse(await readFile(path.join(personaPath, "persona.json"), "utf8"));
+  const worldview = JSON.parse(await readFile(path.join(personaPath, "worldview.json"), "utf8"));
+  const voice = JSON.parse(await readFile(path.join(personaPath, "voice_profile.json"), "utf8"));
+
+  assert.equal(persona.schemaVersion, "0.2.0");
+  assert.equal(persona.defaultModel, "deepseek-reasoner");
+  assert.equal(persona.initProfile.template, "peer");
+  assert.equal(typeof persona.initProfile.initializedAt, "string");
+  assert.equal(worldview.seed, "custom worldview");
+  assert.equal(voice.tonePreference, "direct");
+  assert.equal(voice.stancePreference, "peer");
+});

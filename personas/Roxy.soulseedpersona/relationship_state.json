@@ -1,48 +1,19 @@
 {
-  "state": "intimate",
-  "confidence": 0.85,
-  "overall": 0.8534,
+  "state": "peer",
+  "confidence": 0.76,
+  "overall": 0.7599,
   "dimensions": {
-    "trust": 0.7463,
+    "trust": 0.2333,
     "safety": 0.98,
-    "intimacy": 0.7438,
-    "reciprocity": 0.8941,
+    "intimacy": 0.9738,
+    "reciprocity": 1,
     "stability": 0.992,
-    "libido": 0.4528
+    "libido": 0.9368
   },
   "arousalImprint": 0,
   "drivers": [
     {
-      "ts": "2026-02-20T04:56:35.284Z",
-      "source": "user",
-      "signal": "user_negative_affect+user_low_information_turn",
-      "deltaSummary": {
-        "trust": -0.015,
-        "safety": -0.02,
-        "stability": -0.008
-      }
-    },
-    {
-      "ts": "2026-02-20T05:00:33.335Z",
-      "source": "user",
-      "signal": "user_positive_affect",
-      "deltaSummary": {
-        "trust": 0.015,
-        "safety": 0.01,
-        "reciprocity": 0.012
-      }
-    },
-    {
-      "ts": "2026-02-20T05:02:05.651Z",
-      "source": "assistant",
-      "signal": "assistant_clarification",
-      "deltaSummary": {
-        "safety": 0.012,
-        "stability": 0.01
-      }
-    },
-    {
-      "ts": "2026-02-20T05:02:39.138Z",
+      "ts": "2026-02-20T10:19:55.251Z",
       "source": "user",
       "signal": "user_negative_affect",
       "deltaSummary": {
@@ -52,15 +23,44 @@
       }
     },
     {
-      "ts": "2026-02-20T05:03:15.157Z",
+      "ts": "2026-02-20T10:19:59.086Z",
       "source": "assistant",
-      "signal": "assistant_empathic_response",
+      "signal": "assistant_clarification+assistant_repair_attempt",
+      "deltaSummary": {
+        "trust": 0.003,
+        "safety": 0.016,
+        "stability": 0.01
+      }
+    },
+    {
+      "ts": "2026-02-20T10:29:34.664Z",
+      "source": "assistant",
+      "signal": "assistant_clarification",
+      "deltaSummary": {
+        "safety": 0.012,
+        "stability": 0.01
+      }
+    },
+    {
+      "ts": "2026-02-20T10:35:12.280Z",
+      "source": "assistant",
+      "signal": "assistant_empathic_response+assistant_short_response",
       "deltaSummary": {
         "trust": 0.008,
         "intimacy": 0.006
       }
+    },
+    {
+      "ts": "2026-02-20T10:37:01.981Z",
+      "source": "user",
+      "signal": "user_negative_affect",
+      "deltaSummary": {
+        "trust": -0.015,
+        "safety": -0.02,
+        "stability": -0.008
+      }
     }
   ],
   "version": "3",
-  "updatedAt": "2026-02-20T05:03:15.157Z"
+  "updatedAt": "2026-02-20T10:37:01.981Z"
 }

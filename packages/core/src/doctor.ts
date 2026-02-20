@@ -599,6 +599,20 @@ function isVoiceProfileValid(payload: Record<string, unknown>): boolean {
     stancePreference === "peer" ||
     stancePreference === "intimate" ||
     stancePreference === "neutral";
+  const thinkingPreview = payload.thinkingPreview;
+  const validThinkingPreview =
+    thinkingPreview == null ||
+    (isRecord(thinkingPreview) &&
+      (thinkingPreview.enabled == null || typeof thinkingPreview.enabled === "boolean") &&
+      (thinkingPreview.thresholdMs == null ||
+        (typeof thinkingPreview.thresholdMs === "number" &&
+          Number.isFinite(thinkingPreview.thresholdMs) &&
+          thinkingPreview.thresholdMs >= 200 &&
+          thinkingPreview.thresholdMs <= 10000)) &&
+      (thinkingPreview.allowFiller == null || typeof thinkingPreview.allowFiller === "boolean") &&
+      (thinkingPreview.phrasePool == null ||
+        (Array.isArray(thinkingPreview.phrasePool) &&
+          thinkingPreview.phrasePool.every((item) => typeof item === "string"))));
   return (
     baseStance === "self-determined" &&
     serviceModeAllowed === false &&
@@ -606,7 +620,8 @@ function isVoiceProfileValid(payload: Record<string, unknown>): boolean {
     Array.isArray(forbiddenSelfLabels) &&
     forbiddenSelfLabels.every((item) => typeof item === "string") &&
     validTonePreference &&
-    validStancePreference
+    validStancePreference &&
+    validThinkingPreview
   );
 }
 

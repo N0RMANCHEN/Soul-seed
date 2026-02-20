@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { appendLifeEvent, readLifeEvents } from "./persona.js";
 import { ensureMemoryStore, runMemoryStoreSql } from "./memory_store.js";
+import { normalizePreferredNameCandidate } from "./profile.js";
 import type { LifeEvent } from "./types.js";
 
 export interface MemoryConsolidationOptions {
@@ -258,7 +259,7 @@ function extractCandidatesFromEvents(
       if (!matched) {
         continue;
       }
-      const name = cleanupFragment(matched[1] ?? "");
+      const name = normalizePreferredNameCandidate(matched[1] ?? "");
       if (!name) {
         continue;
       }

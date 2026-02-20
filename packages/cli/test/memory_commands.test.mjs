@@ -168,6 +168,195 @@ test("memory consolidate command works in cli layer", async () => {
   assert.match(consolidateResult.stdout, /"trigger": "cli_manual"/);
 });
 
+test("memory fiction repair marks fictional contamination as excluded", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-memory-fiction-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+
+  const initResult = spawnSync(process.execPath, [cliPath, "init", "--name", "Roxy", "--out", personaPath], {
+    encoding: "utf8"
+  });
+  assert.equal(initResult.status, 0);
+
+  const importPath = path.join(tmpDir, "fiction-import.json");
+  await writeFile(
+    importPath,
+    JSON.stringify(
+      {
+        items: [
+          {
+            id: "mem-fiction-001",
+            memoryType: "episodic",
+            content: "你让我记住吗？这是你的回忆吗？",
+            salience: 0.7,
+            state: "warm",
+            activationCount: 1,
+            lastActivatedAt: "2026-02-18T00:00:00.000Z",
+            credibilityScore: 0.9,
+            originRole: "assistant",
+            evidenceLevel: "derived",
+            excludedFromRecall: 0,
+            sourceEventHash: "seed-fiction",
+            createdAt: "2026-02-18T00:00:00.000Z",
+            updatedAt: "2026-02-18T00:00:00.000Z",
+            deletedAt: null
+          }
+        ]
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+
+  const importResult = spawnSync(
+    process.execPath,
+    [cliPath, "memory", "import", "--persona", personaPath, "--in", importPath],
+    { encoding: "utf8" }
+  );
+  assert.equal(importResult.status, 0);
+
+  const repairResult = spawnSync(
+    process.execPath,
+    [cliPath, "memory", "fiction", "repair", "--persona", personaPath],
+    { encoding: "utf8" }
+  );
+  assert.equal(repairResult.status, 0);
+  assert.match(repairResult.stdout, /"updated": 1/);
+
+  const inspectResult = spawnSync(
+    process.execPath,
+    [cliPath, "memory", "inspect", "--persona", personaPath, "--id", "mem-fiction-001"],
+    { encoding: "utf8" }
+  );
+  assert.equal(inspectResult.status, 0);
+  assert.match(inspectResult.stdout, /"excludedFromRecall": true/);
+});
+
+test("memory fiction repair does not exclude normal novel plot memories", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-memory-fiction-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+
+  const initResult = spawnSync(process.execPath, [cliPath, "init", "--name", "Roxy", "--out", personaPath], {
+    encoding: "utf8"
+  });
+  assert.equal(initResult.status, 0);
+
+  const importPath = path.join(tmpDir, "fiction-safe-import.json");
+  await writeFile(
+    importPath,
+    JSON.stringify(
+      {
+        items: [
+          {
+            id: "mem-fiction-safe-001",
+            memoryType: "episodic",
+            content: "我们读到第三章，主角在雨夜里回到旧车站，剧情推进很明显。",
+            salience: 0.7,
+            state: "warm",
+            activationCount: 1,
+            lastActivatedAt: "2026-02-18T00:00:00.000Z",
+            credibilityScore: 0.9,
+            originRole: "user",
+            evidenceLevel: "direct",
+            excludedFromRecall: 0,
+            sourceEventHash: "seed-fiction-safe",
+            createdAt: "2026-02-18T00:00:00.000Z",
+            updatedAt: "2026-02-18T00:00:00.000Z",
+            deletedAt: null
+          }
+        ]
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+
+  const importResult = spawnSync(
+    process.execPath,
+    [cliPath, "memory", "import", "--persona", personaPath, "--in", importPath],
+    { encoding: "utf8" }
+  );
+  assert.equal(importResult.status, 0);
+
+  const repairResult = spawnSync(
+    process.execPath,
+    [cliPath, "memory", "fiction", "repair", "--persona", personaPath],
+    { encoding: "utf8" }
+  );
+  assert.equal(repairResult.status, 0);
+  assert.match(repairResult.stdout, /"updated": 0/);
+
+  const inspectResult = spawnSync(
+    process.execPath,
+    [cliPath, "memory", "inspect", "--persona", personaPath, "--id", "mem-fiction-safe-001"],
+    { encoding: "utf8" }
+  );
+  assert.equal(inspectResult.status, 0);
+  assert.match(inspectResult.stdout, /"excludedFromRecall": false/);
+});
+
+test("memory learn workflow stages, reviews, and searches external knowledge", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-memory-learn-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+
+  const initResult = spawnSync(process.execPath, [cliPath, "init", "--name", "Roxy", "--out", personaPath], {
+    encoding: "utf8"
+  });
+  assert.equal(initResult.status, 0);
+
+  const stageResult = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      "memory",
+      "learn",
+      "stage",
+      "--persona",
+      personaPath,
+      "--source",
+      "https://example.com/notes",
+      "--source-type",
+      "website",
+      "--text",
+      "RAG uses retrieval context to reduce hallucination."
+    ],
+    { encoding: "utf8" }
+  );
+  assert.equal(stageResult.status, 0);
+  const staged = JSON.parse(stageResult.stdout);
+  assert.equal(typeof staged.candidate.id, "string");
+
+  const reviewResult = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      "memory",
+      "learn",
+      "review",
+      "--persona",
+      personaPath,
+      "--id",
+      staged.candidate.id,
+      "--approve",
+      "true",
+      "--owner-token",
+      "test-owner-key"
+    ],
+    { encoding: "utf8", env: { ...process.env, SOULSEED_OWNER_KEY: "test-owner-key" } }
+  );
+  assert.equal(reviewResult.status, 0);
+  assert.match(reviewResult.stdout, /"approved": true/);
+
+  const searchResult = spawnSync(
+    process.execPath,
+    [cliPath, "memory", "learn", "search", "--persona", personaPath, "--query", "hallucination"],
+    { encoding: "utf8" }
+  );
+  assert.equal(searchResult.status, 0);
+  assert.match(searchResult.stdout, /example.com\/notes/);
+});
+
 test("memory index/search/eval commands work", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-memory-hybrid-"));
   const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");

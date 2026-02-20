@@ -83,10 +83,10 @@ cp .env.example .env
 npm run build
 
 # 5) 最短入口（推荐）
-./ss init        # 默认创建 Roxy
+./ss new Teddy   # 交互创建 Teddy（含模板与模型初始化）
 ./ss rename --to Nova
 ./ss rename --to Nova --confirm
-./ss chat        # 默认进入 Roxy 会话
+./ss Teddy       # 直接进入 Teddy 会话
 ./ss doctor      # 默认体检 Roxy
 
 # 6) 退出会话
@@ -110,13 +110,15 @@ npm run acceptance
 > 目标：让“驱动闭环”可被最小成本验证。
 
 ### Persona
-- `persona init`：创建 persona package（只做 seed；不写死 MBTI/性格）
+- `new <name>`：创建 persona package（默认交互向导；支持 `--quick`）
+- `persona init`：兼容入口（保留旧脚本调用）
 - `persona inspect`：查看 persona 概览（默认只显示 name/avatar；`--dev` 才显示内部字段）
 - `persona rename`：更名（写入事件；personaId 不变）
 - `persona export` / `persona import`：本质是复制目录（保持可迁移）
 
 ### Chat / Session
-- `chat`：进入会话（支持 streaming；支持 Ctrl+C 中止）
+- `<name>`：主入口，直接进入对应 persona 会话（支持 streaming；支持 Ctrl+C 中止）
+- `chat`：兼容入口（默认仍指向 Roxy）
 - `session list` / `session open`：可选（P0 可先用单 session）
 
 ### Doctor
@@ -128,7 +130,7 @@ npm run acceptance
 
 ```
 <PersonaName>.soulseedpersona/
-  persona.json              # id、displayName、schemaVersion、paths
+  persona.json              # id、displayName、schemaVersion、defaultModel、initProfile、paths
   identity.json             # anchors（personaId 不变）
   worldview.json            # 世界观种子（可演化）
   constitution.json         # 价值/边界/使命/承诺（可修宪）
