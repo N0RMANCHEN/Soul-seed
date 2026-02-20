@@ -17,6 +17,9 @@ import {
   runGoalCreateTool,
   runGoalGetTool,
   runGoalListTool,
+  runRuntimeGoalResumeTool,
+  runRuntimeTraceGetTool,
+  runRuntimeTurnTool,
   runTraceGetTool
 } from "./tools/goal_tools.js";
 
@@ -40,7 +43,10 @@ const TOOL_BUDGET: Record<string, ToolBudget> = {
   "goal.cancel":            { cost: 1, sessionMax: 100 },
   "agent.run":              { cost: 2, sessionMax: 100 },
   "consistency.inspect":    { cost: 1, sessionMax: 200 },
-  "trace.get":              { cost: 1, sessionMax: 200 }
+  "trace.get":              { cost: 1, sessionMax: 200 },
+  "runtime.turn":           { cost: 2, sessionMax: 200 },
+  "runtime.goal.resume":    { cost: 2, sessionMax: 200 },
+  "runtime.trace.get":      { cost: 1, sessionMax: 200 }
 };
 
 const ALLOWED_TOOLS = new Set(Object.keys(TOOL_BUDGET));
@@ -409,6 +415,24 @@ export class ToolRegistry {
         });
       } else if (toolName === "trace.get") {
         result = await runTraceGetTool(this.personaPath, {
+          traceId: String(args.traceId ?? "")
+        });
+      } else if (toolName === "runtime.turn") {
+        result = await runRuntimeTurnTool(this.personaPath, {
+          userInput: String(args.userInput ?? ""),
+          mode: args.mode === "soul" || args.mode === "agent" ? args.mode : "auto",
+          model: typeof args.model === "string" ? args.model : undefined,
+          maxSteps: typeof args.maxSteps === "number" ? args.maxSteps : undefined
+        });
+      } else if (toolName === "runtime.goal.resume") {
+        result = await runRuntimeGoalResumeTool(this.personaPath, {
+          goalId: typeof args.goalId === "string" ? args.goalId : undefined,
+          userInput: typeof args.userInput === "string" ? args.userInput : undefined,
+          model: typeof args.model === "string" ? args.model : undefined,
+          maxSteps: typeof args.maxSteps === "number" ? args.maxSteps : undefined
+        });
+      } else if (toolName === "runtime.trace.get") {
+        result = await runRuntimeTraceGetTool(this.personaPath, {
           traceId: String(args.traceId ?? "")
         });
       }

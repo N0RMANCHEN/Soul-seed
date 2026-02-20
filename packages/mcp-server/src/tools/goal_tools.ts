@@ -1,8 +1,10 @@
 import {
   cancelGoal,
   createGoal,
+  executeTurnProtocol,
   getExecutionTrace,
   getGoal,
+  getGoalContext,
   listExecutionTraces,
   listGoals,
   loadPersonaPackage,
@@ -39,7 +41,8 @@ export async function runGoalListTool(personaPath: string, args: {
     args.status === "active" ||
     args.status === "blocked" ||
     args.status === "completed" ||
-    args.status === "canceled"
+    args.status === "canceled" ||
+    args.status === "suspended"
       ? args.status
       : undefined;
   const items = await listGoals(personaPath, {
@@ -132,5 +135,118 @@ export async function runTraceGetTool(personaPath: string, args: {
     status: "ok",
     found: Boolean(trace),
     trace
+  };
+}
+
+export async function runRuntimeTurnTool(personaPath: string, args: {
+  userInput: string;
+  mode?: "auto" | "soul" | "agent";
+  model?: string;
+  maxSteps?: number;
+}): Promise<Record<string, unknown>> {
+  const userInput = String(args.userInput ?? "").trim();
+  if (!userInput) {
+    throw new Error("runtime.turn: userInput is required");
+  }
+  const personaPkg = await loadPersonaPackage(personaPath);
+  const model =
+    typeof args.model === "string" && args.model.trim().length > 0
+      ? args.model.trim()
+      : personaPkg.persona.defaultModel ?? "deepseek-chat";
+  const mode = args.mode === "soul" || args.mode === "agent" ? args.mode : "auto";
+  const turn = await executeTurnProtocol({
+    rootPath: personaPath,
+    personaPkg,
+    userInput,
+    model,
+    lifeEvents: [],
+    mode,
+    maxSteps: typeof args.maxSteps === "number" ? args.maxSteps : undefined
+  });
+  return {
+    status: "ok",
+    turn: {
+      ...turn,
+      requiresGeneration: turn.mode === "soul"
+    }
+  };
+}
+
+export async function runRuntimeGoalResumeTool(personaPath: string, args: {
+  goalId?: string;
+  userInput?: string;
+  model?: string;
+  maxSteps?: number;
+}): Promise<Record<string, unknown>> {
+  const listed = await listGoals(personaPath, { limit: 50 });
+  const goalId = typeof args.goalId === "string" ? args.goalId.trim() : "";
+  const targetId =
+    goalId ||
+    listed.find((item) => item.status === "active" || item.status === "suspended" || item.status === "blocked" || item.status === "pending")?.id ||
+    listed[0]?.id ||
+    "";
+  if (!targetId) {
+    return {
+      status: "ok",
+      found: false
+    };
+  }
+  const goal = await getGoal(personaPath, targetId);
+  if (!goal) {
+    return {
+      status: "ok",
+      found: false
+    };
+  }
+  const context = await getGoalContext(personaPath, targetId);
+  const personaPkg = await loadPersonaPackage(personaPath);
+  const model =
+    typeof args.model === "string" && args.model.trim().length > 0
+      ? args.model.trim()
+      : personaPkg.persona.defaultModel ?? "deepseek-chat";
+  const userInput =
+    typeof args.userInput === "string" && args.userInput.trim().length > 0
+      ? args.userInput.trim()
+      : context?.nextStepHint
+        ? `${goal.title}\n续做提示: ${context.nextStepHint}`
+        : goal.title;
+  const turn = await executeTurnProtocol({
+    rootPath: personaPath,
+    personaPkg,
+    userInput,
+    goalId: targetId,
+    model,
+    lifeEvents: [],
+    mode: "agent",
+    maxSteps: typeof args.maxSteps === "number" ? args.maxSteps : undefined
+  });
+  return {
+    status: "ok",
+    found: true,
+    goalId: targetId,
+    turn: {
+      ...turn,
+      requiresGeneration: false
+    }
+  };
+}
+
+export async function runRuntimeTraceGetTool(personaPath: string, args: {
+  traceId: string;
+}): Promise<Record<string, unknown>> {
+  const traceId = String(args.traceId ?? "").trim();
+  if (!traceId) {
+    throw new Error("runtime.trace.get: traceId is required");
+  }
+  const trace = await getExecutionTrace(personaPath, traceId);
+  const goal =
+    trace?.goalId && typeof trace.goalId === "string"
+      ? await getGoal(personaPath, trace.goalId)
+      : null;
+  return {
+    status: "ok",
+    found: Boolean(trace),
+    trace,
+    goal
   };
 }

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { compileContext, decide } from "../dist/index.js";
+import { compileContext, compileInstinctContext, decide } from "../dist/index.js";
 
 test("compileContext injects recent conversation window before current user message", () => {
   const pkg = {
@@ -47,4 +47,43 @@ test("compileContext injects recent conversation window before current user mess
   assert.match(messages[2].content, /topic A/);
   assert.equal(messages[messages.length - 1].role, "user");
   assert.equal(messages[messages.length - 1].content, "那下一步是什么");
+});
+
+test("compileInstinctContext keeps lightweight prompt with instinct evidence", () => {
+  const pkg = {
+    persona: { displayName: "Roxy" },
+    constitution: {
+      mission: "m",
+      values: ["v1"],
+      boundaries: ["b1"]
+    },
+    habits: { style: "warm concise", adaptability: "high" },
+    relationshipState: {
+      state: "intimate",
+      confidence: 0.82,
+      overall: 0.76,
+      dimensions: { trust: 0.8, safety: 0.76, intimacy: 0.84, reciprocity: 0.7, stability: 0.66, libido: 0.41 },
+      drivers: [],
+      version: "3",
+      updatedAt: new Date().toISOString()
+    },
+    userProfile: { preferredName: "Hiro", preferredLanguage: "zh-CN" },
+    pinned: { memories: ["你在压力时更希望先被安抚"] }
+  };
+  const trace = decide(pkg, "我今天真的很难过", "deepseek-chat", {
+    recalledMemoryBlocks: [{ id: "m1", source: "user", content: "我难过时希望先被安抚" }]
+  });
+  trace.routeDecision = "instinct";
+
+  const messages = compileInstinctContext(pkg, "我今天真的很难过", trace, { lifeEvents: [] });
+  assert.equal(messages.length >= 2, true);
+  assert.match(messages[0].content, /Instinct path/);
+  assert.match(messages[0].content, /Style: warm concise/);
+  assert.match(messages[0].content, /Instinct memory evidence blocks/);
+  // instinct path now includes constitution anchors (Mission/Values/Boundaries/Commitments)
+  // to ensure persona consistency in emotional/intimate contexts
+  assert.match(messages[0].content, /Mission:/);
+  assert.match(messages[0].content, /Values:/);
+  assert.match(messages[0].content, /Boundaries:/);
+  assert.equal(messages[messages.length - 1].content, "我今天真的很难过");
 });

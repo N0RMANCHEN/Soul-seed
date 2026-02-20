@@ -51,7 +51,9 @@ test("normalizeDecisionTrace keeps execution and consistency fields", () => {
     planVersion: 2,
     consistencyVerdict: "allow",
     consistencyRuleHits: ["identity", "relational"],
-    consistencyTraceId: "trace_1"
+    consistencyTraceId: "trace_1",
+    routeDecision: "deliberative",
+    routeReasonCodes: ["task_like_signal", "moderate_risk_signal"]
   });
 
   assert.equal(normalized.executionMode, "agent");
@@ -61,4 +63,6 @@ test("normalizeDecisionTrace keeps execution and consistency fields", () => {
   assert.equal(normalized.consistencyVerdict, "allow");
   assert.deepEqual(normalized.consistencyRuleHits, ["identity", "relational"]);
   assert.equal(normalized.consistencyTraceId, "trace_1");
+  assert.equal(normalized.routeDecision, "deliberative");
+  assert.deepEqual(normalized.routeReasonCodes, ["task_like_signal", "moderate_risk_signal"]);
 });

@@ -245,5 +245,47 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
       required: ["traceId"]
     }
+  },
+  {
+    name: "runtime.turn",
+    description:
+      "Unified persona runtime turn API. Runs auto/soul/agent orchestration and returns turn trace/execution payload.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        userInput: { type: "string", description: "User input text." },
+        mode: { type: "string", description: "Optional mode: auto|soul|agent." },
+        model: { type: "string", description: "Optional model override." },
+        maxSteps: { type: "integer", description: "Optional max steps for agent mode." }
+      },
+      required: ["userInput"]
+    }
+  },
+  {
+    name: "runtime.goal.resume",
+    description:
+      "Resume an existing goal with unified runtime contract. If goalId omitted, resumes latest resumable goal.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        goalId: { type: "string", description: "Optional goal id to resume." },
+        userInput: { type: "string", description: "Optional explicit resume input override." },
+        model: { type: "string", description: "Optional model override." },
+        maxSteps: { type: "integer", description: "Optional max steps for resumed run." }
+      },
+      required: []
+    }
+  },
+  {
+    name: "runtime.trace.get",
+    description:
+      "Get one unified runtime trace by trace id and include related goal snapshot when available.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        traceId: { type: "string", description: "Execution trace id." }
+      },
+      required: ["traceId"]
+    }
   }
 ];

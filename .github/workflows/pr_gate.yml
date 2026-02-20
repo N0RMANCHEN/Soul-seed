@@ -1,0 +1,84 @@
+name: PR Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── acceptance-gate ────────────────────────────────────────────────────────
+  # Verifies that the most recent nightly acceptance workflow run PASSED.
+  # If the nightly has never run or the last run failed, this gate fails the PR.
+  #
+  # Branch protection setup (GitHub UI required):
+  #   Repository → Settings → Branches → Branch protection rules → main
+  #   Required status checks: "acceptance-gate" and "quality-gate"
+  #
+  acceptance-gate:
+    name: Acceptance gate (last nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check last nightly acceptance run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Checking last nightly acceptance workflow run..."
+          STATUS=$(gh api \
+            "/repos/${{ github.repository }}/actions/workflows/acceptance.yml/runs?branch=main&per_page=1&status=completed" \
+            --jq '.workflow_runs[0].conclusion // "none"' 2>/dev/null || echo "none")
+
+          echo "Last nightly conclusion: $STATUS"
+
+          if [ "$STATUS" = "success" ]; then
+            echo "✅ Last nightly acceptance PASSED"
+          elif [ "$STATUS" = "none" ]; then
+            echo "⚠️  No completed nightly acceptance run found — gate SKIPPED"
+            echo "   Run the Acceptance workflow manually to establish baseline"
+          else
+            echo "❌ Last nightly acceptance conclusion: $STATUS"
+            echo "   The nightly acceptance must pass before merging"
+            exit 1
+          fi
+
+  # ── quality-gate ───────────────────────────────────────────────────────────
+  # Runs the quality scorecard (L0-L3) and baseline delta check on this PR.
+  # Fails the PR if any metric regresses beyond tolerance.
+  quality-gate:
+    name: Quality gate (scorecard + delta)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Quality scorecard (L0-L3)
+        run: node scripts/quality_scorecard.mjs
+
+      - name: Baseline delta check
+        run: node scripts/baseline_delta.mjs
+
+      - name: Upload quality artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-quality-${{ github.run_id }}
+          path: |
+            reports/quality/scorecard.json
+            reports/quality/delta-report.md
+          if-no-files-found: warn

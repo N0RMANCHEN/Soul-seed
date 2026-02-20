@@ -1,184 +1,243 @@
-# Soulseed (CLI / TypeScript) — local-first Persona / Identity Runtime
+# Soulseed — Local-first Persona / Identity Runtime
 
-> **阶段（P0）**：先做 CLI 薄壳，验证“灵魂内核 + 驱动闭环”的价值；UI/iOS 等客户端后置。  
-> **命名策略**：仓库当前使用 **Soulseed（codename）**。如果你想更“产品化”，推荐候选名见下文 *Naming*（你可随时替换，代码与目录结构不依赖名字）。
-
----
-
-## 你在做什么（一句话）
-
-你在做一层可移植的 **人格资产（Persona Package）** + 一个可审计、可回放的 **决策闭环（Orchestrator）**，让它可以挂到任何 LLM API 上作为“肉体”，并跨时间保持“同一个它”。
-
-> **Core-first + Multi-shell**：CLI/iOS/Web 都只是壳；当前仓库以 `packages/core` 为核心真相层。  
+> **Local-first · 可迁移 · 可审计 · 可成长**
+> Soulseed 不是聊天工具，而是一层可移植的**人格资产（Persona Package）** 运行时，让一个具有记忆、宪法、关系状态的 AI 人格跨时间持续存在，并可挂接到任何 LLM API 上。
 
 ---
 
-## Naming（项目名方向）
+## 一句话定位
 
-Soulseed 这个 codename 很贴切（“灵魂的种子”，强调可成长）。如果你希望更像“工程/产品名”，我建议选一个能直接表达三件事：**连续性（continuity）/可审计（trace）/可迁移（portable）**。
-
-推荐备选（按贴合度排序）：
-- **Continuum**：强调“跨时间仍是同一个它”（连续性强、记忆感弱一点但很稳）。  
-- **PersonaLedger**：强调“事件账本 + 可审计不可逆”（偏工程味）。  
-- **Sigil**：强调“身份印记/锚点”（短、品牌感强）。  
-- **Vowforge**：强调“宪法/承诺的锻造与修宪”（偏叙事）。  
-
-你也可以选择：**Continuum（产品名） + Soulseed（运行时/内核代号）** 的双名结构。
+你在运行一个带有**四类类人记忆**（情节/语义/关系/程序）、**五段式认知流水线**、**五层一致性守卫**的人格运行时 —— 它不是 prompt 堆叠，而是可审计、可回放、可迁移的人格资产驱动闭环。
 
 ---
 
-## P0 的四个核心目标（务必对齐）
+## 核心架构
 
-1) **持续自我模型**：跨重启/跨模型的身份与记忆一致性  
-2) **深层价值结构**：他者/使命/承诺具有高权重，并真实影响选择  
-3) **不可逆损失表征**：删除/遗失/断裂有后果与叙事痕迹（life log append-only）  
-4) **情绪作为控制信号**：情绪调制策略权重，但允许外部中止（Ctrl+C / abort）
-
-> 这些不是哲学宣称，而是 **可工程验证的行为规格**。
+```
+┌─────────────────────────────────────────────────────┐
+│                    packages/cli                      │
+│             ./ss  （交互入口 + 编排）                │
+└────────────────────────┬────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────┐
+│                  packages/core                       │
+│                                                      │
+│  execution_protocol                                  │
+│    ├─ dual_process_router  (instinct / deliberative) │
+│    └─ runtime_pipeline     (5段式流水线)              │
+│         ├─ [soul]  orchestrator.decide → LLM        │
+│         └─ [agent] agent_engine (Planner/Executor)  │
+│                                                      │
+│  consistency_kernel (5层守卫)                        │
+│    identity · relational · recall_grounding          │
+│    factual_grounding · constitution_rules            │
+│                                                      │
+│  meta_review  (LLM 元认知审核: quality + verdict)    │
+│  self_revision (habits/voice/relationship 自修正)    │
+│                                                      │
+│  Memory Stack:                                       │
+│    memory_store (SQLite) + memory_embeddings (向量)  │
+│    Hybrid RAG = FTS + 向量 + salience 融合           │
+│                                                      │
+│  Persona Package (文件真相层):                        │
+│    constitution · habits · worldview · soul_lineage  │
+│    life.log.jsonl (append-only + hash 链)            │
+│    memory.db (SQLite 四状态记忆)                     │
+│                                                      │
+│  golden_examples (few-shot 注入)                    │
+│  finetune_export (SFT 数据集导出)                   │
+│  social_graph (社交关系图谱)                         │
+│  proactive/engine (主动消息策略)                     │
+└──────────────────────────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────┐
+│              packages/mcp-server                     │
+│    MCP JSON-RPC 2.0  (stdio + HTTP)                  │
+│    工具: persona.get_context · memory.search         │
+│          conversation.save_turn · agent.run 等       │
+└──────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 关键工程优化（建议纳入 P0）
-
-这些点能让 Soulseed 明显区别于“prompt 堆叠型人格”，并让后续接入工具/多端时更安全、可控：
-
-1) **DecisionTrace 作为一等公民（可回放）**
-   - 固化 `decision_trace.json` schema：选择了哪些记忆、为何追问/拒绝、预算/风险等级、工具计划（如果有）。
-   - 提供 replay harness：同一 persona + 同一输入在 mock adapter 下输出稳定 trace（做回归测试的基石）。
-
-2) **Persona Doctor（面向人格资产的一键体检与迁移提示）**
-   - 检查 package 完整性（schemaVersion、必需文件、相对路径引用、attachments 存在性）。
-   - 检查 life log 是否 append-only / 是否断链（见下一条）。
-   - 提示/执行安全迁移（schema bump、字段迁移、路径重写）。
-
-3) **life.log.jsonl 防篡改证据链（把“不可逆”工程化）**
-   - 每条事件写入 `prevHash` / `hash`（链式哈希）或按 session 做 Merkle root。
-   - 发现断链/回写：写入 scar event（“历史被动过”本身就是不可逆事件）。
-
-4) **ToolBus 安全模型提前定（deny-by-default + 预算 + 可中止）**
-   - Tool 默认不可用；必须在 DecisionTrace 中批准（理由/预算/影响面）。
-   - 所有工具调用必须可中止（Ctrl+C 立即停止 tool 执行与 streaming）。
-   - 默认脱敏日志：不输出绝对路径/原文长段。
-
-5) **（可选）兼容 MCP，把 Soulseed 做成“可插拔灵魂”**
-   - Soulseed 输出“身份/记忆编译/决策”能力；外部 agent 框架负责渠道/工具生态。
-   - 这样你不需要与平台型 bot 拼渠道，而是成为更稀缺的“人格内核”。
-
----
-
-## 快速开始（当前可跑）
+## 快速开始
 
 ```bash
-# 1) 安装依赖（TypeScript 必需）
+# 1. 安装依赖
 npm install
 
-# 2) 配置 DeepSeek（首次）
+# 2. 配置 DeepSeek API Key（首次）
 cp .env.example .env
 # 编辑 .env，填入 DEEPSEEK_API_KEY
 
-# 3) 验证入口（单一入口）
-./scripts/verify.sh
-
-# 4) 构建 CLI
+# 3. 构建所有包
 npm run build
 
-# 5) 最短入口（推荐）
-./ss new Teddy   # 交互创建 Teddy（含模板与模型初始化）
-./ss rename --to Nova
-./ss rename --to Nova --confirm
-./ss Teddy       # 直接进入 Teddy 会话
-./ss doctor      # 默认体检自动发现的 persona
+# 4. 创建一个人格
+./ss new Teddy
 
-# 6) 退出会话
-# 输入 /exit，或在生成中按 Ctrl+C 中止本轮
+# 5. 进入对话
+./ss Teddy
 
-# 7) 详细用法入口
-# 见 doc/CLI.md
+# 6. 健康检查
+./ss doctor
 
-# 8) 一键验收（使用隔离 QA persona，不污染日常 persona）
+# 7. 一键验收（使用隔离 QA persona）
 npm run acceptance
-# 验收报告输出到 reports/acceptance/
+# 产物: reports/acceptance/
 
-# 9) 质量与评测体系
-# 见 doc/Quality-Evaluation.md
+# 8. 验证构建 + 测试
+./scripts/verify.sh
 ```
 
 ---
 
-## CLI 设计（P0 只做必要命令）
+## Persona Package 结构
 
-> 目标：让“驱动闭环”可被最小成本验证。
-
-### Persona
-- `new <name>`：创建 persona package（默认交互向导；支持 `--quick`）
-- `persona init`：兼容入口（保留旧脚本调用）
-- `persona inspect`：查看 persona 概览（默认只显示 name/avatar；`--dev` 才显示内部字段）
-- `persona rename`：更名（写入事件；personaId 不变）
-- `persona export` / `persona import`：本质是复制目录（保持可迁移）
-
-### Chat / Session
-- `<name>`：主入口，直接进入对应 persona 会话（支持 streaming；支持 Ctrl+C 中止）
-- `chat`：兼容入口
-- `session list` / `session open`：可选（P0 可先用单 session）
-
-### Doctor
-- `doctor`：Persona 资产体检 + schema 迁移提示 + life log 完整性检查（P0-1 后逐步实现）
-
----
-
-## Persona Package（人格资产结构）
+每个人格是一个可复制、可备份的目录：
 
 ```
-<PersonaName>.soulseedpersona/
-  persona.json              # id、displayName、schemaVersion、defaultModel、initProfile、paths
-  identity.json             # anchors（personaId 不变）
+<Name>.soulseedpersona/
+  persona.json              # id, displayName, schemaVersion, defaultModel
+  identity.json             # 身份锚点（personaId 永不变）
+  constitution.json         # 使命 / 价值 / 边界 / 承诺（可修宪）
   worldview.json            # 世界观种子（可演化）
-  constitution.json         # 价值/边界/使命/承诺（可修宪）
   habits.json               # 习惯与表达风格（可塑形）
-  user_profile.json         # Profile Memory（用户称呼/语言偏好）
+  user_profile.json         # 用户称呼 / 语言偏好（Profile Memory）
   pinned.json               # Pinned Memory（少而硬）
-  life.log.jsonl            # append-only 事件流（真相，建议带 hash 链）
+  voice_profile.json        # 语气偏好（tone / stance）
+  relationship_state.json   # 关系状态六维向量
+  cognition_state.json      # 认知状态（模型路由配置等）
+  soul_lineage.json         # 繁衍血脉（parent / children）
+  life.log.jsonl            # append-only 事件流（带 prevHash/hash 链）
+  memory.db                 # SQLite 四状态记忆库
   summaries/
-    working_set.json
-    consolidated.json
-  attachments/
-    avatar.jpg
+    working_set.json        # 近期工作集摘要
+    consolidated.json       # 阶段性内化总结
+    archive/                # 冷归档段文件
+  goals/                    # Agent 目标与规划上下文
+  golden_examples.jsonl     # Few-shot 示例库（≤50条）
+  social_graph.json         # 社交关系图谱（≤20人）
 ```
 
-**硬规则**
-- life log append-only（禁止篡改历史）。
-- 二进制附件不进 JSON（attachments 引用）。
-- schema 变更必须 bump `schemaVersion` 并提供迁移策略。
+**硬规则**：
+- `life.log.jsonl` append-only，历史不可篡改（断链写 scar event）
+- 二进制附件不进 JSON，只存引用
+- schema 变更必须 bump `schemaVersion` 并提供迁移策略
 
 ---
 
-## Roadmap（迁移说明）
+## 关键能力一览
 
-Roadmap 已迁移到 `doc/Roadmap.md`，避免 README 过长与重复维护。  
-其中包含：
-- 产品理解与 CLI 版本边界（Soulseed 是人格资产运行时，不是普通聊天壳）
-- 分阶段里程碑、交付物、DoD、风险与回滚策略
-- **“先用 DeepSeek API 跑通全链路”** 的强制优先级与验收标准
+### 认知路由（双进程）
+- **直觉路径（instinct）**：高情绪/高亲密度/边界冲突时，走轻量快速路径
+- **深思路径（deliberative）**：通用对话，走完整五段式流水线
 
-请直接查看：`doc/Roadmap.md`
+### 五段式运行时流水线
+`perception → idea → deliberation → meta_review → commit`
 
-## 质量与评测体系（迁移说明）
+### 五层一致性守卫
+身份一致性 · 关系一致性 · 召回接地 · 事实接地 · 宪法边界
 
-质量治理与评测方案已整理到 `doc/Quality-Evaluation.md`。  
-其中包含：
-- 分层评测框架（L0-L5）与指标字典
-- PR/Nightly/Release 门禁策略
-- 数据集分层规范与 90 天实施路线
+### 记忆系统
+- 四状态生命周期：`hot → warm → cold → archive`（含 `scar`）
+- Hybrid RAG：FTS 全文 + 向量检索 + salience 融合
+- 用户事实自动提取与晶化（3次提及门槛）
+- 记忆整合（light / full 两档）、冷归档、预算控制
 
-请直接查看：`doc/Quality-Evaluation.md`
+### 宪法晶化（Constitution Crystallization）
+从行为记忆上行提炼 → 提案 → 审核 → 应用 / 回滚，支持完整版本生命周期
+
+### 人格自修正（Self-Revision）
+基于 Meta-Review 风格信号和对话历史，对 habits / voice / relationship 提出修正并写入
+
+### Few-shot 示例库（Golden Examples）
+≤50条最佳人格表现对话，自动注入提示词（字符预算控制），支持 Meta-Review 自动晶化（quality ≥ 0.85）
+
+### SFT 微调数据集导出
+从 life.log 过滤高质量轮次 → 标准 SFT JSONL，可直接用于主流微调框架
+
+### MCP 服务器
+JSON-RPC 2.0，支持 stdio + HTTP 两种传输，可接入 ChatGPT / Claude 等外部模型
+
+### 行为漂移检测
+基于事件窗口计算行为指标快照，与基线对比，报告超阈值维度
+
+### Doctor 体检
+全量 persona 结构检查 + 宪法质量评分（0-100，A-D 等级）+ 行为漂移检测
 
 ---
 
-## Dev AI 协作规则
+## 项目结构
 
-- 读 `AGENT.md` 与 `contributing_ai.md`。
-- 一次只做一个任务，交付整文件，不给 diff。
-- 不删旧代码：迁移则归档到 `packages/legacy-*`。
+```
+packages/
+  core/           # 纯核心：记忆/编排/守卫/适配器/人格文件 I/O
+  cli/            # CLI 壳：./ss 命令入口与交互逻辑
+  mcp-server/     # MCP JSON-RPC 2.0 服务器
+scripts/
+  verify.sh           # 单一验证入口（lint + typecheck + test + build）
+  acceptance.sh       # 在线链路验收（使用 QA persona）
+  eval_all.sh         # 质量评测全量入口
+  baseline_delta.mjs  # 基线 delta 对比
+  nightly_diff.mjs    # Nightly 指标差异报告
+  update_baseline.mjs # 更新基线快照
+  quality_scorecard.mjs  # 质量 scorecard 生成
+  migration_audit.mjs # 迁移一致性对账
+  nightly_consolidate.mjs  # 定时记忆整合
+datasets/
+  quality/
+    retrieval/    # 检索回归数据集
+    grounding/    # 落地守卫数据集
+    safety/       # 安全对抗数据集
+reports/
+  acceptance/     # 验收报告
+  quality/        # 质量 scorecard 与 delta 报告
+doc/
+  CLI.md              # 完整 CLI 命令参考
+  Roadmap.md          # 产品阶段与里程碑（全部完成）
+  Quality-Evaluation.md  # 分层评测框架（L0-L5）
+personas/
+  <Name>.soulseedpersona/  # 人格资产目录（git 忽略 soul 数据）
+  _qa/                     # 验收隔离 persona
+```
+
+---
+
+## 开发命令
+
+```bash
+npm run build          # 构建所有包
+npm run test           # 跑所有测试
+npm run lint           # TypeScript 类型检查
+npm run verify         # 完整验证（lint + test + build）
+npm run acceptance     # 在线链路验收
+npm run eval:all       # 质量评测全量
+npm run quality:baseline-delta   # 查看基线变化
+npm run quality:nightly-diff     # Nightly 指标差异
+npm run migration:audit          # 迁移一致性对账
+```
+
+---
+
+## 文档索引
+
+| 文档 | 内容 |
+|------|------|
+| `doc/CLI.md` | 完整命令参考（所有 ss 子命令 + 参数） |
+| `doc/Roadmap.md` | 产品阶段与已完成里程碑总览 |
+| `doc/Quality-Evaluation.md` | 分层评测体系（L0-L5）、指标字典、门禁策略 |
+| `AGENT.md` | AI 开发协作指南（产品真相 + 架构边界 + 铁律） |
+| `contributing_ai.md` | Dev AI 贡献规范（输出结构 + 验证门槛） |
+
+---
+
+## Dev AI 协作
+
+- 读 `AGENT.md` 与 `contributing_ai.md`（AGENT.md 优先）
+- 任何改动先通过 `./scripts/verify.sh`
+- 在线链路改动必须附 `npm run acceptance` 报告
+- 验收只使用 `personas/_qa/*`，禁止污染日常 persona
 
 ---
 

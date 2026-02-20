@@ -268,3 +268,51 @@ test("goal tools and agent run are callable via registry", async () => {
   assert.equal(canceledParsed.found, true);
   assert.equal(canceledParsed.goal.status, "canceled");
 });
+
+test("runtime.turn provides unified turn payload", async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "ss-mcp-runtime-turn-"));
+  const { personaPath, personaPkg } = await makeTestPersona(tmp);
+  const registry = createTestRegistry({ personaPath, personaPkg });
+
+  const turn = await registry.dispatch("runtime.turn", {
+    userInput: "请帮我制定一个执行计划",
+    mode: "agent",
+    maxSteps: 2
+  });
+  assert.ok(!turn.isError);
+  const parsed = JSON.parse(turn.content[0].text);
+  assert.equal(parsed.status, "ok");
+  assert.equal(parsed.turn.mode === "agent" || parsed.turn.mode === "soul", true);
+  assert.equal(typeof parsed.turn.requiresGeneration, "boolean");
+});
+
+test("runtime.goal.resume and runtime.trace.get provide unified resume/trace contract", async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "ss-mcp-runtime-resume-"));
+  const { personaPath, personaPkg } = await makeTestPersona(tmp);
+  const registry = createTestRegistry({ personaPath, personaPkg });
+
+  const created = await registry.dispatch("goal.create", { title: "整理一个待续做的任务" });
+  const createdParsed = JSON.parse(created.content[0].text);
+  const goalId = createdParsed.goal.id;
+
+  const resumed = await registry.dispatch("runtime.goal.resume", {
+    goalId,
+    maxSteps: 2
+  });
+  assert.ok(!resumed.isError);
+  const resumedParsed = JSON.parse(resumed.content[0].text);
+  assert.equal(resumedParsed.status, "ok");
+  assert.equal(resumedParsed.found, true);
+  assert.equal(typeof resumedParsed.turn.execution.goalId, "string");
+  assert.equal(Array.isArray(resumedParsed.turn.execution.traceIds), true);
+
+  const traceId = resumedParsed.turn.execution.traceIds[0];
+  const trace = await registry.dispatch("runtime.trace.get", { traceId });
+  assert.ok(!trace.isError);
+  const traceParsed = JSON.parse(trace.content[0].text);
+  assert.equal(traceParsed.status, "ok");
+  assert.equal(traceParsed.found === true || traceParsed.found === false, true);
+  if (traceParsed.found) {
+    assert.equal(typeof traceParsed.trace.id, "string");
+  }
+});

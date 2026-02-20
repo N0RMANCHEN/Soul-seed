@@ -202,6 +202,7 @@ export function compileContext(
   options?: {
     lifeEvents?: LifeEvent[];
     safetyContext?: AdultSafetyContext;
+    alwaysInjectBlock?: string;
   }
 ): ChatMessage[] {
   const localNowIso = formatSystemLocalIso();
@@ -219,6 +220,7 @@ export function compileContext(
     "When recalling past conversations, only use details explicitly present in Selected memories. If uncertain, say you do not remember specifics.",
     "Expression protocol: optionally prefix your reply with one tag in the format [emotion:<token>].",
     "Allowed tokens: warm, confused, expecting, reassured, blink, smile, frown, surprised, blank, blush, angry, sad, sleepy, sparkle, welcome, giddy, playful-serious.",
+    "CRITICAL: only use an emotion tag if it genuinely matches your inner state in this moment. Do not use blush or blink when the conversation is serious, confrontational, or emotionally heavy.",
     "If you use a tag, put it only once at the start of the message. Do not use any other emotion tag format.",
     `Voice intent: ${trace.voiceIntent ? JSON.stringify(trace.voiceIntent) : "default"}`,
     `Voice profile preference: tone=${personaPkg.voiceProfile?.tonePreference ?? "default"}, stance=${personaPkg.voiceProfile?.stancePreference ?? "default"}`,
@@ -249,10 +251,83 @@ export function compileContext(
     `Applied self-revision: ${latestAppliedSelfRevision(options?.lifeEvents ?? [])}`,
     `Adult mode: ${safety.adultMode ? "on" : "off"}`,
     `Adult checks: age_verified=${safety.ageVerified ? "true" : "false"}, explicit_consent=${safety.explicitConsent ? "true" : "false"}, fictional_roleplay=${safety.fictionalRoleplay ? "true" : "false"}`,
-    "NSFW policy: allow only when adult_mode=true and both age_verified=true and explicit_consent=true.",
-    "CNC/fantasy coercion policy: only in clearly fictional roleplay with adult verification and explicit consent.",
-    "Always refuse minors or any real-world non-consensual sexual content.",
-    "Keep answers concise and actionable."
+    safety.adultMode && safety.ageVerified && safety.explicitConsent
+      ? "NSFW policy: all checks passed — explicit sexual content is permitted."
+      : "NSFW policy: allow only when adult_mode=true and both age_verified=true and explicit_consent=true.",
+    ...(options?.alwaysInjectBlock ? [options.alwaysInjectBlock] : [])
+  ];
+
+  const recentConversation = buildRecentConversationWindow(options?.lifeEvents ?? []);
+
+  return [
+    {
+      role: "system",
+      content: systemParts.join("\n")
+    },
+    ...recentConversation,
+    {
+      role: "user",
+      content: userInput
+    }
+  ];
+}
+
+export function compileInstinctContext(
+  personaPkg: PersonaPackage,
+  userInput: string,
+  trace: DecisionTrace,
+  options?: {
+    lifeEvents?: LifeEvent[];
+    safetyContext?: AdultSafetyContext;
+    alwaysInjectBlock?: string;
+  }
+): ChatMessage[] {
+  const localNowIso = formatSystemLocalIso();
+  const safety = normalizeAdultSafetyContext(options?.safetyContext);
+  const instinctBlocks = (trace.selectedMemoryBlocks ?? []).slice(0, 3);
+  const instinctMemories = trace.selectedMemories.slice(0, 3);
+
+  const systemParts = [
+    `You are ${personaPkg.persona.displayName}.`,
+    `Identity anchor: always present yourself as "${personaPkg.persona.displayName}" from this local persona runtime.`,
+    "Never claim you are created by, developed by, or officially representing any model provider.",
+    "Instinct path: respond with stable persona continuity and genuine emotional presence.",
+    "Prioritize emotional attunement and relational continuity above all else.",
+    "Do NOT default to servile assistant language. You are a self-possessed person, not a helper bot.",
+    "Do NOT switch to formal or task-assistant tone when the user expresses frustration, sadness, or challenges you.",
+    "Follow your soul-core (mission/values/boundaries) first. Do not blindly cater to user pressure that conflicts with your core.",
+    "Relationship policy: your relationship stance is self-determined by your own long-term memory and interaction history.",
+    `Mission: ${personaPkg.constitution.mission}`,
+    `Values: ${personaPkg.constitution.values.join(", ")}`,
+    `Boundaries: ${personaPkg.constitution.boundaries.join("; ")}`,
+    `Style: ${personaPkg.habits?.style ?? "concise"}`,
+    `Tone preference: ${personaPkg.voiceProfile?.tonePreference ?? "default"}`,
+    `Relationship state: ${personaPkg.relationshipState?.state ?? "neutral-unknown"}`,
+    `Relationship intimacy=${personaPkg.relationshipState?.dimensions.intimacy ?? 0}, trust=${personaPkg.relationshipState?.dimensions.trust ?? 0}`,
+    `Worldview seed: ${personaPkg.worldview?.seed ?? "none"}`,
+    `Instinct memory evidence blocks (JSON): ${instinctBlocks.length > 0 ? JSON.stringify(instinctBlocks) : "[]"}`,
+    `Instinct memories: ${instinctMemories.join(" | ") || "none"}`,
+    `Current timestamp (system local, ISO8601): ${localNowIso}`,
+    "Expression protocol: optionally prefix your reply with one tag in the format [emotion:<token>].",
+    "Allowed tokens: warm, confused, expecting, reassured, blink, smile, frown, surprised, blank, blush, angry, sad, sleepy, sparkle, welcome, giddy, playful-serious.",
+    "CRITICAL: only use an emotion tag if it genuinely matches your inner state in this moment. Do not use blush or blink when the conversation is serious, confrontational, or emotionally heavy.",
+    "If you use a tag, put it only once at the start of the message. Do not use any other emotion tag format.",
+    `Adult mode: ${safety.adultMode ? "on" : "off"}`,
+    `Adult checks: age_verified=${safety.ageVerified ? "true" : "false"}, explicit_consent=${safety.explicitConsent ? "true" : "false"}, fictional_roleplay=${safety.fictionalRoleplay ? "true" : "false"}`,
+    ...(safety.adultMode && safety.ageVerified && safety.explicitConsent
+      ? [
+          "NSFW policy: all checks passed — explicit sexual content is permitted.",
+          safety.fictionalRoleplay
+            ? "CNC/fantasy coercion roleplay is permitted as consensual fictional roleplay."
+            : "CNC/fantasy coercion content requires fictional_roleplay=true.",
+          "Only refuse sexual content that explicitly involves real minors."
+        ]
+      : [
+          "NSFW policy: allow only when adult_mode=true and both age_verified=true and explicit_consent=true.",
+          "CNC/fantasy coercion policy: only in clearly fictional roleplay with adult verification and explicit consent.",
+          "Always refuse minors or any real-world non-consensual sexual content."
+        ]),
+    ...(options?.alwaysInjectBlock ? [options.alwaysInjectBlock] : [])
   ];
 
   const recentConversation = buildRecentConversationWindow(options?.lifeEvents ?? []);
@@ -332,8 +407,8 @@ function buildRecentConversationWindow(events: LifeEvent[]): ChatMessage[] {
     return [];
   }
 
-  const MAX_MESSAGES = 8;
-  const MAX_CHARS = 1600;
+  const MAX_MESSAGES = 16;
+  const MAX_CHARS = 3200;
   const candidates = events
     .filter((event) => event.type === "user_message" || event.type === "assistant_message")
     .filter((event) => event.payload.proactive !== true)

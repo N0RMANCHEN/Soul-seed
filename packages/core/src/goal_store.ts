@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Goal, GoalEvent, GoalStatus, GoalStep } from "./types.js";
+import type { Goal, GoalContext, GoalEvent, GoalStatus, GoalStep } from "./types.js";
 
 interface GoalIndexEntry {
   id: string;
@@ -39,6 +39,10 @@ function indexPath(rootPath: string): string {
 
 function goalPath(rootPath: string, goalId: string): string {
   return path.join(goalsRoot(rootPath), `goal-${goalId}.json`);
+}
+
+function goalContextPath(rootPath: string, goalId: string): string {
+  return path.join(goalsRoot(rootPath), `context-${goalId}.json`);
 }
 
 function goalLogPath(rootPath: string): string {
@@ -135,6 +139,11 @@ export async function createGoal(params: {
       source: goal.source
     }
   });
+  await writeJson(goalContextPath(params.rootPath, goal.id), {
+    goalId: goal.id,
+    planVersion: 1,
+    updatedAt: now
+  } satisfies GoalContext);
   return goal;
 }
 
@@ -176,6 +185,8 @@ export async function saveGoal(rootPath: string, goal: Goal): Promise<void> {
       ? "goal_completed"
       : goal.status === "blocked"
         ? "goal_blocked"
+        : goal.status === "suspended"
+          ? "goal_suspended"
         : goal.status === "canceled"
           ? "goal_canceled"
           : "goal_updated",
@@ -184,6 +195,27 @@ export async function saveGoal(rootPath: string, goal: Goal): Promise<void> {
       steps: goal.steps.length
     }
   });
+}
+
+export async function getGoalContext(rootPath: string, goalId: string): Promise<GoalContext | null> {
+  await ensureGoalStore(rootPath);
+  const p = goalContextPath(rootPath, goalId);
+  if (!existsSync(p)) {
+    return null;
+  }
+  const current = await readJson<GoalContext>(p);
+  if (!current.goalId || typeof current.planVersion !== "number") {
+    return null;
+  }
+  return current;
+}
+
+export async function saveGoalContext(rootPath: string, context: GoalContext): Promise<void> {
+  await ensureGoalStore(rootPath);
+  await writeJson(goalContextPath(rootPath, context.goalId), {
+    ...context,
+    updatedAt: isoNow()
+  } satisfies GoalContext);
 }
 
 export async function cancelGoal(rootPath: string, goalId: string): Promise<Goal | null> {

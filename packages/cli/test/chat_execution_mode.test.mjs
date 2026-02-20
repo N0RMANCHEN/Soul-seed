@@ -24,12 +24,63 @@ test("chat supports execution-mode=agent and records goal lifecycle trace", asyn
 
   const lifeLog = await readFile(path.join(personaPath, "life.log.jsonl"), "utf8");
   assert.match(lifeLog, /"type":"goal_updated"/);
+  assert.match(lifeLog, /"type":"consistency_checked"/);
+});
+
+test("persona root command runs task execution without mode switch and keeps persona label", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-chat-root-unified-"));
+  const personasDir = path.join(tmpDir, "personas");
+  const personaPath = path.join(personasDir, "Roxy.soulseedpersona");
+  const initResult = spawnSync(process.execPath, [cliPath, "init", "--name", "Roxy", "--out", personaPath], {
+    cwd: tmpDir,
+    encoding: "utf8"
+  });
+  assert.equal(initResult.status, 0);
+
+  const chatResult = await runInteractive(
+    [cliPath, "Roxy"],
+    ["请帮我制定一个执行计划并分步完成", "/exit", "确认退出"],
+    { cwd: tmpDir }
+  );
+  assert.equal(chatResult.status, 0);
+  assert.match(chatResult.stdout, /Roxy>/);
+  assert.match(chatResult.stdout, /我会先给出可执行方案并保持人格一致性。|任务执行完成。/);
+  assert.doesNotMatch(chatResult.stdout, /execution-mode/i);
+
+  const lifeLog = await readFile(path.join(personaPath, "life.log.jsonl"), "utf8");
+  assert.match(lifeLog, /"type":"goal_updated"/);
+  assert.match(lifeLog, /"type":"consistency_checked"/);
+});
+
+test("chat can resume last goal and report progress without creating a new goal", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-chat-goal-resume-"));
+  const personasDir = path.join(tmpDir, "personas");
+  const personaPath = path.join(personasDir, "Roxy.soulseedpersona");
+  const initResult = spawnSync(process.execPath, [cliPath, "init", "--name", "Roxy", "--out", personaPath], {
+    cwd: tmpDir,
+    encoding: "utf8"
+  });
+  assert.equal(initResult.status, 0);
+
+  const chatResult = await runInteractive(
+    [cliPath, "Roxy"],
+    ["请帮我制定一个执行计划", "继续上次任务", "做到哪一步", "/exit", "确认退出"],
+    { cwd: tmpDir }
+  );
+  assert.equal(chatResult.status, 0);
+  assert.match(chatResult.stdout, /当前任务「[\s\S]*」状态：/);
+
+  const indexRaw = await readFile(path.join(personaPath, "goals", "index.json"), "utf8");
+  const index = JSON.parse(indexRaw);
+  assert.equal(Array.isArray(index.goals), true);
+  assert.equal(index.goals.length, 1);
 });
 
 function runInteractive(args, lines, options = {}) {
   const intervalMs = Number.isFinite(options.intervalMs) ? Math.max(20, Math.floor(options.intervalMs)) : 80;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
+      cwd: options.cwd,
       env: {
         ...process.env,
         DEEPSEEK_API_KEY: "test-key",

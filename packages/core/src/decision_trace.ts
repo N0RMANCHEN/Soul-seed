@@ -170,6 +170,14 @@ function normalizeConsistencyVerdict(value: unknown): DecisionTrace["consistency
   return value === "allow" || value === "rewrite" || value === "reject" ? value : undefined;
 }
 
+function normalizeRouteDecision(value: unknown): DecisionTrace["routeDecision"] {
+  return value === "instinct" || value === "deliberative" ? value : undefined;
+}
+
+function normalizeRouteTag(value: unknown): DecisionTrace["routeTag"] {
+  return value === "instinct" || value === "deliberative" || value === "meta" ? value : undefined;
+}
+
 function normalizePositiveInteger(value: unknown): number | undefined {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -227,7 +235,11 @@ export function normalizeDecisionTrace(input: unknown): DecisionTrace {
     planVersion: normalizePositiveInteger(input.planVersion),
     consistencyVerdict: normalizeConsistencyVerdict(input.consistencyVerdict),
     consistencyRuleHits: normalizeStringArray(input.consistencyRuleHits, 24),
-    consistencyTraceId: typeof input.consistencyTraceId === "string" ? input.consistencyTraceId : undefined
+    consistencyTraceId: typeof input.consistencyTraceId === "string" ? input.consistencyTraceId : undefined,
+    routeDecision: normalizeRouteDecision(input.routeDecision),
+    routeReasonCodes: normalizeStringArray(input.routeReasonCodes, 16),
+    routeTag: normalizeRouteTag(input.routeTag),
+    modelUsed: typeof input.modelUsed === "string" && input.modelUsed.trim() ? input.modelUsed.trim() : undefined
   };
 
   return normalized;

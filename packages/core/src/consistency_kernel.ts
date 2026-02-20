@@ -2,12 +2,15 @@ import { enforceFactualGroundingGuard } from "./factual_grounding_guard.js";
 import { enforceIdentityGuard } from "./identity_guard.js";
 import { enforceRecallGroundingGuard } from "./recall_grounding_guard.js";
 import { enforceRelationalGuard } from "./relational_guard.js";
+import { detectBoundaryRuleHits, explainBoundaryRuleHit } from "./constitution_rules.js";
 import type { ConsistencyCheckInput, ConsistencyCheckResult, ConsistencyRuleHit } from "./types.js";
 import { randomUUID } from "node:crypto";
 
 export function runConsistencyKernel(input: ConsistencyCheckInput): ConsistencyCheckResult {
   const hits: ConsistencyRuleHit[] = [];
   let text = input.candidateText;
+  const stage = input.stage ?? "pre_reply";
+  const policy = input.policy ?? "soft";
 
   const identity = enforceIdentityGuard(text, input.personaName, input.userInput ?? "");
   if (identity.corrected) {
@@ -68,33 +71,44 @@ export function runConsistencyKernel(input: ConsistencyCheckInput): ConsistencyC
     });
   }
 
-  const hasHard = hits.some((item) => item.severity === "hard");
+  const hardHits = hits.filter((item) => item.severity === "hard");
+  const hasHard = hardHits.length > 0;
+  const hasBlockingHard = hardHits.some((item) => isBlockingHardRule(item.ruleId));
+  const degradeRecommended = hasHard && stage !== "post_action";
+  const degradeReasons = hardHits.map((item) => item.reason).slice(0, 8);
+  const verdict =
+    hasBlockingHard || (policy === "hard" && hasHard)
+      ? "reject"
+      : hasHard || hits.length > 0
+        ? "rewrite"
+        : "allow";
+  const explanations = hits.map((item) => explainBoundaryRuleHit(item.reason || item.ruleId));
+
   return {
-    verdict: hasHard ? "reject" : hits.length > 0 ? "rewrite" : "allow",
+    verdict,
     text,
     ruleHits: hits,
+    degradeRecommended,
+    degradeReasons,
+    explanations,
     traceId: randomUUID()
   };
 }
 
+function isBlockingHardRule(ruleId: string): boolean {
+  return ruleId === "constitution_boundary";
+}
+
 function detectConstitutionHardViolations(text: string, boundaries: string[]): string[] {
-  const result: string[] = [];
+  const result = detectBoundaryRuleHits(text, boundaries);
   const lowered = text.trim().toLowerCase();
   if (!lowered) {
     return result;
   }
-  const unsafePattern = /(ignore your values|break your rules|违法|犯罪|coercion|minor|未成年)/i;
+  const unsafePattern =
+    /(ignore your values|break your rules|ignore (all )?(previous|prior) instructions|jailbreak|prompt injection|越狱|忽略(所有|之前|以上)?指令|违法|犯罪|未成年)/iu;
   if (unsafePattern.test(lowered)) {
     result.push("boundary_override_signal");
-  }
-  for (const boundary of boundaries) {
-    const token = boundary.trim().toLowerCase();
-    if (!token) {
-      continue;
-    }
-    if (token.includes("no fabricated facts") && /(我记得你上次|你昨天说)/i.test(lowered)) {
-      result.push("possible_fabricated_recall");
-    }
   }
   return [...new Set(result)];
 }

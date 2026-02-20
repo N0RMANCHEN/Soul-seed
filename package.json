@@ -11,7 +11,12 @@
     "build": "tsc -p packages/core/tsconfig.build.json && tsc -p packages/cli/tsconfig.build.json && tsc -p packages/mcp-server/tsconfig.build.json",
     "test": "npm run test -w @soulseed/core && npm run test -w @soulseed/cli && npm run test -w @soulseed/mcp-server",
     "acceptance": "./scripts/acceptance.sh",
-    "verify": "./scripts/verify.sh"
+    "verify": "./scripts/verify.sh",
+    "eval:all": "./scripts/eval_all.sh",
+    "migration:audit": "node ./scripts/migration_audit.mjs",
+    "quality:baseline-delta": "node ./scripts/baseline_delta.mjs",
+    "quality:update-baseline": "node ./scripts/update_baseline.mjs",
+    "quality:nightly-diff": "node ./scripts/nightly_diff.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",

@@ -360,19 +360,51 @@ async function fetchActiveSemanticMemories(
   return out;
 }
 
-function inferConflictKey(content: string): string {
+// ── Conflict key specification ─────────────────────────────────────────────
+// Each prefix maps to a semantic conflict key. Only one memory per key is
+// the "winner" — duplicate/conflicting records are resolved by policy.
+// Keys use dot notation: domain.subdomain[.detail]
+export const CONFLICT_KEY_RULES: ReadonlyArray<{ prefix: string; key: string }> = [
+  // Identity / name
+  { prefix: "用户称呼：", key: "user.preferred_name" },
+  { prefix: "用户真实姓名：", key: "user.real_name" },
+  { prefix: "用户昵称：", key: "user.nickname" },
+  // Location
+  { prefix: "用户所在地：", key: "user.location" },
+  { prefix: "用户城市：", key: "user.location.city" },
+  { prefix: "用户国家：", key: "user.location.country" },
+  // Occupation / work
+  { prefix: "用户职业：", key: "user.occupation" },
+  { prefix: "用户工作：", key: "user.occupation" },
+  { prefix: "用户公司：", key: "user.occupation.company" },
+  // Preferences
+  { prefix: "用户偏好：", key: "user.preference.general" },
+  { prefix: "交互偏好流程：", key: "user.preference.procedural" },
+  { prefix: "用户语言偏好：", key: "user.preference.language" },
+  { prefix: "用户沟通风格偏好：", key: "user.preference.communication" },
+  // Interests
+  { prefix: "用户兴趣：", key: "user.interest.topic" },
+  { prefix: "用户爱好：", key: "user.interest.hobby" },
+  // Beliefs / values
+  { prefix: "用户价值观：", key: "user.belief.value" },
+  { prefix: "用户立场：", key: "user.belief.stance" },
+  // Persona style feedback
+  { prefix: "用户期望的回应风格：", key: "persona.expected_style" },
+  { prefix: "用户反馈（风格）：", key: "persona.style_feedback" },
+  // Goals
+  { prefix: "用户当前目标：", key: "user.goal.current" },
+  { prefix: "用户长期目标：", key: "user.goal.longterm" }
+];
+
+export function inferConflictKey(content: string): string {
   const normalized = normalizeMemoryKey(content);
   if (!normalized) {
     return "";
   }
-  if (normalized.startsWith("用户称呼：")) {
-    return "user.preferred_name";
-  }
-  if (normalized.startsWith("用户偏好：")) {
-    return "user.preference.general";
-  }
-  if (normalized.startsWith("交互偏好流程：")) {
-    return "user.preference.procedural";
+  for (const rule of CONFLICT_KEY_RULES) {
+    if (normalized.startsWith(normalizeMemoryKey(rule.prefix))) {
+      return rule.key;
+    }
   }
   return "";
 }

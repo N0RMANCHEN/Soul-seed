@@ -1,8 +1,14 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { inspectMemoryStore, MEMORY_SCHEMA_VERSION, runMemoryStoreSql } from "./memory_store.js";
-import { ensureScarForBrokenLifeLog, readLifeEvents } from "./persona.js";
+import { ensureScarForBrokenLifeLog, readLifeEvents, MAX_REPRODUCTION_COUNT } from "./persona.js";
+import { inspectBoundaryRules } from "./constitution_rules.js";
+import { loadSocialGraph, validateSocialGraph, MAX_SOCIAL_PERSONS } from "./social_graph.js";
+import { MAX_USER_FACTS } from "./memory_user_facts.js";
+import { checkCrystallizationFileSizes } from "./constitution_crystallization.js";
+import { PERSONA_SCHEMA_VERSION } from "./types.js";
 import type { DoctorIssue, DoctorReport } from "./types.js";
 
 const REQUIRED_FILES = [
@@ -13,6 +19,7 @@ const REQUIRED_FILES = [
   "habits.json",
   "user_profile.json",
   "pinned.json",
+  "cognition_state.json",
   "relationship_state.json",
   "soul_lineage.json",
   "voice_profile.json",
@@ -39,9 +46,11 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
   }
 
   if (issues.length === 0) {
-    const persona = await readJson<{ id?: string }>(path.join(rootPath, "persona.json"));
+    const persona = await readJson<{ id?: string; schemaVersion?: string; paths?: Record<string, unknown> }>(
+      path.join(rootPath, "persona.json")
+    );
     const identity = await readJson<{ personaId?: string }>(path.join(rootPath, "identity.json"));
-    const constitution = await readJson<{ mission?: string }>(path.join(rootPath, "constitution.json"));
+    const constitution = await readJson<{ mission?: string; boundaries?: unknown }>(path.join(rootPath, "constitution.json"));
     const worldview = await readJson<Record<string, unknown>>(path.join(rootPath, "worldview.json"));
     const habits = await readJson<Record<string, unknown>>(path.join(rootPath, "habits.json"));
     const pinned = await readJson<Record<string, unknown>>(path.join(rootPath, "pinned.json"));
@@ -50,6 +59,22 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
     );
     const soulLineage = await readJson<Record<string, unknown>>(path.join(rootPath, "soul_lineage.json"));
     const voiceProfile = await readJson<Record<string, unknown>>(path.join(rootPath, "voice_profile.json"));
+
+    if (persona.schemaVersion !== PERSONA_SCHEMA_VERSION) {
+      const REQUIRED_PATHS = ["cognition", "soulLineage", "memoryDb"];
+      const missingPaths = persona.paths
+        ? REQUIRED_PATHS.filter((k) => !persona.paths![k])
+        : REQUIRED_PATHS;
+      issues.push({
+        code: "schema_version_outdated",
+        severity: "warning",
+        message:
+          `persona.json schemaVersion=${persona.schemaVersion ?? "unknown"}, expected ${PERSONA_SCHEMA_VERSION}` +
+          (missingPaths.length ? `; missing paths: ${missingPaths.join(", ")}` : "") +
+          `. Run: node scripts/migrate_schema.mjs --persona <path>`,
+        path: "persona.json"
+      });
+    }
 
     if (!persona.id || typeof persona.id !== "string") {
       issues.push({
@@ -85,6 +110,15 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
         path: "soul_lineage.json"
       });
     }
+    const reproductionCount = Number(soulLineage.reproductionCount);
+    if (Number.isFinite(reproductionCount) && reproductionCount >= MAX_REPRODUCTION_COUNT) {
+      issues.push({
+        code: "reproduction_count_at_limit",
+        severity: "warning",
+        message: `繁衍次数已达上限（${reproductionCount}/${MAX_REPRODUCTION_COUNT}），下次繁衍将被阻断（除非使用 --force-all）`,
+        path: "soul_lineage.json"
+      });
+    }
     if (!isWorldviewValid(worldview)) {
       issues.push({
         code: "invalid_worldview",
@@ -101,6 +135,17 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
         path: "habits.json"
       });
     }
+
+    const cognitionStateRaw = await readJson<Record<string, unknown>>(path.join(rootPath, "cognition_state.json"));
+    if (!isCognitionStateValid(cognitionStateRaw)) {
+      issues.push({
+        code: "invalid_cognition_state",
+        severity: "error",
+        message: "cognition_state.json is invalid (instinctBias/epistemicStance/toolPreference/updatedAt)",
+        path: "cognition_state.json"
+      });
+    }
+
     if (!isPinnedValid(pinned)) {
       issues.push({
         code: "invalid_pinned",
@@ -135,6 +180,7 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
         path: "constitution.json"
       });
     }
+    issues.push(...inspectConstitutionRuleHealth(constitution));
 
     const chain = await ensureScarForBrokenLifeLog({ rootPath, detector: "doctor" });
     if (!chain.ok) {
@@ -176,6 +222,9 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
       issues.push(...(await inspectMemoryFieldRanges(rootPath)));
       issues.push(...(await inspectMemoryGroundingHealth(rootPath)));
       issues.push(...(await inspectMemoryFtsHealth(rootPath)));
+      issues.push(...(await inspectMemorySourceEventHealth(rootPath)));
+      issues.push(...(await inspectMemoryEmbeddingHealth(rootPath)));
+      issues.push(...(await inspectRecallTraceHealth(rootPath)));
       issues.push(...(await inspectArchiveReferenceHealth(rootPath)));
     }
 
@@ -343,6 +392,15 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
         path: "summaries/working_set.json"
       });
     }
+
+    // P2-4: Constitution crystallization file size limits
+    issues.push(...(await inspectCrystallizationFileSizes(rootPath)));
+
+    // P2-5: user_facts count limit
+    issues.push(...(await inspectUserFactsHealth(rootPath)));
+
+    // P2-6: social graph health
+    issues.push(...(await inspectSocialGraphHealth(rootPath)));
   }
 
   return {
@@ -352,10 +410,97 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
   };
 }
 
+async function inspectCrystallizationFileSizes(rootPath: string): Promise<DoctorIssue[]> {
+  const issues: DoctorIssue[] = [];
+  try {
+    const report = await checkCrystallizationFileSizes(rootPath);
+    if (report.constitutionOverLimit) {
+      issues.push({
+        code: "constitution_file_size_exceeded",
+        severity: "warning",
+        message: `constitution.json is ${report.constitutionBytes}B, limit is 2048B. Run: ss refine constitution`,
+        path: "constitution.json"
+      });
+    }
+    if (report.habitsOverLimit) {
+      issues.push({
+        code: "habits_file_size_exceeded",
+        severity: "warning",
+        message: `habits.json is ${report.habitsBytes}B, limit is 1024B. Run: ss refine habits`,
+        path: "habits.json"
+      });
+    }
+    if (report.worldviewOverLimit) {
+      issues.push({
+        code: "worldview_file_size_exceeded",
+        severity: "warning",
+        message: `worldview.json is ${report.worldviewBytes}B, limit is 1024B. Run: ss refine worldview`,
+        path: "worldview.json"
+      });
+    }
+  } catch {
+    // Non-critical, skip
+  }
+  return issues;
+}
+
+async function inspectUserFactsHealth(rootPath: string): Promise<DoctorIssue[]> {
+  const issues: DoctorIssue[] = [];
+  try {
+    const rows = await runMemoryStoreSql(
+      rootPath,
+      `SELECT COUNT(*) FROM user_facts;`
+    );
+    const count = Number(rows.trim());
+    if (Number.isFinite(count) && count > MAX_USER_FACTS) {
+      issues.push({
+        code: "user_facts_over_limit",
+        severity: "warning",
+        message: `user_facts has ${count} entries, limit is ${MAX_USER_FACTS}. Consider pruning low-confidence facts.`,
+        path: "memory.db"
+      });
+    }
+  } catch {
+    // Non-critical
+  }
+  return issues;
+}
+
+async function inspectSocialGraphHealth(rootPath: string): Promise<DoctorIssue[]> {
+  const issues: DoctorIssue[] = [];
+  try {
+    const graph = await loadSocialGraph(rootPath);
+    const graphIssues = validateSocialGraph(graph);
+    for (const issue of graphIssues) {
+      if (issue.code === "too_many_persons") {
+        issues.push({
+          code: "social_graph_over_limit",
+          severity: "warning",
+          message: issue.message,
+          path: "social_graph.json"
+        });
+      } else {
+        issues.push({
+          code: "social_graph_person_too_long",
+          severity: "warning",
+          message: issue.message,
+          path: "social_graph.json"
+        });
+      }
+    }
+  } catch {
+    // Non-critical
+  }
+  return issues;
+}
+
 async function readJson<T>(filePath: string): Promise<T> {
   const raw = await readFile(filePath, "utf8");
   return JSON.parse(raw) as T;
 }
+
+// Suppress unused import warning
+void stat;
 
 function isMemoryMetaValid(meta: unknown, summaryIds: Set<string>): boolean {
   if (meta == null) {
@@ -1026,6 +1171,274 @@ async function inspectMemoryFtsHealth(rootPath: string): Promise<DoctorIssue[]> 
   }
 }
 
+const SYNTHETIC_SOURCE_PREFIXES = [
+  "seed:",
+  "consolidated:",
+  "migration:",
+  "import:",
+  "system:"
+];
+
+async function inspectMemorySourceEventHealth(rootPath: string): Promise<DoctorIssue[]> {
+  const issues: DoctorIssue[] = [];
+  const events = await readLifeEvents(rootPath);
+  const knownEventHashes = new Set(
+    events.map((event) => (typeof event.hash === "string" ? event.hash : "")).filter((item) => item.length > 0)
+  );
+
+  const raw = await runMemoryStoreSql(
+    rootPath,
+    [
+      "SELECT source_event_hash || '|' || COUNT(*)",
+      "FROM memories",
+      "GROUP BY source_event_hash;"
+    ].join("\n")
+  );
+  if (!raw.trim()) {
+    return issues;
+  }
+
+  let orphanRows = 0;
+  let orphanGroups = 0;
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) {
+      continue;
+    }
+    const sep = line.lastIndexOf("|");
+    if (sep <= 0) {
+      continue;
+    }
+    const sourceEventHash = line.slice(0, sep);
+    const rowCount = Number.parseInt(line.slice(sep + 1), 10);
+    const isSynthetic = SYNTHETIC_SOURCE_PREFIXES.some((prefix) => sourceEventHash.startsWith(prefix));
+    if (isSynthetic || knownEventHashes.has(sourceEventHash)) {
+      continue;
+    }
+    orphanGroups += 1;
+    orphanRows += Number.isFinite(rowCount) ? rowCount : 1;
+  }
+
+  if (orphanRows > 0) {
+    issues.push({
+      code: "orphan_memory_source_event_hash",
+      severity: orphanRows > 10 ? "error" : "warning",
+      message: `memory.db has ${orphanRows} rows (${orphanGroups} groups) whose source_event_hash is not found in life.log; run ./ss doctor --persona <path> then ./ss memory compact --persona <path> to repair`,
+      path: "memory.db"
+    });
+  }
+  return issues;
+}
+
+async function inspectMemoryEmbeddingHealth(rootPath: string): Promise<DoctorIssue[]> {
+  const raw = await runMemoryStoreSql(
+    rootPath,
+    [
+      "SELECT json_object(",
+      "'memoryId', e.memory_id,",
+      "'provider', e.provider,",
+      "'model', e.model,",
+      "'dim', e.dim,",
+      "'vectorJson', e.vector_json,",
+      "'contentHash', e.content_hash,",
+      "'memoryContent', m.content,",
+      "'memoryDeletedAt', m.deleted_at,",
+      "'memoryExcluded', m.excluded_from_recall",
+      ")",
+      "FROM memory_embeddings e",
+      "LEFT JOIN memories m ON m.id = e.memory_id;"
+    ].join("\n")
+  );
+  if (!raw.trim()) {
+    return [];
+  }
+
+  let orphan = 0;
+  let invalidVectorJson = 0;
+  let vectorDimMismatch = 0;
+  let invalidProviderModel = 0;
+  let contentHashMismatch = 0;
+  let staleExcluded = 0;
+
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) {
+      continue;
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      invalidVectorJson += 1;
+      continue;
+    }
+
+    const memoryContent = parsed.memoryContent;
+    const dim = Number(parsed.dim ?? 0);
+    const provider = typeof parsed.provider === "string" ? parsed.provider.trim() : "";
+    const model = typeof parsed.model === "string" ? parsed.model.trim() : "";
+    const vectorJson = typeof parsed.vectorJson === "string" ? parsed.vectorJson : "";
+    const contentHash = typeof parsed.contentHash === "string" ? parsed.contentHash : "";
+    const deletedAt = parsed.memoryDeletedAt;
+    const excluded = Number(parsed.memoryExcluded ?? 0);
+
+    if (memoryContent == null) {
+      orphan += 1;
+      continue;
+    }
+
+    if (!provider || !model || !Number.isFinite(dim) || dim <= 0) {
+      invalidProviderModel += 1;
+    }
+
+    let vector: unknown;
+    try {
+      vector = JSON.parse(vectorJson);
+    } catch {
+      invalidVectorJson += 1;
+      continue;
+    }
+    if (!Array.isArray(vector) || vector.some((item) => typeof item !== "number" || !Number.isFinite(item))) {
+      invalidVectorJson += 1;
+      continue;
+    }
+    if (Math.floor(dim) !== vector.length) {
+      vectorDimMismatch += 1;
+    }
+
+    const normalizedContent =
+      typeof memoryContent === "string" ? memoryContent.trim().slice(0, 2000) : "";
+    const expectedHash = sha256(normalizedContent);
+    if (contentHash !== expectedHash) {
+      contentHashMismatch += 1;
+    }
+
+    if ((typeof deletedAt === "string" && deletedAt.length > 0) || excluded === 1) {
+      staleExcluded += 1;
+    }
+  }
+
+  const issues: DoctorIssue[] = [];
+  if (orphan > 0) {
+    issues.push({
+      code: "memory_embedding_orphan_row",
+      severity: "error",
+      message: `memory_embeddings has ${orphan} rows without matched memory rows`,
+      path: "memory.db"
+    });
+  }
+  if (invalidProviderModel > 0) {
+    issues.push({
+      code: "memory_embedding_invalid_meta",
+      severity: "error",
+      message: `memory_embeddings has ${invalidProviderModel} rows with invalid provider/model/dim`,
+      path: "memory.db"
+    });
+  }
+  if (invalidVectorJson > 0) {
+    issues.push({
+      code: "memory_embedding_invalid_vector_json",
+      severity: "error",
+      message: `memory_embeddings has ${invalidVectorJson} rows with invalid vector_json`,
+      path: "memory.db"
+    });
+  }
+  if (vectorDimMismatch > 0) {
+    issues.push({
+      code: "memory_embedding_dim_mismatch",
+      severity: "error",
+      message: `memory_embeddings has ${vectorDimMismatch} rows with dim not matching vector length`,
+      path: "memory.db"
+    });
+  }
+  if (contentHashMismatch > 0) {
+    issues.push({
+      code: "memory_embedding_content_hash_mismatch",
+      severity: "warning",
+      message: `memory_embeddings has ${contentHashMismatch} stale rows with content hash mismatch; run ./ss memory index rebuild --persona <path>`,
+      path: "memory.db"
+    });
+  }
+  if (staleExcluded > 0) {
+    issues.push({
+      code: "memory_embedding_stale_excluded",
+      severity: "warning",
+      message: `memory_embeddings has ${staleExcluded} rows linked to deleted/excluded memories; run ./ss memory index rebuild --persona <path>`,
+      path: "memory.db"
+    });
+  }
+  return issues;
+}
+
+async function inspectRecallTraceHealth(rootPath: string): Promise<DoctorIssue[]> {
+  const raw = await runMemoryStoreSql(
+    rootPath,
+    [
+      "SELECT id || '|' || selected_ids_json || '|' || scores_json || '|' || budget_json || '|' || created_at",
+      "FROM recall_traces;"
+    ].join("\n")
+  );
+  if (!raw.trim()) {
+    return [];
+  }
+
+  let invalidJsonRows = 0;
+  let invalidCreatedAtRows = 0;
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) {
+      continue;
+    }
+    const parts = line.split("|");
+    if (parts.length < 5) {
+      invalidJsonRows += 1;
+      continue;
+    }
+    const selectedRaw = parts[1];
+    const scoresRaw = parts[2];
+    const budgetRaw = parts[3];
+    const createdAt = parts.slice(4).join("|");
+
+    let parsedOk = true;
+    try {
+      const selected = JSON.parse(selectedRaw);
+      const scores = JSON.parse(scoresRaw);
+      const budget = JSON.parse(budgetRaw);
+      const selectedValid = Array.isArray(selected);
+      const scoresValid = isRecord(scores);
+      const budgetValid = isRecord(budget);
+      if (!selectedValid || !scoresValid || !budgetValid) {
+        parsedOk = false;
+      }
+    } catch {
+      parsedOk = false;
+    }
+    if (!parsedOk) {
+      invalidJsonRows += 1;
+    }
+
+    if (!isIsoDate(createdAt)) {
+      invalidCreatedAtRows += 1;
+    }
+  }
+
+  const issues: DoctorIssue[] = [];
+  if (invalidJsonRows > 0) {
+    issues.push({
+      code: "invalid_recall_trace_payload",
+      severity: "error",
+      message: `recall_traces has ${invalidJsonRows} rows with invalid payload json`,
+      path: "memory.db"
+    });
+  }
+  if (invalidCreatedAtRows > 0) {
+    issues.push({
+      code: "invalid_recall_trace_created_at",
+      severity: "error",
+      message: `recall_traces has ${invalidCreatedAtRows} rows with invalid created_at`,
+      path: "memory.db"
+    });
+  }
+  return issues;
+}
+
 async function inspectArchiveReferenceHealth(rootPath: string): Promise<DoctorIssue[]> {
   const issues: DoctorIssue[] = [];
   const rowsRaw = await runMemoryStoreSql(
@@ -1184,6 +1597,10 @@ function safeJsonParse(raw: string): unknown | null {
   }
 }
 
+function sha256(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
 async function readWorkingSet(rootPath: string): Promise<{ summaryIds: Set<string>; count: number }> {
   const filePath = path.join(rootPath, "summaries", "working_set.json");
   if (!existsSync(filePath)) {
@@ -1198,4 +1615,39 @@ async function readWorkingSet(rootPath: string): Promise<{ summaryIds: Set<strin
     summaryIds: ids,
     count: items.length
   };
+}
+
+function isCognitionStateValid(payload: Record<string, unknown>): boolean {
+  const { instinctBias, epistemicStance, toolPreference, updatedAt } = payload;
+  const validBias =
+    typeof instinctBias === "number" &&
+    Number.isFinite(instinctBias) &&
+    instinctBias >= 0 &&
+    instinctBias <= 1;
+  const validStance =
+    epistemicStance === "balanced" ||
+    epistemicStance === "cautious" ||
+    epistemicStance === "assertive";
+  const validTool =
+    toolPreference === "auto" ||
+    toolPreference === "read_first" ||
+    toolPreference === "reply_first";
+  const validUpdatedAt = typeof updatedAt === "string" && isIsoDate(updatedAt);
+  return validBias && validStance && validTool && validUpdatedAt;
+}
+
+function inspectConstitutionRuleHealth(constitution: {
+  boundaries?: unknown;
+}): DoctorIssue[] {
+  if (!Array.isArray(constitution.boundaries)) {
+    return [];
+  }
+  const boundaries = constitution.boundaries.filter((item): item is string => typeof item === "string");
+  const issues = inspectBoundaryRules(boundaries);
+  return issues.map((item) => ({
+    code: item.code,
+    severity: "error" as const,
+    message: item.message,
+    path: "constitution.json"
+  }));
 }

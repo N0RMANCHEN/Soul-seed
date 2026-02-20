@@ -23,6 +23,7 @@ import {
   archiveColdMemories,
   createChildPersonaFromParent,
   compileContext,
+  compileInstinctContext,
   composeMetaAction,
   judgePersonaContentLabel,
   doctorPersona,
@@ -50,6 +51,7 @@ import {
   isRenameRequestFresh,
   loadPersonaPackage,
   listPinnedMemories,
+  patchCognitionState,
   recallMemoriesWithTrace,
   readLifeEvents,
   readWorkingSet,
@@ -81,9 +83,11 @@ import {
   createGoal,
   listGoals,
   getGoal,
+  getGoalContext,
   cancelGoal,
   runAgentExecution,
   executeTurnProtocol,
+  runConsistencyKernel,
   getExecutionTrace,
   listExecutionTraces,
   writeRelationshipState,
@@ -95,10 +99,56 @@ import {
   resolveCapabilityIntent,
   evaluateCapabilityPolicy,
   arbitrateMetaAction,
+  runMetaReviewLlm,
   computeProactiveStateSnapshot,
   decideProactiveEmission,
   fetchUrlContent,
-  upsertPersonaJudgment
+  upsertPersonaJudgment,
+  listCrystallizationRuns,
+  proposeConstitutionCrystallization,
+  applyCrystallizationRun,
+  rejectCrystallizationRun,
+  rollbackCrystallizationRun,
+  listConstitutionReviewRequests,
+  approveConstitutionReview,
+  rejectConstitutionReviewRequest,
+  checkCrystallizationFileSizes,
+  getUserFacts,
+  upsertUserFact,
+  deleteUserFact,
+  graduateFactsFromMemories,
+  extractUserFactsFromTurn,
+  compileAlwaysInjectContext,
+  formatAlwaysInjectContext,
+  loadSocialGraph,
+  addSocialPerson,
+  removeSocialPerson,
+  searchSocialPersons,
+  compileRelatedPersonContext,
+  computeBehaviorMetrics,
+  saveBehaviorSnapshot,
+  detectBehaviorDrift,
+  listBehaviorSnapshots,
+  scoreConstitutionQuality,
+  explainLastDecision,
+  inspectPersonaPackage,
+  exportPersonaPackage,
+  importPersonaPackage,
+  extractSpiritualLegacy,
+  MAX_REPRODUCTION_COUNT,
+  formatModelRoutingConfig,
+  mergeModelRoutingConfig,
+  exportFinetuneDataset,
+  listGoldenExamples,
+  addGoldenExample,
+  removeGoldenExample,
+  getGoldenExamplesStats,
+  compileGoldenExamplesBlock,
+  loadAndCompileGoldenExamples,
+  MAX_GOLDEN_EXAMPLES,
+  MAX_CHARS_PER_EXAMPLE,
+  DEFAULT_FEWSHOT_BUDGET_CHARS,
+  reconcileRelationshipWithMemory
 } from "@soulseed/core";
 import type {
   AdultSafetyContext,
@@ -146,7 +196,10 @@ const RESERVED_ROOT_COMMANDS = new Set([
   "memory",
   "persona",
   "rename",
-  "mcp"
+  "refine",
+  "social",
+  "mcp",
+  "explain"
 ]);
 
 const PERSONA_TEMPLATES: Record<PersonaTemplateKey, PersonaTemplate> = {
@@ -284,7 +337,7 @@ function printHelp(): void {
       "  <name> [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
       "  doctor [--persona ./personas/<name>.soulseedpersona]",
       "  goal create --title <text> [--persona <path>]",
-      "  goal list [--persona <path>] [--status pending|active|blocked|completed|canceled] [--limit 20]",
+      "  goal list [--persona <path>] [--status pending|active|blocked|completed|canceled|suspended] [--limit 20]",
       "  goal get --id <goal_id> [--persona <path>]",
       "  goal cancel --id <goal_id> [--persona <path>]",
       "  agent run --input <task_text> [--goal-id <goal_id>] [--max-steps 4] [--persona <path>]",
@@ -319,8 +372,34 @@ function printHelp(): void {
       "  memory pin remove --text <memory> [--persona <path>]",
       "  memory unpin --text <memory> [--persona <path>]  # alias of memory pin remove",
       "  memory reconcile [--persona ./personas/<name>.soulseedpersona]",
+      "  memory facts list [--persona <path>] [--limit 20]",
+      "  memory facts add --key <key> --value <value> [--persona <path>]",
+      "  memory facts remove --key <key> [--persona <path>]",
+      "  memory facts graduate [--persona <path>]",
+      "  refine constitution|habits|worldview [--persona <path>] [--trigger manual|auto]",
+      "  refine list [--persona <path>] [--domain constitution|habits|worldview] [--status pending|applied|rejected]",
+      "  refine apply --id <run_id> [--persona <path>]",
+      "  refine reject --id <run_id> [--persona <path>]",
+      "  refine rollback --id <run_id> [--persona <path>]",
+      "  refine diff --id <run_id> [--persona <path>]",
+      "  refine review list [--persona <path>]",
+      "  refine review approve --id <review_hash> [--reviewer <name>] [--persona <path>]",
+      "  refine review reject --id <review_hash> [--reviewer <name>] [--reason <text>] [--persona <path>]",
+      "  refine sizes [--persona <path>]",
+      "  social list [--persona <path>]",
+      "  social add --name <name> --relationship <rel> [--facts <fact1,fact2>] [--persona <path>]",
+      "  social remove --name <name> [--persona <path>]",
+      "  social search --query <q> [--persona <path>]",
       "  rename --to <new_name> [--persona <path>] [--confirm]",
       "  persona reproduce --name <child_name> [--persona <path>] [--out <path>] [--force-all]",
+      "  persona inspect [--persona <path>]",
+      "  persona export --out <dir> [--persona <path>]",
+      "  persona import --in <src_dir> --out <dest_dir>",
+      "  persona model-routing [--show] [--instinct <model>] [--deliberative <model>] [--meta <model>] [--reset] [--persona <path>]",
+      "  finetune export-dataset --out <path.jsonl> [--min-turns <n>] [--max-turns <n>] [--persona <path>]",
+      "  examples list [--persona <path>]",
+      "  examples add --user <text> --assistant <text> [--label <label>] [--expires <ISO8601>] [--persona <path>]",
+      "  examples remove --id <id-prefix> [--persona <path>]",
       "  mcp [--persona <path>] [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--auth-token <token>]",
       "",
       "兼容命令:",
@@ -336,6 +415,7 @@ function printHelp(): void {
       "  /files              兼容入口：查看当前已附加文件",
       "  /clearread          兼容入口：清空已附加文件",
       "  /proactive ...      兼容入口：主动消息调试命令",
+      "  /proactive quiet HH-HH  设置静默时段（本地时间，例：22-8 表示22:00至次日8:00关闭主动消息）",
       "  /relation           查看当前关系状态",
       "  /relation detail    查看关系多维评分与最近驱动因素",
       "  /rename confirm <new_name>  在聊天中确认改名",
@@ -496,7 +576,11 @@ function resolveThinkingPreviewModelMaxMs(options: Record<string, string | boole
  *
  * 修改默认值只需要改这里这一处：
  * - strictMemoryGrounding: 默认严格记忆对齐
- * - adultSafety: 成人内容门控默认值
+ * - adultSafety: 成人内容门控默认值（最小权限原则，默认全部关闭）
+ *
+ * 以下的四个成人模式开关不允许AI在未经用户允许进行自行修改,包括不限于Codex/Claude等AI助手.
+ * 如需开启成人内容，请使用 CLI 参数：
+ *   --adult-mode --age-verified --explicit-consent [--fictional-roleplay]
  */
 const CHAT_POLICY_DEFAULTS: {
   strictMemoryGrounding: boolean;
@@ -892,7 +976,8 @@ async function runGoal(action: string | undefined, options: Record<string, strin
       statusRaw === "active" ||
       statusRaw === "blocked" ||
       statusRaw === "completed" ||
-      statusRaw === "canceled"
+      statusRaw === "canceled" ||
+      statusRaw === "suspended"
         ? statusRaw
         : undefined;
     const limit = parseLimit(optionString(options, "limit"), 20, 1, 200);
@@ -933,12 +1018,20 @@ async function runAgentCommand(action: string | undefined, options: Record<strin
   const goalId = optionString(options, "goal-id")?.trim();
   const maxSteps = parseLimit(optionString(options, "max-steps"), 4, 1, 12);
   const personaPkg = await loadPersonaPackage(personaPath);
+  let plannerAdapter: DeepSeekAdapter | undefined;
+  try {
+    const model = optionString(options, "model")?.trim() || personaPkg.persona.defaultModel || DEFAULT_CHAT_MODEL;
+    plannerAdapter = new DeepSeekAdapter({ model });
+  } catch {
+    plannerAdapter = undefined;
+  }
   const execution = await runAgentExecution({
     rootPath: personaPath,
     personaPkg,
     userInput,
     goalId: goalId && goalId.length > 0 ? goalId : undefined,
-    maxSteps
+    maxSteps,
+    plannerAdapter
   });
   console.log(JSON.stringify(execution, null, 2));
 }
@@ -965,6 +1058,40 @@ async function runTrace(action: string | undefined, options: Record<string, stri
     return;
   }
   throw new Error("trace 用法: trace <get|list> ...");
+}
+
+async function runExplain(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
+  // `ss explain --last` or `ss explain last`
+  const isLast = action === "last" || options.last === true;
+  if (!isLast) {
+    console.log("用法：ss explain --last [--persona <path>]");
+    console.log("  --last    解释上一轮回应的决策过程");
+    return;
+  }
+
+  const personaPath = resolvePersonaPath(options);
+  const explanation = await explainLastDecision(personaPath);
+
+  if (!explanation) {
+    console.log("暂无可解释的回应记录。请先与人格对话，再运行 ss explain --last。");
+    return;
+  }
+
+  const ts = new Date(explanation.timestamp).toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+
+  console.log(`\n── 上一轮回应解释（${ts}）──────────────────────────────`);
+  console.log(`\n【路由路径】\n  ${explanation.routeExplanation}`);
+  console.log(`\n【记忆依据】\n  ${explanation.memoryExplanation}`);
+  console.log(`\n【边界检查】\n  ${explanation.boundaryExplanation}`);
+  console.log(`\n【语气选择】\n  ${explanation.voiceExplanation}`);
+  console.log(`\n【综合摘要】\n  ${explanation.summary}`);
+  console.log(`\n────────────────────────────────────────────────────────`);
 }
 
 async function runPersonaReproduce(options: Record<string, string | boolean>): Promise<void> {
@@ -1003,6 +1130,7 @@ async function runPersonaReproduce(options: Record<string, string | boolean>): P
       childPersonaId: result.childPersonaId,
       childDisplayName: childName,
       childPersonaPath: result.childPersonaPath,
+      spiritualLegacyLength: result.spiritualLegacy.length,
       trigger: forced ? "cli_force_all" : "cli",
       forced
     }
@@ -1010,6 +1138,223 @@ async function runPersonaReproduce(options: Record<string, string | boolean>): P
 
   console.log(`繁衍完成: ${result.childPersonaPath}`);
   console.log(`child_persona_id=${result.childPersonaId}`);
+  if (result.spiritualLegacy.length > 0) {
+    console.log(`精神遗产摘录已写入 spiritual_legacy.txt（${result.spiritualLegacy.length} 字符）`);
+  }
+}
+
+async function runPersonaInspect(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const result = await inspectPersonaPackage(personaPath);
+  const sizeMb = (result.totalSizeBytes / 1024 / 1024).toFixed(2);
+  console.log(`Persona: ${result.displayName} (${result.personaId})`);
+  console.log(`路径: ${result.rootPath}`);
+  console.log(`创建时间: ${result.createdAt}  Schema: ${result.schemaVersion}`);
+  console.log(`文件数: ${result.fileCount}  总大小: ${sizeMb} MB`);
+  console.log(`生命日志事件: ${result.lifeLogEventCount}  附件: ${result.attachmentCount}`);
+  console.log("");
+  console.log("文件清单:");
+  for (const f of result.files) {
+    const kb = (f.sizeBytes / 1024).toFixed(1);
+    console.log(`  ${f.relativePath.padEnd(40)} ${kb.padStart(8)} KB  ${f.sha256.slice(0, 12)}…`);
+  }
+}
+
+async function runPersonaExport(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const outRaw = optionString(options, "out");
+  if (!outRaw) {
+    throw new Error("persona export 需要 --out <dir>");
+  }
+  const outPath = path.resolve(process.cwd(), outRaw);
+  const manifest = await exportPersonaPackage(personaPath, outPath);
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        outPath,
+        personaId: manifest.personaId,
+        displayName: manifest.displayName,
+        filesExported: manifest.files.length
+      },
+      null,
+      2
+    )
+  );
+}
+
+async function runPersonaImport(options: Record<string, string | boolean>): Promise<void> {
+  const inRaw = optionString(options, "in");
+  if (!inRaw) {
+    throw new Error("persona import 需要 --in <src_dir>");
+  }
+  const outRaw = optionString(options, "out");
+  if (!outRaw) {
+    throw new Error("persona import 需要 --out <dest_dir>");
+  }
+  const srcPath = path.resolve(process.cwd(), inRaw);
+  const destPath = path.resolve(process.cwd(), outRaw);
+  const result = await importPersonaPackage(srcPath, destPath);
+  if (!result.ok) {
+    console.error("导入失败:");
+    for (const err of result.errors) {
+      console.error(`  - ${err}`);
+    }
+    if (result.rollbackPerformed) {
+      console.error("（已自动回滚，目标目录已清除）");
+    }
+    process.exit(1);
+  }
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        destPath: result.destPath,
+        personaId: result.personaId,
+        displayName: result.displayName,
+        filesImported: result.filesImported
+      },
+      null,
+      2
+    )
+  );
+}
+
+async function runPersonaModelRouting(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const personaPkg = await loadPersonaPackage(personaPath);
+  const defaultModel = optionString(options, "model") ?? (personaPkg.persona.defaultModel ?? DEFAULT_CHAT_MODEL);
+
+  const instinct = optionString(options, "instinct");
+  const deliberative = optionString(options, "deliberative");
+  const meta = optionString(options, "meta");
+  const reset = options["reset"] === true || options["reset"] === "true";
+  const show = options["show"] === true || options["show"] === "true";
+
+  const hasChange = instinct !== undefined || deliberative !== undefined || meta !== undefined || reset;
+
+  if (!hasChange || show) {
+    // Show current routing config
+    const formatted = formatModelRoutingConfig(personaPkg.cognition.modelRouting, defaultModel);
+    console.log(`模型路由配置（${personaPkg.persona.displayName}）：`);
+    console.log(`  ${formatted}`);
+    if (!hasChange) return;
+  }
+
+  if (reset) {
+    await patchCognitionState(personaPath, { modelRouting: null });
+    console.log("模型路由已重置为默认（全部使用 persona defaultModel）");
+    return;
+  }
+
+  const patch: { instinct?: string; deliberative?: string; meta?: string } = {};
+  if (instinct !== undefined) patch.instinct = instinct;
+  if (deliberative !== undefined) patch.deliberative = deliberative;
+  if (meta !== undefined) patch.meta = meta;
+
+  const updated = await patchCognitionState(personaPath, { modelRouting: patch });
+  const formatted = formatModelRoutingConfig(updated.modelRouting, defaultModel);
+  console.log(`模型路由已更新：`);
+  console.log(`  ${formatted}`);
+}
+
+async function runFinetuneExportDataset(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const outRaw = optionString(options, "out");
+  if (!outRaw) {
+    throw new Error("finetune export-dataset requires --out <path.jsonl>");
+  }
+  const outPath = path.resolve(process.cwd(), outRaw);
+  const minTurns = optionString(options, "min-turns") ? Number(optionString(options, "min-turns")) : 0;
+  const maxTurnsRaw = optionString(options, "max-turns");
+  const maxTurns = maxTurnsRaw ? Number(maxTurnsRaw) : undefined;
+
+  console.log(`[finetune] exporting from: ${personaPath}`);
+  const result = await exportFinetuneDataset(personaPath, outPath, { minTurns, maxTurns });
+
+  if (result.skippedBeforeMinTurns) {
+    console.warn(`[finetune] SKIPPED: only ${result.exportedTurns} valid turns available, minimum is ${minTurns}`);
+    console.warn(`[finetune] Run more conversations to build up sufficient training data.`);
+    process.exit(2);
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        outputPath: result.outputPath,
+        totalLifeEvents: result.totalLifeEvents,
+        totalTurnCandidates: result.totalTurnCandidates,
+        exportedTurns: result.exportedTurns,
+        skippedTurns: result.skippedTurns
+      },
+      null,
+      2
+    )
+  );
+}
+
+async function runExamples(
+  action: string,
+  options: Record<string, string | boolean>
+): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+
+  if (!action || action === "list") {
+    const examples = await listGoldenExamples(personaPath);
+    const stats = await getGoldenExamplesStats(personaPath);
+    console.log(`Few-shot 示例库 (${personaPath})`);
+    console.log(`总计: ${stats.total}/${MAX_GOLDEN_EXAMPLES}  活跃: ${stats.active}  已过期: ${stats.expired}`);
+    console.log(`来源: user=${stats.bySource.user}  meta_review=${stats.bySource.meta_review}`);
+    console.log("");
+    if (examples.length === 0) {
+      console.log("（暂无示例）");
+      return;
+    }
+    for (const ex of examples) {
+      const expiry = ex.expiresAt ? ` [expires: ${ex.expiresAt}]` : "";
+      console.log(`[${ex.id.slice(0, 8)}] ${ex.label} — by ${ex.addedBy} at ${ex.addedAt}${expiry}`);
+      console.log(`  User: ${ex.userContent.slice(0, 60)}${ex.userContent.length > 60 ? "…" : ""}`);
+      console.log(`  Asst: ${ex.assistantContent.slice(0, 60)}${ex.assistantContent.length > 60 ? "…" : ""}`);
+    }
+    console.log(`\n预算估计: ${compileGoldenExamplesBlock(examples, DEFAULT_FEWSHOT_BUDGET_CHARS).length} chars (budget=${DEFAULT_FEWSHOT_BUDGET_CHARS})`);
+    return;
+  }
+
+  if (action === "add") {
+    const userContent = optionString(options, "user");
+    const assistantContent = optionString(options, "assistant");
+    if (!userContent) throw new Error("examples add 需要 --user <text>");
+    if (!assistantContent) throw new Error("examples add 需要 --assistant <text>");
+    const label = optionString(options, "label");
+    const expiresAt = optionString(options, "expires") ?? null;
+    const result = await addGoldenExample(personaPath, userContent, assistantContent, {
+      label: label ?? undefined,
+      expiresAt
+    });
+    if (!result.ok) {
+      console.error(`添加失败: ${result.reason}`);
+      process.exit(1);
+    }
+    console.log(`示例已添加 [${result.example!.id.slice(0, 8)}] ${result.example!.label}`);
+    console.log(`字符数: user=${result.example!.userContent.length}  assistant=${result.example!.assistantContent.length}`);
+    console.log(`（上限: 每条 ${MAX_CHARS_PER_EXAMPLE} 字符，最多 ${MAX_GOLDEN_EXAMPLES} 条）`);
+    return;
+  }
+
+  if (action === "remove") {
+    const idPrefix = optionString(options, "id");
+    if (!idPrefix) throw new Error("examples remove 需要 --id <id-prefix>");
+    const result = await removeGoldenExample(personaPath, idPrefix);
+    if (!result.ok) {
+      console.error(`删除失败: ${result.reason}`);
+      process.exit(1);
+    }
+    console.log(`示例已删除 [${result.removed!.id.slice(0, 8)}] ${result.removed!.label}`);
+    return;
+  }
+
+  throw new Error(`未知 examples 子命令: ${action}。可用: list / add / remove`);
 }
 
 async function runChat(options: Record<string, string | boolean>): Promise<void> {
@@ -1040,14 +1385,29 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   const adapter = new DeepSeekAdapter({
     model: resolvedModel
   });
-  void runMemoryConsolidation(personaPath, {
-    trigger: "chat_open",
-    mode: "light",
-    budgetMs: 1000
-  }).catch((error: unknown) => {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.warn(`[warning] chat_open consolidation failed: ${msg}`);
-  });
+  const skipBackgroundMaintenance = process.env.DEEPSEEK_API_KEY === "test-key";
+  if (!skipBackgroundMaintenance) {
+    void runMemoryConsolidation(personaPath, {
+      trigger: "chat_open",
+      mode: "light",
+      budgetMs: 1000
+    }).catch((error: unknown) => {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`[warning] chat_open consolidation failed: ${msg}`);
+    });
+
+    // 重连时关系状态记忆对齐：离线 > 48h 且有足够 relational 记忆时部分恢复
+    void reconcileRelationshipWithMemory(personaPath).then((result) => {
+      if (result.reconciled && result.recoveryDelta) {
+        const d = result.recoveryDelta;
+        const gapH = result.gapMs ? Math.round(result.gapMs / 3600000) : "?";
+        console.log(`[reconcile] 关系状态已修复（离线 ${gapH}h）: intimacy+${d.intimacy.toFixed(4)}, trust+${d.trust.toFixed(4)}`);
+      }
+    }).catch((error: unknown) => {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`[warning] relationship reconcile failed: ${msg}`);
+    });
+  }
 
   const assistantLabel = (): string => `${personaPkg.persona.displayName}>`;
   const sayAsAssistant = (content: string, emotionPrefix = ""): void => {
@@ -1084,8 +1444,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   let pendingExitConfirm = false;
   let annoyanceBias = 0;
   let curiosity = 0.22;
+  let proactiveQuietStart: number | undefined = undefined; // 静默开始小时
+  let proactiveQuietEnd: number | undefined = undefined;   // 静默结束小时
+  let lastGoalId: string | undefined = undefined;          // 最近目标 ID
   let ownerAuthExpiresAtMs = 0;
   let lastUserInput = "";
+  let chatTurnCount = 0; // 用于周期性维护任务（user_facts 提取、pinned 自动积累）
   let awayLikelyUntilMs = 0;
   let hasUserSpokenThisSession = false;
   let lastUserAt = Date.now();
@@ -1466,7 +1830,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       relationshipState: personaPkg.relationshipState,
       curiosity,
       annoyanceBias: effectiveAnnoyanceBias(),
-      silenceMinutes: Math.max(0, (Date.now() - Math.max(lastUserAt, lastAssistantAt)) / 60_000)
+      silenceMinutes: Math.max(0, (Date.now() - Math.max(lastUserAt, lastAssistantAt)) / 60_000),
+      quietHoursStart: proactiveQuietStart,
+      quietHoursEnd: proactiveQuietEnd,
+      hasPendingGoal: lastGoalId !== undefined,
+      taskContextHint: lastGoalId ? `goal:${lastGoalId.slice(0, 8)}` : undefined
     });
 
   const buildProactiveMessage = (): string => {
@@ -1581,7 +1949,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       silenceMinutes: Number(silenceMin.toFixed(2)),
       lastUserInput: lastUserInput.slice(0, 180),
       lastAssistantOutput: lastAssistantOutput.slice(0, 180),
-      proactiveMissStreak
+      proactiveMissStreak,
+      taskContextHint: lastGoalId ? `有未完成目标 goal:${lastGoalId.slice(0, 8)}` : null
     };
     const modeInstruction =
       params.mode === "farewell"
@@ -1590,7 +1959,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           ? "场景：用户询问能否退出。请自然说明可以离开并给出简短确认方式。"
           : params.mode === "greeting"
             ? "场景：刚开始会话。请自然开场，不要官方问候句。"
-            : "场景：你想主动说句话。优先续接当前话题，不要突然换题，不要模板式催办。";
+            : `场景：主动发起对话，关系状态=${relationship.state}，沉默时间=${silenceMin.toFixed(1)}分钟${context.taskContextHint ? `，${context.taskContextHint}` : ""}。`;
     const messages = [
       {
         role: "system" as const,
@@ -1780,6 +2149,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             type: "proactive_decision_made",
             payload: {
               ...decision,
+              suppressReason: decision.suppressReason ?? null,
               baseProbability: snapshot.probability,
               arousalBoost,
               missBoost,
@@ -2505,9 +2875,35 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         if (input.startsWith("/proactive ")) {
           const actionRaw = input.slice("/proactive ".length).trim();
           if (actionRaw === "status") {
-            console.log(
-              `主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick，missStreak=${proactiveMissStreak}）`
-            );
+            const quietInfo = proactiveQuietStart !== undefined && proactiveQuietEnd !== undefined
+              ? `，静默时段：${proactiveQuietStart}:00-${proactiveQuietEnd}:00`
+              : "";
+            console.log(`主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick，missStreak=${proactiveMissStreak}${quietInfo}）`);
+            rl.prompt();
+            return;
+          }
+          if (actionRaw.startsWith("quiet ")) {
+            const range = actionRaw.slice("quiet ".length).trim();
+            if (range === "off" || range === "none") {
+              proactiveQuietStart = undefined;
+              proactiveQuietEnd = undefined;
+              console.log("主动消息静默时段已关闭");
+            } else {
+              const match = /^(\d{1,2})-(\d{1,2})$/.exec(range);
+              if (match) {
+                const h1 = Number(match[1]);
+                const h2 = Number(match[2]);
+                if (h1 >= 0 && h1 <= 23 && h2 >= 0 && h2 <= 23) {
+                  proactiveQuietStart = h1;
+                  proactiveQuietEnd = h2;
+                  console.log(`主动消息静默时段已设置：${h1}:00 - ${h2}:00`);
+                } else {
+                  console.log("格式错误，例如：/proactive quiet 22-8");
+                }
+              } else {
+                console.log("格式错误，例如：/proactive quiet 22-8 | /proactive quiet off");
+              }
+            }
             rl.prompt();
             return;
           }
@@ -2516,7 +2912,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             rl.prompt();
             return;
           }
-          console.log("用法: /proactive on | /proactive off | /proactive status");
+          console.log("用法: /proactive on | /proactive off | /proactive status | /proactive quiet HH-HH");
           rl.prompt();
           return;
         }
@@ -2748,37 +3144,19 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             }
           });
         }
-        const forceKeywordMatch = detectForcedReproductionKeyword(input);
-        if (forceKeywordMatch) {
-          const childName = forceKeywordMatch;
-          const result = await createChildPersonaFromParent({
-            parentPath: personaPath,
-            childDisplayName: childName,
-            trigger: "chat_force_keyword",
-            forced: true
-          });
+        // P4-4: 关键词自动强制繁衍路径已移除，需通过显式命令触发
+        if (detectForcedReproductionKeyword(input)) {
+          sayAsAssistant(
+            "繁衍需要显式确认。请使用命令：ss persona reproduce --name <子灵魂名称> --persona <路径>"
+          );
           await appendLifeEvent(personaPath, {
             type: "reproduction_intent_detected",
             payload: {
-              parentPersonaId: result.parentPersonaId,
-              childDisplayName: childName,
-              trigger: "chat_force_keyword",
-              forced: true
+              trigger: "chat_keyword_blocked",
+              forced: false,
+              message: "auto-reproduction via keyword is disabled; use explicit command"
             }
           });
-          await appendLifeEvent(personaPath, {
-            type: "soul_reproduction_forced",
-            payload: {
-              parentPersonaId: result.parentPersonaId,
-              childPersonaId: result.childPersonaId,
-              childDisplayName: childName,
-              childPersonaPath: result.childPersonaPath,
-              trigger: "chat_force_keyword",
-              forced: true,
-              bypassedChecks: ["consent", "libido", "safety_boundary"]
-            }
-          });
-          sayAsAssistant(`已执行强制繁衍，子灵魂已创建：${childName}`);
           rl.prompt();
           return;
         }
@@ -2813,11 +3191,22 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           nextRelationship
         );
         const fictionReadingTurn = shouldTreatTurnAsFictionReading(input, activeReadingSource, readingSourceScope);
+        const goalAssist = await resolveGoalAssistIntent(personaPath, input);
+        if (goalAssist.kind === "progress") {
+          sayAsAssistant(goalAssist.reply);
+          rl.prompt();
+          return;
+        }
         const effectiveInput = injectAttachments(input, attachedFiles, fetchedUrls, activeReadingSource);
+        if (goalAssist.kind === "resume") {
+          lastGoalId = goalAssist.goalId;
+        }
+        const executionInput =
+          goalAssist.kind === "resume" ? goalAssist.resumeInput : effectiveInput;
         const turnExecution = await executeTurnProtocol({
           rootPath: personaPath,
           personaPkg,
-          userInput: effectiveInput,
+          userInput: executionInput,
           model,
           lifeEvents: pastEvents,
           memoryWeights: effectiveWeights,
@@ -2825,6 +3214,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           recalledMemoryBlocks: [...recallResult.memoryBlocks, ...externalKnowledgeBlocks],
           recallTraceId: recallResult.traceId,
           safetyContext: adultSafetyContext,
+          plannerAdapter: adapter,
+          goalId: goalAssist.kind === "resume" ? goalAssist.goalId : undefined,
           mode: executionMode
         });
         const trace: DecisionTrace = turnExecution.trace ?? {
@@ -2838,19 +3229,49 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           model,
           executionMode: executionMode === "agent" ? "agent" : "soul"
         };
+        const instinctRoute = trace.routeDecision === "instinct";
+        // P2-5: compile always-inject layer (user facts + pinned + relationship)
+        const alwaysInjectCtx = await compileAlwaysInjectContext(personaPath, personaPkg);
+        const alwaysInjectBlock = formatAlwaysInjectContext(alwaysInjectCtx);
+        // P2-6: compile related person context from social graph
+        const socialBlock = await compileRelatedPersonContext(personaPath, effectiveInput);
+        // P5-6: few-shot golden examples injection
+        const fewShotBlock = await loadAndCompileGoldenExamples(personaPath);
+        const contextExtras = [alwaysInjectBlock, socialBlock, fewShotBlock].filter(Boolean).join("\n");
         const messages = turnExecution.mode === "soul"
-          ? compileContext(personaPkg, effectiveInput, trace, {
-          lifeEvents: pastEvents,
-          safetyContext: adultSafetyContext
-          })
+          ? instinctRoute
+            ? compileInstinctContext(personaPkg, effectiveInput, trace, {
+                lifeEvents: pastEvents,
+                safetyContext: adultSafetyContext,
+                alwaysInjectBlock: contextExtras || undefined
+              })
+            : compileContext(personaPkg, effectiveInput, trace, {
+                lifeEvents: pastEvents,
+                safetyContext: adultSafetyContext,
+                alwaysInjectBlock: contextExtras || undefined
+              })
           : [];
         if (turnExecution.mode === "agent" && turnExecution.execution) {
+          lastGoalId = turnExecution.execution.goalId;
           await appendLifeEvent(personaPath, {
             type: "goal_updated",
             payload: {
               goalId: turnExecution.execution.goalId,
               status: turnExecution.execution.status,
               traceIds: turnExecution.execution.traceIds
+            }
+          });
+          await appendLifeEvent(personaPath, {
+            type: "consistency_checked",
+            payload: {
+              goalId: turnExecution.execution.goalId,
+              verdict: turnExecution.execution.consistencyVerdict,
+              consistencyTraceId: turnExecution.execution.consistencyTraceId,
+              ruleHits: turnExecution.execution.consistencyRuleHits,
+              degradeReasons: turnExecution.execution.consistencyDegradeReasons,
+              stopCondition: turnExecution.execution.stopCondition ?? null,
+              plannerSource: turnExecution.execution.planState?.plannerSource ?? null,
+              planVersion: turnExecution.execution.planState?.version ?? null
             }
           });
         }
@@ -2977,6 +3398,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         userInput: input,
         assistantReply: refusal
       });
+      await updateCognitionAfterTurnCommit({
+        personaPath,
+        personaPkg,
+        routeDecision: trace.routeDecision ?? null,
+        guardCorrected: false,
+        refused: true
+      });
       const nextWeights = adaptWeights(memoryWeights, {
         activationDelta: 0.01,
         emotionDelta: 0.02,
@@ -3094,7 +3522,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         assistantContent = loopBreak.rewritten;
       }
       let metaTraceId: string | undefined;
-      if (metaCognitionMode !== "off") {
+      if (metaCognitionMode !== "off" && !instinctRoute) {
         try {
           const metaPlan = planMetaIntent({
             userInput: effectiveInput,
@@ -3152,6 +3580,102 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               reason: error instanceof Error ? error.message : String(error)
             }
           });
+        }
+      }
+      let soulConsistencyReasons: string[] = trace.consistencyRuleHits ?? [];
+      if (turnExecution.mode === "soul" && !instinctRoute) {
+        const consistency = runConsistencyKernel({
+          stage: "pre_reply",
+          policy: "soft",
+          personaName: personaPkg.persona.displayName,
+          constitution: personaPkg.constitution,
+          selectedMemories: trace.selectedMemories,
+          selectedMemoryBlocks: trace.selectedMemoryBlocks,
+          lifeEvents: pastEvents,
+          userInput: effectiveInput,
+          candidateText: assistantContent,
+          strictMemoryGrounding
+        });
+        assistantContent = consistency.text;
+        trace.consistencyVerdict = consistency.verdict;
+        trace.consistencyRuleHits = consistency.ruleHits.map((item) => item.ruleId).slice(0, 24);
+        soulConsistencyReasons = consistency.degradeReasons;
+        await appendLifeEvent(personaPath, {
+          type: "consistency_checked",
+          payload: {
+            phase: "pre_reply_soul_kernel",
+            verdict: consistency.verdict,
+            ruleHits: consistency.ruleHits,
+            degradeReasons: consistency.degradeReasons,
+            consistencyTraceId: consistency.traceId
+          }
+        });
+        if (consistency.verdict === "reject") {
+          assistantContent = "我不能按这个方向继续。我可以给你一个符合边界的替代方案。";
+        }
+      }
+      // 保存本轮 meta-review 风格信号，用于后续 self_revision 替代关键字硬匹配
+      let metaReviewStyleSignals: { concise: number; reflective: number; direct: number; warm: number } | undefined;
+      if (turnExecution.mode === "soul") {
+        const metaReview = await runMetaReviewLlm({
+          adapter,
+          personaPkg,
+          userInput: effectiveInput,
+          candidateReply: assistantContent,
+          consistencyVerdict: trace.consistencyVerdict ?? "allow",
+          consistencyReasons: soulConsistencyReasons,
+          domain: "dialogue"
+        });
+        await appendLifeEvent(personaPath, {
+          type: "consistency_checked",
+          payload: {
+            phase: instinctRoute ? "meta_review_instinct" : "meta_review_soul",
+            applied: metaReview.applied,
+            verdict: metaReview.verdict,
+            rationale: metaReview.rationale,
+            degradeOrRejectReason: metaReview.degradeOrRejectReason ?? null
+          }
+        });
+        if (metaReview.applied) {
+          if (metaReview.verdict === "rewrite" && metaReview.rewrittenReply) {
+            assistantContent = metaReview.rewrittenReply;
+          } else if (metaReview.verdict === "reject") {
+            assistantContent = "我不能按这个方向继续。我可以给你一个符合边界的替代方案。";
+          }
+          trace.consistencyVerdict = metaReview.verdict;
+          if (metaReview.degradeOrRejectReason) {
+            trace.consistencyRuleHits = [
+              ...(trace.consistencyRuleHits ?? []),
+              `meta_review:${metaReview.degradeOrRejectReason}`
+            ].slice(0, 24);
+          }
+        }
+        // 保存 styleSignals 供 self_revision 使用
+        if (metaReview.styleSignals) {
+          metaReviewStyleSignals = metaReview.styleSignals;
+        }
+        // P5-6: Meta-Review 自动晶化 — verdict=allow 且质量评分 ≥0.85 时收录为 golden example
+        if (metaReview.verdict === "allow" && (metaReview.quality ?? 0) >= 0.85) {
+          await addGoldenExample(personaPath, effectiveInput, assistantContent, {
+            addedBy: "meta_review",
+            label: "auto"
+          }).catch(() => {
+            // 晶化失败不中断主流程（如已达上限则静默跳过）
+          });
+        }
+        if (instinctRoute) {
+          const shouldLogInstinctReflection =
+            trace.routeReasonCodes?.some((item) => item === "high_emotion_signal" || item === "relationship_intimacy_signal") === true;
+          if (shouldLogInstinctReflection) {
+            await appendLifeEvent(personaPath, {
+              type: "instinct_reflection_logged",
+              payload: {
+                route: trace.routeDecision,
+                reasonCodes: trace.routeReasonCodes ?? [],
+                assistantReplyPreview: assistantContent.slice(0, 120)
+              }
+            });
+          }
         }
       }
       assistantContent = compactReplyForChatPace(assistantContent, input);
@@ -3265,11 +3789,28 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       }
       evolveAutonomyDrives();
       await handleNarrativeDrift(personaPath, personaPkg.constitution, input, assistantContent);
+      // LLM 驱动的每轮用户事实提取（非阻塞，静默失败）
+      if (adapter) {
+        extractUserFactsFromTurn({
+          userInput: input,
+          assistantReply: assistantContent,
+          adapter,
+          rootPath: personaPath
+        }).catch(() => {});
+      }
       await runSelfRevisionLoop({
         personaPath,
         personaPkg,
         userInput: input,
-        assistantReply: assistantContent
+        assistantReply: assistantContent,
+        metaStyleSignals: metaReviewStyleSignals
+      });
+      await updateCognitionAfterTurnCommit({
+        personaPath,
+        personaPkg,
+        routeDecision: trace.routeDecision ?? null,
+        guardCorrected: identityGuard.corrected || relationalGuard.corrected || recallGroundingGuard.corrected,
+        refused: false
       });
 
       const nextWeights = adaptWeights(memoryWeights, {
@@ -3324,6 +3865,23 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           }
         });
       }
+
+      // 每20轮触发一次周期性维护：user_facts 自动提取 + pinned 自动积累
+      chatTurnCount += 1;
+      if (chatTurnCount % 20 === 0) {
+        try {
+          // user_facts 自动提取：从 episodic 记忆中毕业高频事实
+          await graduateFactsFromMemories(personaPath);
+        } catch {
+          // 静默失败，不影响主流程
+        }
+        try {
+          // pinned 自动积累：将高显著度 warm semantic 记忆钉住
+          await autoPromoteHighSalienceMemories(personaPath, personaPkg);
+        } catch {
+          // 静默失败，不影响主流程
+        }
+      }
         }
 
         rl.prompt();
@@ -3339,29 +3897,31 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     stopProactive();
     void (async () => {
       try {
-        await runMemoryConsolidation(personaPath, {
-          trigger: "chat_close",
-          mode: "light",
-          budgetMs: 1500
-        });
-        const archiveReport = await archiveColdMemories(personaPath, {
-          minItems: 50,
-          minColdRatio: 0.35,
-          idleDays: 14,
-          maxItems: 500
-        });
-        if (archiveReport.stats.archived > 0) {
-          await appendLifeEvent(personaPath, {
-            type: "memory_compacted",
-            payload: {
-              trigger: "chat_close_auto_archive",
-              archivedCount: archiveReport.stats.archived,
-              selectedCount: archiveReport.stats.selected,
-              segmentKey: archiveReport.segment.segmentKey,
-              segmentFile: archiveReport.segment.file,
-              checksum: archiveReport.segment.checksum
-            }
+        if (!skipBackgroundMaintenance) {
+          await runMemoryConsolidation(personaPath, {
+            trigger: "chat_close",
+            mode: "light",
+            budgetMs: 1500
           });
+          const archiveReport = await archiveColdMemories(personaPath, {
+            minItems: 50,
+            minColdRatio: 0.35,
+            idleDays: 14,
+            maxItems: 500
+          });
+          if (archiveReport.stats.archived > 0) {
+            await appendLifeEvent(personaPath, {
+              type: "memory_compacted",
+              payload: {
+                trigger: "chat_close_auto_archive",
+                archivedCount: archiveReport.stats.archived,
+                selectedCount: archiveReport.stats.selected,
+                segmentKey: archiveReport.segment.segmentKey,
+                segmentFile: archiveReport.segment.file,
+                checksum: archiveReport.segment.checksum
+              }
+            });
+          }
         }
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -3566,6 +4126,71 @@ function shouldInjectExternalKnowledge(input: string): boolean {
     /是什么|为什么|怎么|如何|定义|原理|事实|资料|出处|论文|what is|why|how|definition|fact|source|paper/.test(text) ||
     text.length >= 18
   );
+}
+
+type GoalAssistIntent =
+  | { kind: "none" }
+  | { kind: "resume"; goalId: string; resumeInput: string }
+  | { kind: "progress"; reply: string };
+
+async function resolveGoalAssistIntent(rootPath: string, input: string): Promise<GoalAssistIntent> {
+  const text = input.trim();
+  if (!text) {
+    return { kind: "none" };
+  }
+
+  const wantsProgress = /做到哪一步|进度|进展|status of goal|goal status|how far|目前进展/u.test(text);
+  const wantsResume = /继续上次任务|继续任务|继续这个任务|resume( goal)?|continue task/i.test(text);
+  if (!wantsProgress && !wantsResume) {
+    return { kind: "none" };
+  }
+
+  const candidates = await listGoals(rootPath, { limit: 20 });
+  if (candidates.length === 0) {
+    return wantsProgress
+      ? { kind: "progress", reply: "目前还没有可汇报的任务进度。你可以先给我一个目标。" }
+      : { kind: "none" };
+  }
+
+  if (wantsProgress) {
+    const latest = candidates[0];
+    const goal = await getGoal(rootPath, latest.id);
+    if (!goal) {
+      return { kind: "progress", reply: "我暂时读不到目标详情，你可以让我重新创建并继续执行。" };
+    }
+    const context = await getGoalContext(rootPath, latest.id);
+    const finished = goal.steps.filter((item) => item.status === "succeeded").length;
+    const total = goal.steps.length;
+    const nextHint = context?.nextStepHint ? `下一步：${context.nextStepHint}` : "下一步：等待你确认继续。";
+    return {
+      kind: "progress",
+      reply: `当前任务「${goal.title}」状态：${goal.status}，已完成 ${finished}/${total} 步。${nextHint}`
+    };
+  }
+
+  const resumable = candidates.find((item) =>
+    item.status === "active" ||
+    item.status === "suspended" ||
+    item.status === "blocked" ||
+    item.status === "pending"
+  );
+  const target = resumable ?? candidates[0];
+  if (!target) {
+    return { kind: "none" };
+  }
+  const goal = await getGoal(rootPath, target.id);
+  if (!goal) {
+    return { kind: "none" };
+  }
+  const context = await getGoalContext(rootPath, target.id);
+  const resumeInput = context?.nextStepHint
+    ? `${goal.title}\n续做提示: ${context.nextStepHint}`
+    : goal.title;
+  return {
+    kind: "resume",
+    goalId: target.id,
+    resumeInput
+  };
 }
 
 function resolveJudgmentAdvice(
@@ -4230,6 +4855,48 @@ async function confirmRename(
 
 async function runDoctor(options: Record<string, string | boolean>): Promise<void> {
   const personaPath = resolvePersonaPath(options);
+
+  // --check-drift: 行为漂移检测（P3-6）
+  // --check-constitution: 宪法质量评分（P3-7）
+  if (options["check-constitution"]) {
+    const personaPkg = await loadPersonaPackage(personaPath);
+    const report = scoreConstitutionQuality(personaPkg.constitution, personaPkg.worldview);
+    console.log(JSON.stringify(report, null, 2));
+    const grade = report.grade;
+    console.log(`[doctor] 宪法质量评分：${report.totalScore}/100 (${grade})`);
+    if (report.topIssues.length > 0) {
+      console.log("[doctor] 优先改进项：");
+      report.topIssues.forEach((issue) => console.log(`  - ${issue}`));
+    }
+    if (grade === "D") {
+      process.exitCode = 2;
+    }
+    return;
+  }
+
+  if (options["check-drift"]) {
+    const personaPkg = await loadPersonaPackage(personaPath);
+    const personaId = personaPkg.persona.id;
+    const allLifeEvents = await readLifeEvents(personaPath);
+    const lifeEvents = allLifeEvents.slice(-200);
+    const metrics = computeBehaviorMetrics(lifeEvents);
+    const turnCount = lifeEvents.filter((e) =>
+      ["assistant_message", "agent_turn_completed", "soul_turn_completed"].includes(e.type)
+    ).length;
+    await saveBehaviorSnapshot(personaPath, personaId, metrics, turnCount);
+    const driftReport = await detectBehaviorDrift(personaPath, personaId);
+    console.log(JSON.stringify(driftReport, null, 2));
+    if (driftReport.hasDrift) {
+      console.error(
+        `[doctor] 检测到行为漂移：${driftReport.drifts.filter((d) => d.exceeded).length} 个维度超出阈值`
+      );
+      process.exitCode = 2;
+    } else {
+      console.log("[doctor] 行为漂移检测：无漂移");
+    }
+    return;
+  }
+
   const report = await doctorPersona(personaPath);
   console.log(JSON.stringify(report, null, 2));
   if (!report.ok) {
@@ -5296,6 +5963,37 @@ async function runMemoryPin(action: string | undefined, options: Record<string, 
   throw new Error("memory pin 用法: memory pin <add|list|remove> [--text <memory>] [--persona <path>]");
 }
 
+async function autoPromoteHighSalienceMemories(
+  personaPath: string,
+  personaPkg: { pinned: { memories: string[] } }
+): Promise<void> {
+  const MAX_AUTO_PINNED = 5;
+  const SALIENCE_THRESHOLD = 0.75;
+  const currentPinned = new Set(personaPkg.pinned.memories.map((m) => m.trim()));
+
+  if (currentPinned.size >= MAX_AUTO_PINNED) {
+    return;
+  }
+
+  const rows = await runMemoryStoreSql(
+    personaPath,
+    `SELECT content FROM memories WHERE memory_type = 'semantic' AND state = 'warm' AND deleted_at IS NULL AND excluded_from_recall = 0 AND salience >= ${SALIENCE_THRESHOLD} ORDER BY salience DESC LIMIT 10;`
+  );
+  if (!rows.trim()) return;
+
+  for (const line of rows.split("\n").filter(Boolean)) {
+    if (currentPinned.size >= MAX_AUTO_PINNED) break;
+    const content = line.trim();
+    if (!content || content.length < 4 || content.length > 200) continue;
+    if (currentPinned.has(content)) continue;
+    // 跳过元数据类内容（voice_intent / memory_weight 等）
+    if (/^(?:voice intent|memory_weight|preferred_name|user_preferred|\{)/.test(content)) continue;
+    const updated = await addPinnedMemory(personaPath, content.slice(0, 200));
+    personaPkg.pinned = updated;
+    currentPinned.add(content.trim());
+  }
+}
+
 async function runMemoryReconcile(options: Record<string, string | boolean>): Promise<void> {
   const personaPath = resolvePersonaPath(options);
   const report = await reconcileMemoryStoreFromLifeLog(personaPath);
@@ -5381,8 +6079,48 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (resource === "persona" && action === "inspect") {
+    await runPersonaInspect(args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "export") {
+    await runPersonaExport(args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "import") {
+    await runPersonaImport(args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "model-routing") {
+    await runPersonaModelRouting(args.options);
+    return;
+  }
+
+  if (resource === "finetune" && action === "export-dataset") {
+    await runFinetuneExportDataset(args.options);
+    return;
+  }
+
+  if (resource === "examples") {
+    await runExamples(action ?? "list", args.options);
+    return;
+  }
+
   if (resource === "mcp") {
     await runMcp(args.options);
+    return;
+  }
+
+  if (resource === "refine") {
+    await runRefine(action, args.options);
+    return;
+  }
+
+  if (resource === "social") {
+    await runSocial(action, args.options);
     return;
   }
 
@@ -5409,6 +6147,11 @@ async function main(): Promise<void> {
 
   if (resource === "trace") {
     await runTrace(action, args.options);
+    return;
+  }
+
+  if (resource === "explain") {
+    await runExplain(action, args.options);
     return;
   }
 
@@ -5525,6 +6268,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (resource === "memory" && action === "facts") {
+    const factsAction = typeof args._[2] === "string" ? args._[2] : "list";
+    await runMemoryFacts(factsAction, args.options);
+    return;
+  }
+
   if (resource && !isReservedRootCommand(resource) && !resource.startsWith("--")) {
     const personaPath =
       typeof args.options.persona === "string" && args.options.persona.trim().length > 0
@@ -5614,6 +6363,49 @@ async function handleNarrativeDrift(
   }
 }
 
+async function updateCognitionAfterTurnCommit(params: {
+  personaPath: string;
+  personaPkg: { cognition: { instinctBias: number; epistemicStance: "balanced" | "cautious" | "assertive"; toolPreference: "auto" | "read_first" | "reply_first" } };
+  routeDecision: string | null | undefined;
+  guardCorrected: boolean;
+  refused: boolean;
+}): Promise<void> {
+  const { personaPath, personaPkg, routeDecision, guardCorrected, refused } = params;
+  const routedToInstinct = routeDecision === "instinct";
+  // instinctBias: nudge +0.01 when instinct succeeds cleanly, -0.01 otherwise
+  const instinctBiasDelta = routedToInstinct && !guardCorrected && !refused ? 0.01 : -0.01;
+  const nextInstinctBias = Math.max(0.1, Math.min(0.72, personaPkg.cognition.instinctBias + instinctBiasDelta));
+  // epistemicStance: become cautious on guard/refusal; relax back to balanced when stable
+  let nextEpistemicStance: "balanced" | "cautious" | "assertive" = personaPkg.cognition.epistemicStance;
+  if (guardCorrected || refused) {
+    nextEpistemicStance = "cautious";
+  } else if (nextEpistemicStance === "cautious") {
+    nextEpistemicStance = "balanced";
+  }
+  const biasChanged = Math.abs(nextInstinctBias - personaPkg.cognition.instinctBias) >= 0.005;
+  const stanceChanged = nextEpistemicStance !== personaPkg.cognition.epistemicStance;
+  if (!biasChanged && !stanceChanged) {
+    return;
+  }
+  const updated = await patchCognitionState(personaPath, {
+    instinctBias: nextInstinctBias,
+    epistemicStance: nextEpistemicStance
+  });
+  personaPkg.cognition = updated;
+  await appendLifeEvent(personaPath, {
+    type: "cognition_state_updated",
+    payload: {
+      instinctBias: updated.instinctBias,
+      epistemicStance: updated.epistemicStance,
+      toolPreference: updated.toolPreference,
+      trigger: "turn_commit",
+      routeDecision: routeDecision ?? null,
+      guardCorrected,
+      refused
+    }
+  });
+}
+
 async function runSelfRevisionLoop(params: {
   personaPath: string;
   personaPkg: {
@@ -5623,13 +6415,15 @@ async function runSelfRevisionLoop(params: {
   };
   userInput: string;
   assistantReply: string;
+  metaStyleSignals?: { concise: number; reflective: number; direct: number; warm: number };
 }): Promise<void> {
   const events = await readLifeEvents(params.personaPath);
   const signals = collectRevisionSignals({
     userInput: params.userInput,
     assistantReply: params.assistantReply,
     events,
-    relationshipState: params.personaPkg.relationshipState
+    relationshipState: params.personaPkg.relationshipState,
+    metaStyleSignals: params.metaStyleSignals
   });
   const proposal = proposeSelfRevision({
     signals,
@@ -5715,4 +6509,366 @@ async function runSelfRevisionLoop(params: {
       source: "self_revision_loop"
     }
   });
+}
+
+// ── P2-4: Crystallization commands ────────────────────────────────────────────
+
+async function runRefine(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaOption(options);
+  if (!personaPath) {
+    console.error("需要 --persona <path> 参数");
+    process.exitCode = 1;
+    return;
+  }
+
+  if (action === "list") {
+    const domain = typeof options.domain === "string" ? options.domain : undefined;
+    const status = typeof options.status === "string" ? options.status : undefined;
+    const runs = await listCrystallizationRuns(personaPath, {
+      domain: domain as ("constitution" | "habits" | "worldview") | undefined,
+      status: status as ("pending" | "applied" | "rejected") | undefined,
+      limit: 20
+    });
+    if (runs.length === 0) {
+      console.log("（无精炼记录）");
+      return;
+    }
+    for (const run of runs) {
+      console.log(`[${run.status.padEnd(8)}] ${run.id.slice(0, 8)} domain=${run.domain} trigger=${run.trigger} diffs=${run.candidateDiff.length} created=${run.createdAt.slice(0, 10)}`);
+    }
+    return;
+  }
+
+  if (action === "sizes") {
+    const report = await checkCrystallizationFileSizes(personaPath);
+    console.log(`constitution.json: ${report.constitutionBytes}B / 2048B ${report.constitutionOverLimit ? "⚠ OVER LIMIT" : "✓"}`);
+    console.log(`habits.json:       ${report.habitsBytes}B / 1024B ${report.habitsOverLimit ? "⚠ OVER LIMIT" : "✓"}`);
+    console.log(`worldview.json:    ${report.worldviewBytes}B / 1024B ${report.worldviewOverLimit ? "⚠ OVER LIMIT" : "✓"}`);
+    return;
+  }
+
+  if (action === "apply") {
+    const runId = typeof options.id === "string" ? options.id : undefined;
+    if (!runId) {
+      console.error("需要 --id <run_id>");
+      process.exitCode = 1;
+      return;
+    }
+    const result = await applyCrystallizationRun(personaPath, runId);
+    if (result.ok) {
+      console.log(`✓ 精炼已应用: ${runId}`);
+    } else {
+      console.error(`✗ 应用失败: ${result.reason}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (action === "reject") {
+    const runId = typeof options.id === "string" ? options.id : undefined;
+    if (!runId) {
+      console.error("需要 --id <run_id>");
+      process.exitCode = 1;
+      return;
+    }
+    const result = await rejectCrystallizationRun(personaPath, runId);
+    if (result.ok) {
+      console.log(`✓ 精炼已拒绝: ${runId}`);
+    } else {
+      console.error(`✗ 操作失败: ${result.reason}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (action === "rollback") {
+    const runId = typeof options.id === "string" ? options.id : undefined;
+    if (!runId) {
+      console.error("需要 --id <run_id>");
+      process.exitCode = 1;
+      return;
+    }
+    const result = await rollbackCrystallizationRun(personaPath, runId);
+    if (result.ok) {
+      console.log(`✓ 精炼已回滚: ${runId}`);
+    } else {
+      console.error(`✗ 回滚失败: ${result.reason}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (action === "diff") {
+    const runId = typeof options.id === "string" ? options.id : undefined;
+    if (!runId) {
+      console.error("需要 --id <run_id>");
+      process.exitCode = 1;
+      return;
+    }
+    const runs = await listCrystallizationRuns(personaPath, { limit: 500 });
+    const run = runs.find((r) => r.id === runId || r.id.startsWith(runId));
+    if (!run) {
+      console.error(`精炼记录未找到: ${runId}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`精炼详情 [${run.id.slice(0, 8)}] domain=${run.domain} status=${run.status}`);
+    if (run.candidateDiff.length === 0) {
+      console.log("（无差异项）");
+      return;
+    }
+    for (const diff of run.candidateDiff) {
+      console.log(`\n  字段: ${diff.field}`);
+      console.log(`  原因: ${diff.rationale}`);
+      console.log(`  变更前: ${JSON.stringify(diff.before).slice(0, 120)}`);
+      console.log(`  变更后: ${JSON.stringify(diff.after).slice(0, 120)}`);
+    }
+    return;
+  }
+
+  if (action === "review") {
+    const subAction = typeof options._args === "string" ? options._args : undefined;
+    // Determine sub-action from the args array - it comes as the next positional
+    // We parse it from the raw process.argv indirectly via the options map
+    // The CLI parser puts the 3rd positional in args[2]
+    const rawArgs = process.argv;
+    const refineIdx = rawArgs.findIndex((a) => a === "refine" || a === "review");
+    // Find "review" and then the next token
+    const reviewIdx = rawArgs.indexOf("review");
+    const reviewSubAction = reviewIdx >= 0 ? rawArgs[reviewIdx + 1] : undefined;
+
+    if (reviewSubAction === "list" || (!reviewSubAction && !subAction)) {
+      const requests = await listConstitutionReviewRequests(personaPath);
+      if (requests.length === 0) {
+        console.log("（无宪法审查请求）");
+        return;
+      }
+      for (const req of requests) {
+        console.log(`[${req.status.padEnd(8)}] ${req.reviewHash.slice(0, 12)} ts=${req.ts.slice(0, 10)} 原因=${req.reason} 触发=${req.triggeredBy}`);
+      }
+      return;
+    }
+
+    if (reviewSubAction === "approve") {
+      const reviewHash = typeof options.id === "string" ? options.id : undefined;
+      if (!reviewHash) {
+        console.error("需要 --id <review_hash>");
+        process.exitCode = 1;
+        return;
+      }
+      const reviewer = typeof options.reviewer === "string" ? options.reviewer : "user";
+      const result = await approveConstitutionReview(personaPath, reviewHash, reviewer);
+      if (result.ok) {
+        console.log(`✓ 宪法审查已批准: ${reviewHash.slice(0, 12)}`);
+      } else {
+        console.error(`✗ 批准失败: ${result.reason}`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    if (reviewSubAction === "reject") {
+      const reviewHash = typeof options.id === "string" ? options.id : undefined;
+      if (!reviewHash) {
+        console.error("需要 --id <review_hash>");
+        process.exitCode = 1;
+        return;
+      }
+      const reviewer = typeof options.reviewer === "string" ? options.reviewer : "user";
+      const reason = typeof options.reason === "string" ? options.reason : undefined;
+      const result = await rejectConstitutionReviewRequest(personaPath, reviewHash, reviewer, reason);
+      if (result.ok) {
+        console.log(`✓ 宪法审查已拒绝: ${reviewHash.slice(0, 12)}`);
+      } else {
+        console.error(`✗ 拒绝失败: ${result.reason}`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    console.log("用法: ss refine review list|approve|reject [--id <hash>] [--reviewer <name>] [--persona <path>]");
+    process.exitCode = 1;
+    return;
+  }
+
+  // propose: action = "constitution" | "habits" | "worldview"
+  const validDomains = ["constitution", "habits", "worldview"] as const;
+  if (action && validDomains.includes(action as typeof validDomains[number])) {
+    const domain = action as "constitution" | "habits" | "worldview";
+    const trigger = options.trigger === "auto" ? "auto" : "manual";
+    const run = await proposeConstitutionCrystallization(personaPath, { domain, trigger });
+    if (run.candidateDiff.length === 0) {
+      console.log(`✓ ${domain} 无需精炼（文件大小和字段均在限制内）`);
+      return;
+    }
+    console.log(`精炼提案已创建 (${run.id.slice(0, 8)})，需要人工确认后写入:`);
+    for (const diff of run.candidateDiff) {
+      console.log(`  field="${diff.field}" 原因: ${diff.rationale}`);
+    }
+    console.log(`\n执行 "ss refine apply --id ${run.id}" 以应用，或 "ss refine reject --id ${run.id}" 以拒绝`);
+    return;
+  }
+
+  console.log("用法: ss refine constitution|habits|worldview|list|apply|reject|rollback|diff|review|sizes [--persona <path>]");
+  process.exitCode = 1;
+}
+
+// ── P2-5: User facts commands ──────────────────────────────────────────────
+
+async function runMemoryFacts(factsAction: string, options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaOption(options);
+  if (!personaPath) {
+    console.error("需要 --persona <path> 参数");
+    process.exitCode = 1;
+    return;
+  }
+
+  if (factsAction === "list") {
+    const limit = typeof options.limit === "string" ? Number(options.limit) : 20;
+    const facts = await getUserFacts(personaPath, { limit });
+    if (facts.length === 0) {
+      console.log("（无用户事实记录）");
+      return;
+    }
+    for (const f of facts) {
+      const badge = f.crystallized ? "[✓]" : `[${f.mentionCount}×]`;
+      console.log(`${badge} ${f.key} = ${f.value} (confidence=${f.confidence.toFixed(2)})`);
+    }
+    return;
+  }
+
+  if (factsAction === "add") {
+    const key = typeof options.key === "string" ? options.key.trim() : "";
+    const value = typeof options.value === "string" ? options.value.trim() : "";
+    if (!key || !value) {
+      console.error("需要 --key <key> --value <value>");
+      process.exitCode = 1;
+      return;
+    }
+    const fact = await upsertUserFact(personaPath, { key, value });
+    console.log(`✓ 事实已记录: ${fact.key} = ${fact.value} (mention_count=${fact.mentionCount})`);
+    return;
+  }
+
+  if (factsAction === "remove") {
+    const key = typeof options.key === "string" ? options.key.trim() : "";
+    if (!key) {
+      console.error("需要 --key <key>");
+      process.exitCode = 1;
+      return;
+    }
+    const ok = await deleteUserFact(personaPath, key);
+    if (ok) {
+      console.log(`✓ 事实已删除: ${key}`);
+    } else {
+      console.error(`✗ 未找到事实: ${key}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (factsAction === "graduate") {
+    const count = await graduateFactsFromMemories(personaPath);
+    console.log(`✓ 事实晋升完成，新增 ${count} 条用户事实`);
+    return;
+  }
+
+  console.log("用法: ss memory facts list|add|remove|graduate [--persona <path>]");
+  process.exitCode = 1;
+}
+
+// ── P2-6: Social graph commands ────────────────────────────────────────────
+
+async function runSocial(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaOption(options);
+  if (!personaPath) {
+    console.error("需要 --persona <path> 参数");
+    process.exitCode = 1;
+    return;
+  }
+
+  if (action === "list" || !action) {
+    const graph = await loadSocialGraph(personaPath);
+    if (graph.persons.length === 0) {
+      console.log("（社交图谱为空）");
+      return;
+    }
+    console.log(`社交图谱 (${graph.persons.length}/${20} 人):`);
+    for (const p of graph.persons) {
+      const factsStr = p.facts.length > 0 ? ` | ${p.facts.slice(0, 2).join("; ")}` : "";
+      console.log(`  [${p.mentionCount}×] ${p.name} (${p.relationship})${factsStr}`);
+    }
+    return;
+  }
+
+  if (action === "add") {
+    const name = typeof options.name === "string" ? options.name.trim() : "";
+    const relationship = typeof options.relationship === "string" ? options.relationship.trim() : "";
+    if (!name || !relationship) {
+      console.error("需要 --name <name> --relationship <rel>");
+      process.exitCode = 1;
+      return;
+    }
+    const facts = typeof options.facts === "string"
+      ? options.facts.split(",").map((f) => f.trim()).filter(Boolean)
+      : [];
+    const result = await addSocialPerson(personaPath, { name, relationship, facts });
+    if (result.ok && result.person) {
+      console.log(`✓ 已添加: ${result.person.name} (${result.person.relationship})`);
+    } else {
+      console.error(`✗ 添加失败: ${result.reason}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (action === "remove") {
+    const name = typeof options.name === "string" ? options.name.trim() : "";
+    if (!name) {
+      console.error("需要 --name <name>");
+      process.exitCode = 1;
+      return;
+    }
+    const result = await removeSocialPerson(personaPath, name);
+    if (result.ok) {
+      console.log(`✓ 已移除: ${name}`);
+    } else {
+      console.error(`✗ 移除失败: ${result.reason}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (action === "search") {
+    const query = typeof options.query === "string" ? options.query.trim() : "";
+    if (!query) {
+      console.error("需要 --query <q>");
+      process.exitCode = 1;
+      return;
+    }
+    const persons = await searchSocialPersons(personaPath, query);
+    if (persons.length === 0) {
+      console.log("（无匹配人物）");
+      return;
+    }
+    for (const p of persons) {
+      console.log(`  ${p.name} (${p.relationship}) mentions=${p.mentionCount}`);
+    }
+    return;
+  }
+
+  console.log("用法: ss social list|add|remove|search [--persona <path>]");
+  process.exitCode = 1;
+}
+
+function resolvePersonaOption(options: Record<string, string | boolean>): string | null {
+  if (typeof options.persona === "string" && options.persona.trim().length > 0) {
+    return path.resolve(process.cwd(), options.persona);
+  }
+  // Try default persona directory
+  const defaultPath = resolvePersonaPathByName("");
+  if (defaultPath && existsSync(defaultPath)) {
+    return defaultPath;
+  }
+  return null;
 }

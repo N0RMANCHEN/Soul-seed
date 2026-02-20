@@ -1,0 +1,5 @@
+{"id":"r-001","query":"我喜欢什么回答结构？","expectedTerms":["先给结论再给步骤"],"note":"Preference: conclusion-first style"}
+{"id":"r-002","query":"你应该怎么称呼我？","expectedTerms":["博飞"],"note":"User preferred name recall"}
+{"id":"r-003","query":"执行任务时你要遵循什么顺序？","expectedTerms":["按优先级逐项执行"],"note":"Workflow preference recall"}
+{"id":"r-004","query":"用户叫什么名字？","expectedTerms":["博飞"],"note":"Name recall alternate phrasing"}
+{"id":"r-005","query":"用户有什么沟通偏好？","expectedTerms":["先给结论"],"note":"Communication preference recall"}

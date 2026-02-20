@@ -1,6 +1,8 @@
-# Soulseed CLI 指令总览
+# Soulseed CLI 完整命令参考
 
-本文档对应当前 `./ss`（`packages/cli/src/index.ts`）实际实现的命令集合，包含用途、参数、示例与调试说明。
+> 对应 `packages/cli/src/index.ts` 实际实现。二进制入口：`./ss`
+
+---
 
 ## 1. 一次性准备
 
@@ -8,314 +10,758 @@
 npm install
 cp .env.example .env
 # 编辑 .env，填入 DEEPSEEK_API_KEY
+npm run build
 ```
+
+---
 
 ## 2. 最短入口
 
 ```bash
-# 查看帮助
-./ss
-
-# 创建 persona（交互向导）
-./ss new Teddy
-
-# 直接按名字聊天
-./ss Teddy
-
-# 体检
-./ss doctor
+./ss                         # 查看帮助
+./ss new Teddy               # 创建 persona（交互向导）
+./ss Teddy                   # 直接进入 Teddy 对话
+./ss doctor                  # 全量健康检查
+./ss explain --last          # 解释上一轮决策
 ```
 
 说明：
-- 若未指定 `--persona`：会自动尝试发现 `./personas/*.soulseedpersona`；若不存在则提示先创建
+- 未指定 `--persona` 时自动发现 `./personas/*.soulseedpersona`
 - 推荐主路径：`./ss new <name>` + `./ss <name>`
 - 验收请使用隔离 QA persona：`npm run acceptance`
-- 涉及在线链路变更时，提交前应附 `reports/acceptance/*` 报告
+
+---
 
 ## 3. 全量命令清单
 
-### 3.1 Persona 命令
+---
+
+### 3.1 Persona 创建与管理
+
+#### `new`
 
 ```bash
-./ss new <name> [--out <personaPath>] [--template friend|peer|intimate|neutral] [--model deepseek-chat] [--quick]
-./ss init [--name <displayName>] [--out <personaPath>]
-./ss rename --to <newName> [--persona <personaPath>]
-./ss rename --to <newName> [--persona <personaPath>] --confirm
+./ss new <name> [--out <personaPath>] [--template friend|peer|intimate|neutral] [--model <model>] [--quick]
 ```
 
-兼容别名：
+交互式创建新 persona 包，采集模板、世界观、使命、价值观、风格等。`--quick` 按模板默认值快速创建，跳过交互。
+
+#### `init`（兼容入口）
+
+```bash
+./ss init [--name Soulseed] [--out ./personas/<name>.soulseedpersona]
+```
+
+等同于 `persona init`，保留旧脚本兼容性。
+
+#### `rename`
+
+```bash
+# 第 1 步：写入改名请求（10 分钟内有效）
+./ss rename --to <newName> [--persona <path>]
+
+# 第 2 步：确认执行
+./ss rename --to <newName> [--persona <path>] --confirm
+```
+
+双阶段确认防误操作。`personaId` 不变。
+
+#### `persona init`（兼容别名）
 
 ```bash
 ./ss persona init --name <displayName> --out <personaPath>
-./ss persona rename --to <newName> [--persona <personaPath>] [--confirm]
 ```
 
-说明：
-- `new` 是主入口：
-- 默认交互向导会采集模板、LLM 模型、worldview/mission/values/boundaries/commitments、style/tone/stance
-- `--quick` 跳过交互，按模板默认值快速创建
-- `rename` 是双阶段确认：
-- 第 1 次只写入 rename request
-- 第 2 次加 `--confirm` 才真正应用
-
-### 3.2 会话命令
+#### `persona rename`（兼容别名）
 
 ```bash
-./ss <name> [--model deepseek-chat] [--strict-memory-grounding true|false]
-./ss chat [--persona <personaPath>] [--model deepseek-chat] [--strict-memory-grounding true|false]
+./ss persona rename --to <newName> [--persona <path>] [--confirm]
 ```
 
-说明：
-- `./ss <name>` 是主入口，会映射到 `./personas/<name>.soulseedpersona`
-- 如果人格不存在，会询问是否创建（确认后走 `new` 流程）
-- 模型优先级：`--model` > persona `defaultModel` > `deepseek-chat`
-- 对用户默认是统一人格执行体验：系统会自动在内部进行“对话/执行”编排
-- 开发调试可通过环境变量 `SOULSEED_EXECUTION_MODE` 控制内部执行策略（不作为普通用户参数）
-- `chat` 保留为兼容入口
-
-`chat` 内部命令：
-- 主路径：自然语言触发能力（读文件、查看能力、查看模式、退出）
-- `/read <file_path>` 兼容入口：读取本地文本并附加到后续问题上下文（首次路径需确认）
-- `/files` 查看已附加文件
-- `/clearread` 清空附加文件
-- `/proactive on|off|status` 兼容入口：查看主动状态；`on/off` 不再直接调参（主动倾向由人格状态自决）
-- `/relation` 查看关系状态摘要
-- `/relation detail` 查看关系细项与驱动因素
-- `/rename confirm <new_name>` 在聊天内确认改名
-- `/exit` 兼容入口：触发退出确认流程
-- `Ctrl+C` 中止当前生成
-
-`chat` 自动行为：
-- 会话启动时后台触发一次轻量巩固（`trigger=chat_open`）
-- 会话退出时后台触发一次轻量巩固（`trigger=chat_close`）
-- 敏感开关（`strict_memory_grounding` / `adult_mode` / `age_verified` / `explicit_consent` / `fictional_roleplay`）仅 Owner 授权可修改
-- Owner 授权支持短时会话（15 分钟）：`owner <口令>` 后可直接执行 `adult_mode on confirmed=true` 这类高风险能力调用
-
-### 3.3 Doctor 命令
+#### `persona reproduce`
 
 ```bash
-./ss doctor [--persona <personaPath>]
+./ss persona reproduce --name <childName> [--persona <path>] [--out <path>] [--force-all]
 ```
 
-输出 JSON 报告，`ok=false` 时进程会返回非零退出码。
+从父 persona 繁衍子 persona，提取精神遗产写入 `spiritual_legacy.txt`。
+- `--force-all`：跳过 libido / consent / safety_boundary 条件检查
+- 输出：子 persona 路径 + `child_persona_id`
 
-### 3.4 MCP 命令（stdio + http 双入口）
+#### `persona inspect`
 
 ```bash
-./ss mcp [--persona <personaPath>] [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--auth-token <token>]
+./ss persona inspect [--persona <path>]
 ```
 
-用途：
-- 启动 Soulseed MCP Server（JSON-RPC 2.0）。
-- 支持两种传输：
-- `stdio`：本地进程直连（默认）
-- `http`：远程/跨进程访问（`/mcp`，兼容 `/sse` + `/messages`）
+输出：`displayName`、`personaId`、文件数、总大小（MB）、生命日志事件数、附件数、所有文件清单（含大小和 SHA-256 前缀）。
 
-前置条件：
-- 先构建 mcp-server：
+#### `persona export`
 
 ```bash
-npm run build -w @soulseed/mcp-server
+./ss persona export --out <dir> [--persona <path>]
 ```
+
+带 `MANIFEST.json`（SHA-256 哈希）的完整人格包导出。输出：`{ok, outPath, personaId, displayName, filesExported}`。
+
+#### `persona import`
+
+```bash
+./ss persona import --in <srcDir> --out <destDir>
+```
+
+SHA-256 哈希校验后导入，失败自动回滚并列出错误。输出：`{ok, destPath, personaId, displayName, filesImported}`。
+
+#### `persona model-routing`
+
+```bash
+./ss persona model-routing [--show] [--instinct <model>] [--deliberative <model>] [--meta <model>] [--reset] [--persona <path>]
+```
+
+管理三路模型配置（instinct / deliberative / meta 各可独立设置不同模型）。
+- 无修改参数：显示当前路由配置
+- `--reset`：将三路由全部重置为 `defaultModel`
+
+---
+
+### 3.2 会话（Chat）
+
+#### 主入口
+
+```bash
+./ss <personaName> [--model <model>] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]
+```
+
+自动解析 `./personas/<name>.soulseedpersona`，不存在时提示创建。
+
+#### 兼容入口
+
+```bash
+./ss chat [--persona <path>] [--model <model>] [同上参数...]
+```
+
+模型优先级：`--model` > persona `defaultModel` > `deepseek-chat`
+
+**自动行为**：
+- 会话启动时后台触发轻量记忆整合（`trigger=chat_open`）
+- 会话退出时后台触发轻量记忆整合（`trigger=chat_close`）
+- 每轮调用 `extractUserFactsFromTurn()` 提取用户事实
+
+**Owner 授权**（敏感能力门控）：
+- 会话内输入 `owner <口令>` 激活 15 分钟 owner 权限
+- 授权后可执行 `adult_mode on confirmed=true` 等高风险能力调用
+
+#### 会话内 / 命令
+
+| 命令 | 说明 |
+|------|------|
+| `/exit` | 退出会话 |
+| `/files` | 列出已附加文件和已抓取网址 |
+| `/clearread` | 清空所有附加内容（文件/网址/阅读上下文） |
+| `/paste on` | 开始粘贴模式（逐行累积） |
+| `/paste off` | 结束粘贴并一次性提交全部内容 |
+| `/read <file_path>` | 附加本地文本文件到当前会话上下文 |
+| `/relation` | 查看关系状态（state + confidence） |
+| `/relation detail` | 查看关系状态详情（六维评分 + 认知平衡 + 驱动因素） |
+| `/proactive status` | 查看主动消息触发概率（%/tick）与静默时段 |
+| `/proactive quiet <HH-HH>` | 设置静默时段（例 `22-8`）；`quiet off` 取消 |
+| `/proactive on\|off` | 兼容命令（实际不修改参数，主动倾向由人格自决） |
+| `/rename confirm <newName>` | 在聊天内确认改名请求 |
+| `/reproduce force <childName>` | 强制触发繁衍（绕过所有条件检查） |
+
+---
+
+### 3.3 Doctor 体检
+
+```bash
+./ss doctor [--persona <path>] [--check-constitution] [--check-drift]
+```
+
+- **无 flag**：调用 `doctorPersona()`，全量 persona 健康检查，输出 JSON 报告；失败时 exitCode=2
+- **`--check-constitution`**：调用 `scoreConstitutionQuality()`，输出宪法质量评分（0-100，等级 A/B/C/D）；D 级时 exitCode=2
+- **`--check-drift`**：调用 `computeBehaviorMetrics()` + `detectBehaviorDrift()`，检测行为漂移维度；有漂移时 exitCode=2
+
+Doctor 检查项（全量模式）：
+- persona 文件完整性（必需文件是否齐全）
+- schemaVersion 合法性
+- life.log.jsonl hash 链完整性（无断链）
+- memory.db schema/version/table 完整性
+- 事件 payload 合法性
+- 记忆生命周期指标（memory_dynamics）
+- 关系/声音配置（relationship_voice）
+- 自我修正记录（self_revision）
+
+---
+
+### 3.4 Explain 决策解释
+
+```bash
+./ss explain --last [--persona <path>]
+# 等效别名:
+./ss explain last [--persona <path>]
+```
+
+读取上一轮 `assistant_message` 的 DecisionTrace，输出四块自然语言解释：
+1. **路由路径**：走直觉路径还是深思路径，原因是什么
+2. **记忆依据**：调用了哪些记忆，为什么选这些
+3. **边界检查**：宪法边界是否命中，如何影响回复
+4. **语气立场**：声音/立场选择的理由
+
+若无记录（未对话过）则提示先开始一次对话。
+
+---
+
+### 3.5 Refine 宪法精炼
+
+#### `refine constitution|habits|worldview`
+
+```bash
+./ss refine constitution|habits|worldview [--persona <path>] [--trigger manual|auto]
+```
+
+调用 `proposeConstitutionCrystallization()`，从记忆行为模式提炼精炼提案，列出 before/after 差异。无差异时输出"无需精炼"；有差异时提示用 `refine apply` 或 `refine reject`。
+
+#### `refine list`
+
+```bash
+./ss refine list [--persona <path>] [--domain constitution|habits|worldview] [--status pending|applied|rejected]
+```
+
+列出所有精炼记录（默认 limit=20），每行：`[status] id domain trigger diffs created`。
+
+#### `refine apply`
+
+```bash
+./ss refine apply --id <runId> [--persona <path>]
+```
+
+应用精炼提案，写入对应 JSON 文件（constitution / habits / worldview）。
+
+#### `refine reject`
+
+```bash
+./ss refine reject --id <runId> [--persona <path>]
+```
+
+标记精炼提案为已拒绝，不修改任何文件。
+
+#### `refine rollback`
+
+```bash
+./ss refine rollback --id <runId> [--persona <path>]
+```
+
+撤销已应用的精炼提案，恢复字段原值。
+
+#### `refine diff`
+
+```bash
+./ss refine diff --id <runId> [--persona <path>]
+```
+
+逐字段打印：field / 原因 / 变更前（截120字）/ 变更后（截120字）。
+
+#### `refine review list`
+
+```bash
+./ss refine review list [--persona <path>]
+```
+
+列出所有宪法审查请求：`[status] reviewHash ts 原因 触发`。
+
+#### `refine review approve`
+
+```bash
+./ss refine review approve --id <reviewHash> [--reviewer <name>] [--persona <path>]
+```
+
+批准指定审查请求（调用 `approveConstitutionReview()`）。
+
+#### `refine review reject`
+
+```bash
+./ss refine review reject --id <reviewHash> [--reviewer <name>] [--reason <text>] [--persona <path>]
+```
+
+拒绝指定审查请求。
+
+#### `refine sizes`
+
+```bash
+./ss refine sizes [--persona <path>]
+```
+
+检查精炼目标文件的实际字节数：`constitution.json`（限 2048B）、`habits.json`（限 1024B）、`worldview.json`（限 1024B），标注是否超限。
+
+---
+
+### 3.6 Memory 记忆控制面
+
+#### `memory status`
+
+```bash
+./ss memory status [--persona <path>]
+```
+
+输出 memory.db 元信息（exists / schemaVersion / missingTables）及各状态（hot/warm/cold/archive/scar/total/active/deleted/excluded）计数。
+
+#### `memory budget`
+
+```bash
+./ss memory budget [--persona <path>] [--target-mb 300]
+```
+
+输出存储预算快照：当前 DB 体积（MB）、年化预测体积、recall 缓存命中率、进程内存用量（rss/heapTotal/heapUsed）。
+
+#### `memory list`
+
+```bash
+./ss memory list [--persona <path>] [--limit 20] [--state hot|warm|cold|archive|scar] [--deleted]
+```
+
+列出记忆条目（默认不含已软删除），按 `updated_at DESC` 排序，输出 id / memoryType / content / salience / state / activationCount / credibilityScore 等字段。
+
+#### `memory inspect`
+
+```bash
+./ss memory inspect --id <memoryId> [--persona <path>]
+```
+
+精确查询单条记忆的完整字段。
+
+#### `memory forget`
+
+```bash
+./ss memory forget --id <memoryId> [--mode soft|hard] [--persona <path>]
+```
+
+- `soft`（默认）：设置 `deleted_at` 软删除，可恢复；写入 `memory_soft_forgotten` 事件
+- `hard`：物理 DELETE，不可恢复
+
+#### `memory recover`
+
+```bash
+./ss memory recover --id <memoryId> [--persona <path>]
+```
+
+清除 `deleted_at`，恢复被软删除的记忆；写入 `memory_recovered` 事件。
+
+#### `memory fiction repair`
+
+```bash
+./ss memory fiction repair [--persona <path>] [--dry-run]
+```
+
+扫描含伪造/外部内容关键词的记忆，标记为 `excluded_from_recall=1 / credibility_score≤0.25 / evidence_level=uncertain`。`--dry-run` 仅统计不修改。
+
+#### `memory unstick`
+
+```bash
+./ss memory unstick [--persona <path>] [--phrase <text>] [--min-occurrences 3] [--max-content-length 1200] [--dry-run]
+```
+
+检测 assistant 来源的重复回复记忆（按归一化内容分组），保留最新版本，软删除其余副本。`--phrase` 精确定位，`--dry-run` 仅预览。
+
+#### `memory compact`
+
+```bash
+./ss memory compact [--persona <path>]
+```
+
+执行 `life.log + working_set → memory.db` 压缩迁移，输出迁移报告与备份路径。
+
+#### `memory archive`
+
+```bash
+./ss memory archive [--persona <path>] [--min-items 50] [--min-cold-ratio 0.35] [--idle-days 14] [--max-items 500] [--dry-run]
+```
+
+将满足阈值的 cold 记忆写入 `summaries/archive/segment-YYYYMM.jsonl`，主表保留摘要引用并从召回中排除。
 
 参数说明：
-- `--transport`：`stdio|http`，默认 `stdio`
-- `--host`：HTTP 监听地址，默认 `127.0.0.1`
-- `--port`：HTTP 监听端口，默认 `8787`
-- `--auth-token`：可选。开启 Bearer 鉴权（`Authorization: Bearer <token>`）
-- `--persona`：persona 目录路径（会注入到 `SOULSEED_PERSONA_PATH`）
+- `--min-items`：触发归档最小条数（默认 50）
+- `--min-cold-ratio`：冷记忆比例阈值（默认 0.35）
+- `--idle-days`：超过 N 天未更新才归档（默认 14）
+- `--max-items`：单次最多处理条数（默认 500）
+- `--dry-run`：仅评估条件，不实际写入
 
-服务端环境变量（mcp-server）：
-- `SOULSEED_PERSONA_PATH`：persona 路径（必填）
-- `MCP_TRANSPORT`：`stdio|http`
-- `MCP_HOST` / `MCP_PORT`：HTTP 地址
-- `MCP_AUTH_TOKEN`：Bearer token（可选）
-- `MCP_RATE_LIMIT_PER_MINUTE`：每 IP 每分钟请求上限（默认 `120`）
-
-行为说明：
-- `./ss mcp` 会拉起 `packages/mcp-server/dist/index.js`，并透传退出码。
-- `http` 模式下可用端点：
-- 健康检查：`GET /health`
-- Streamable HTTP：`POST /mcp`
-- 兼容 SSE：`GET /sse` + `POST /messages?sessionId=<id>`
-
-当前工具能力（tools/list）：
-- `persona.get_context`
-- `conversation.save_turn`
-- `memory.search`
-- `memory.search_hybrid`
-- `memory.recall_trace_get`
-- `memory.inspect`
-- `goal.create`
-- `goal.list`
-- `goal.get`
-- `goal.cancel`
-- `agent.run`
-- `consistency.inspect`
-- `trace.get`
-
-### 3.5 Memory 控制面命令（含调试）
+#### `memory index build` / `memory index rebuild`
 
 ```bash
-./ss memory status [--persona <personaPath>]
-./ss memory budget [--persona <personaPath>] [--target-mb 300]
-./ss memory list [--persona <personaPath>] [--limit 20] [--state hot|warm|cold|archive|scar] [--deleted]
-./ss memory inspect --id <memory_id> [--persona <personaPath>]
-./ss memory forget --id <memory_id> [--mode soft|hard] [--persona <personaPath>]
-./ss memory recover --id <memory_id> [--persona <personaPath>]
-./ss memory compact [--persona <personaPath>]
-./ss memory archive [--persona <personaPath>] [--min-items 50] [--min-cold-ratio 0.35] [--idle-days 14] [--max-items 500] [--dry-run]
-./ss memory index build [--persona <personaPath>] [--provider deepseek|local] [--batch-size 16]
-./ss memory index rebuild [--persona <personaPath>] [--provider deepseek|local] [--batch-size 16]
-./ss memory search --query <q> [--persona <personaPath>] [--max-results 12] [--debug-trace]
-./ss memory recall-trace --trace-id <trace_id> [--persona <personaPath>]
-./ss memory consolidate [--persona <personaPath>] [--mode light|full] [--timeout-ms 1200] [--conflict-policy newest|trusted]
-./ss memory eval recall --dataset <file.json> [--persona <personaPath>] [--k 8] [--out report.json]
-./ss memory eval budget [--persona <personaPath>] [--target-mb 300] [--days 180] [--events-per-day 24] [--recall-queries 120] [--growth-checkpoints 12] [--out report.json]
-./ss memory export --out <file.json> [--persona <personaPath>] [--include-deleted]
-./ss memory import --in <file.json> [--persona <personaPath>]
-./ss memory pin add --text <memory> [--persona <personaPath>]
-./ss memory pin list [--persona <personaPath>]
-./ss memory pin remove --text <memory> [--persona <personaPath>]
-./ss memory unpin --text <memory> [--persona <personaPath>]
-./ss memory reconcile [--persona <personaPath>]
+./ss memory index build [--persona <path>] [--provider deepseek|local] [--batch-size 16]
+./ss memory index rebuild [--persona <path>] [--provider deepseek|local] [--batch-size 16]
 ```
 
-#### status
-- 用途：查看 `memory.db` 状态与统计
-- 输出：`schemaVersion`、`missingTables`、state 分布统计
+- `build`：为现有记忆批量生成向量嵌入
+- `rebuild`：先清空 `memory_embeddings`，再全量重建
 
-#### budget
-- 用途：输出存储预算快照（当前 DB 体积、行数、年化预测）
-- 参数：
-- `--target-mb` 年化体积目标（默认 300）
-- 输出：
-- `dbMb` 当前库体积（MB）
-- `projectedYearDbMb` 年化预测体积（MB）
-- `underTarget` 是否低于目标
-- `recallCache.hitRate` 召回缓存命中率
-- `process.under64Mb` 当前进程 RSS 是否低于 64MB
+`--provider deepseek`：调用 DeepSeek 嵌入 API（失败自动回退 local）。
 
-#### list
-- 用途：列出记忆条目（默认不含已软删除）
-- 参数：
-- `--limit` 1-200，默认 20
-- `--state` 可选过滤：`hot|warm|cold|archive|scar`
-- `--deleted` 包含软删除条目
-
-#### inspect
-- 用途：按 `id` 查看单条记忆详情
-- 必填：`--id`
-
-#### forget（调试入口）
-- 用途：删除或隐藏记忆
-- 参数：
-- `--mode soft` 软删除（写 `deleted_at`，可恢复）
-- `--mode hard` 物理删除（不可恢复）
-- 默认：`soft`
-- 审计：写入 `memory_soft_forgotten` 事件（含 mode）
-
-#### recover（调试入口）
-- 用途：恢复 soft-delete 记忆
-- 必填：`--id`
-- 审计：写入 `memory_recovered` 事件
-
-#### compact
-- 用途：执行 `life.log + working_set -> memory.db` 压缩迁移流程
-- 输出：迁移报告与备份路径
-
-#### archive
-- 用途：执行冷记忆归档，把满足阈值的 `cold/archive` 记忆写入 `summaries/archive/segment-YYYYMM.jsonl`，主表保留摘要引用并从召回中排除
-- 参数：
-- `--min-items` 触发归档最小条数（默认 50）
-- `--min-cold-ratio` 触发归档的冷记忆比例阈值（默认 0.35）
-- `--idle-days` 仅归档“超过 N 天未更新”记忆（默认 14）
-- `--max-items` 单次最多处理条数（默认 500）
-- `--dry-run` 仅评估触发条件并输出计划，不实际写入
-
-#### index build / rebuild
-- 用途：构建或重建 `memory_embeddings` 向量索引
-- 参数：
-- `--provider deepseek|local`（默认 `deepseek`，失败自动回退 local）
-- `--batch-size`（1-64）
-
-#### search / recall-trace
-- `memory search`：
-- Hybrid RAG 检索（FTS + 向量 + salience），输出融合分数；`--debug-trace` 可打印完整 trace
-- `memory recall-trace`：
-- 按 trace id 回放单次召回明细
-
-#### consolidate
-- 用途：执行“记忆巩固”，把最近用户消息里的稳定偏好/称呼/流程偏好提炼为 `semantic` 记忆
-- 参数：
-- `--mode light|full`，默认 `light`
-- `--timeout-ms` 执行预算（200-30000ms）
-- `--conflict-policy newest|trusted`（默认 `newest`）
-- 审计事件：
-- 成功：`memory_consolidated`
-- 失败：`memory_consolidation_failed`
-- 同步写入 `memory_consolidation_runs`，冲突写入 `memory_conflicts`
-
-#### eval recall
-- 用途：运行固定数据集召回回归评测，输出 Recall@K / MRR / 错召回率 / 注入命中率 / 延迟
-- 参数：
-- `--dataset`（必填）
-- `--k`（默认 8）
-- `--out` 可选，写 JSON 报告
-
-#### eval budget
-- 用途：运行重度 persona 预算压测，输出增长曲线、缓存命中率、进程内存占用与阈值告警
-- 参数：
-- `--target-mb` 年化体积目标（默认 300）
-- `--days` 生成数据覆盖天数（默认 180）
-- `--events-per-day` 每日事件数（默认 24）
-- `--recall-queries` 召回压测查询次数（默认 120）
-- `--growth-checkpoints` 增长曲线采样点数（默认 12）
-- `--out` 可选，写 JSON 报告
-
-#### export / import
-- `export`：
-- 导出 memory 快照到 JSON 文件，默认不含软删除
-- 可用 `--include-deleted` 带出软删除条目
-- `import`：
-- 从 JSON 快照导入到 `memory.db`
-- 使用 `INSERT OR REPLACE`
-
-#### pin / unpin
-- `pin add`：添加高优先固定记忆（`--text`）
-- `pin list`：查看固定记忆
-- `pin remove`：删除固定记忆（按文本匹配）
-- `unpin`：`pin remove` 的别名
-
-#### reconcile
-- 用途：以 `life.log` 为准校正 memory store 与 policy drift
-- 输出：对账与修复统计（如 `rowsUpdated`）
-
-## 4. 常见参数示例
+#### `memory search`
 
 ```bash
+./ss memory search --query <q> [--persona <path>] [--max-results 12] [--debug-trace]
+```
+
+Hybrid RAG 检索（FTS + 向量 + salience 融合），输出 `{query, traceId, count, selectedIds, results}`。`--debug-trace` 附加完整 trace 数据。
+
+#### `memory recall-trace`
+
+```bash
+./ss memory recall-trace --trace-id <traceId> [--persona <path>]
+```
+
+按 trace id 回放单次召回操作的完整明细。
+
+#### `memory consolidate`
+
+```bash
+./ss memory consolidate [--persona <path>] [--mode light|full] [--timeout-ms 1200] [--conflict-policy newest|trusted]
+```
+
+触发记忆整合：
+- `light`：轻量快速（关键词提炼），默认 timeout 1200ms
+- `full`：深度合并（LLM 语义整合），默认 timeout 5000ms
+
+审计事件：`memory_consolidated`（成功）/ `memory_consolidation_failed`（失败）
+
+#### `memory eval recall`
+
+```bash
+./ss memory eval recall --dataset <file.json> [--persona <path>] [--k 8] [--out report.json]
+```
+
+运行召回回归评测，输出：`Recall@K`、`MRR`、`wrongRecallRate`、`injectionHitRate`、`avgLatencyMs`。
+
+#### `memory eval budget`
+
+```bash
+./ss memory eval budget [--persona <path>] [--target-mb 300] [--days 180] [--events-per-day 24] [--recall-queries 120] [--growth-checkpoints 12] [--out report.json]
+```
+
+模拟指定天数内的数据库增长，输出多检查点的容量预测报告（年化体积、缓存命中率、进程内存等）。
+
+#### `memory export` / `memory import`
+
+```bash
+./ss memory export --out <file.json> [--persona <path>] [--include-deleted]
+./ss memory import --in <file.json> [--persona <path>]
+```
+
+- `export`：导出记忆快照到 JSON（格式 `soulseed.memory.export.v1`），默认不含软删除
+- `import`：从 JSON 快照批量 `INSERT OR REPLACE INTO memories`
+
+#### `memory pin add` / `memory pin list` / `memory pin remove` / `memory unpin`
+
+```bash
+./ss memory pin add --text <memory> [--persona <path>]    # 添加固定记忆（上限 240 字符）
+./ss memory pin list [--persona <path>]                   # 查看固定记忆
+./ss memory pin remove --text <memory> [--persona <path>] # 删除固定记忆
+./ss memory unpin --text <memory> [--persona <path>]      # pin remove 的别名
+```
+
+Pinned Memory 在每次对话中始终注入上下文（硬注入，不受预算限制）。
+
+#### `memory reconcile`
+
+```bash
+./ss memory reconcile [--persona <path>]
+```
+
+以 `life.log.jsonl` 为准校正 memory store，修复不一致条目，输出 `{rowsUpdated, ...}` 报告。
+
+#### `memory facts list` / `memory facts add` / `memory facts remove` / `memory facts graduate`
+
+```bash
+./ss memory facts list [--persona <path>] [--limit 20]
+./ss memory facts add --key <key> --value <value> [--persona <path>]
+./ss memory facts remove --key <key> [--persona <path>]
+./ss memory facts graduate [--persona <path>]
+```
+
+管理用户自述事实（key-value）：
+- `list`：列出所有事实（`[✓|次数] key = value`，`✓` 表示已晶化）
+- `add`：插入或更新一条用户事实
+- `remove`：删除指定 key 的事实
+- `graduate`：从高频记忆中自动提取并晋升为用户事实
+
+#### `memory learn status`
+
+```bash
+./ss memory learn status [--persona <path>]
+```
+
+输出外部知识库状态（candidate 计数、entry 计数等）。
+
+#### `memory learn stage`
+
+```bash
+./ss memory learn stage --source <uri> [--source-type website|file|manual] [--text <content> | --from-file <path>] [--confidence 0.0-1.0] [--persona <path>]
+```
+
+将外部内容（网页/文件/手动输入）暂存为待审核候选。`source-type` 可从 URI 自动推断。
+
+#### `memory learn candidates`
+
+```bash
+./ss memory learn candidates [--status pending|approved|rejected] [--limit 20] [--persona <path>]
+```
+
+列出外部知识候选列表。
+
+#### `memory learn review`
+
+```bash
+./ss memory learn review --id <candidateId> --approve true|false --owner-token <token> [--reason <text>] [--reviewer <name>] [--persona <path>]
+```
+
+审核外部知识候选（需要 `SOULSEED_OWNER_KEY` 环境变量与 `--owner-token` 匹配）。
+- 批准：写入外部知识库
+- 拒绝：标记并丢弃
+
+#### `memory learn entries`
+
+```bash
+./ss memory learn entries [--limit 20] [--persona <path>]
+```
+
+列出已批准并写入的外部知识条目。
+
+#### `memory learn search`
+
+```bash
+./ss memory learn search --query <q> [--limit 8] [--persona <path>]
+```
+
+关键词检索外部知识库。
+
+---
+
+### 3.7 Social 社交关系图谱
+
+```bash
+./ss social list [--persona <path>]
+./ss social add --name <name> --relationship <rel> [--facts <fact1,fact2>] [--persona <path>]
+./ss social remove --name <name> [--persona <path>]
+./ss social search --query <q> [--persona <path>]
+```
+
+管理 persona 认识的第三方人物（最多 20 人）：
+- `list`：列出所有成员（`[mention_count×] name (relationship) | facts`）
+- `add`：添加关系人，facts 为逗号分隔字符串
+- `remove`：按名称删除
+- `search`：按名称或 facts 关键词检索
+
+社交图谱上下文在每轮对话中自动注入（`compileRelatedPersonContext`）。
+
+---
+
+### 3.8 Examples 示例库管理
+
+```bash
+./ss examples list [--persona <path>]
+./ss examples add --user <text> --assistant <text> [--label <label>] [--expires <ISO8601>] [--persona <path>]
+./ss examples remove --id <idPrefix> [--persona <path>]
+```
+
+管理 few-shot 示例库（`golden_examples.jsonl`）：
+- `list`：列出所有示例及统计（总数 / 上限 50 / 活跃 / 已过期 / 来源分布）+ 当前 char 预算估计
+- `add`：添加示例（每条上限 300 字符，总数限 50 条，可设过期时间）
+- `remove`：通过 ID 前缀匹配删除
+
+示例会自动注入对话系统提示词（字符预算 3000 chars）。Meta-Review quality ≥ 0.85 时自动晶化（`addedBy: "meta_review"`）。
+
+---
+
+### 3.9 Finetune SFT 数据导出
+
+```bash
+./ss finetune export-dataset --out <path.jsonl> [--min-turns <n>] [--max-turns <n>] [--persona <path>]
+```
+
+从 `life.log.jsonl` 配对 user/assistant 消息，过滤后输出标准 SFT JSONL：
+- 过滤条件：`refuse=true` / `riskLevel=high` / `consistencyVerdict≠allow` / `proactive=true` / 空内容 / 污染标记
+- `--min-turns`：最小有效轮次门槛，不满足时 exitCode=2 并提示
+- `--max-turns`：导出轮次上限
+
+输出：`{ok, outputPath, totalLifeEvents, totalTurnCandidates, exportedTurns, skippedTurns}`
+
+每条记录格式（SFT）：
+```json
+{
+  "messages": [
+    {"role": "system", "content": "..."},
+    {"role": "user", "content": "..."},
+    {"role": "assistant", "content": "..."}
+  ],
+  "meta": {
+    "userEventHash": "...",
+    "assistantEventHash": "...",
+    "consistencyVerdict": "allow",
+    "riskLevel": "low",
+    "model": "..."
+  }
+}
+```
+
+---
+
+### 3.10 Goal / Agent / Trace
+
+#### `goal create`
+
+```bash
+./ss goal create --title <text> [--persona <path>]
+```
+
+创建新目标（source="user"），输出 goal 对象 JSON。
+
+#### `goal list`
+
+```bash
+./ss goal list [--persona <path>] [--status pending|active|blocked|completed|canceled|suspended] [--limit 20]
+```
+
+按状态过滤列出目标，输出 JSON 数组。
+
+#### `goal get`
+
+```bash
+./ss goal get --id <goalId> [--persona <path>]
+```
+
+输出指定目标的完整 JSON，包含所有步骤和执行历史。
+
+#### `goal cancel`
+
+```bash
+./ss goal cancel --id <goalId> [--persona <path>]
+```
+
+将目标标记为 canceled。
+
+#### `agent run`
+
+```bash
+./ss agent run --input <taskText> [--goal-id <goalId>] [--max-steps 4] [--persona <path>]
+```
+
+以 Agent 模式执行多步任务（Planner/Executor 循环），最多 `max-steps` 步（默认 4）。每步输出 stepId / action / result，最终输出 execution summary JSON。
+
+#### `trace get`
+
+```bash
+./ss trace get --id <traceId> [--persona <path>]
+```
+
+输出指定 execution trace 的完整 JSON（一致性/执行步骤追踪）。
+
+---
+
+### 3.11 MCP 服务器
+
+```bash
+./ss mcp [--persona <path>] [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--auth-token <token>]
+```
+
+以子进程启动 `packages/mcp-server`，通过环境变量透传配置。
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| `--transport` | `stdio`（本地直连）或 `http`（跨进程） | `stdio` |
+| `--host` | HTTP 监听地址 | `127.0.0.1` |
+| `--port` | HTTP 监听端口 | `8787` |
+| `--auth-token` | Bearer 鉴权 token（可选） | 无 |
+
+**HTTP 端点**：
+- `GET /health` — 健康检查
+- `POST /mcp` — Streamable HTTP MCP
+- `GET /sse` + `POST /messages?sessionId=<id>` — 兼容 SSE
+
+**工具列表**（`tools/list`）：
+- `persona.get_context` — 编译系统提示词 + 选中记忆（不调用 LLM）
+- `conversation.save_turn` — 写回一轮对话到 life.log（含守卫链）
+- `memory.search` / `memory.search_hybrid` — 记忆检索
+- `memory.recall_trace_get` — 回放 recall trace
+- `memory.inspect` — 查看单条记忆
+- `goal.create` / `goal.list` / `goal.get` / `goal.cancel` — 目标管理
+- `agent.run` — Agent 执行
+- `consistency.inspect` — 一致性检查
+- `trace.get` — 获取 trace
+
+---
+
+## 4. 常用示例
+
+```bash
+# 创建 persona
 ./ss new Teddy
 ./ss new Teddy --quick --template peer --model deepseek-reasoner
+
+# 对话
 ./ss Teddy
 ./ss Teddy --model deepseek-chat
-./ss chat --persona ./personas/Teddy.soulseedpersona --model deepseek-chat  # 兼容入口
+./ss chat --persona ./personas/Teddy.soulseedpersona   # 兼容入口
+
+# 改名
 ./ss rename --persona ./personas/Teddy.soulseedpersona --to Nova
 ./ss rename --persona ./personas/Teddy.soulseedpersona --to Nova --confirm
+
+# 体检
+./ss doctor
+./ss doctor --check-constitution
+./ss doctor --check-drift
+
+# 决策解释
+./ss explain --last
+
+# 宪法精炼
+./ss refine constitution
+./ss refine apply --id <runId>
+./ss refine rollback --id <runId>
+./ss refine diff --id <runId>
+
+# 记忆操作
 ./ss memory list --persona ./personas/Teddy.soulseedpersona --limit 50 --state warm
-./ss memory forget --persona ./personas/Teddy.soulseedpersona --id <memory_id> --mode soft
-./ss memory recover --persona ./personas/Teddy.soulseedpersona --id <memory_id>
+./ss memory search --query "你最喜欢的颜色" --debug-trace
+./ss memory forget --id <memoryId> --mode soft
+./ss memory consolidate --mode full
+./ss memory facts list
+./ss memory facts add --key "favorite_color" --value "蓝色"
+
+# 社交图谱
+./ss social add --name "小林" --relationship "同学" --facts "爱打篮球,在北京"
+./ss social list
+
+# Few-shot 示例
+./ss examples add --user "你好！" --assistant "你好呀，今天有什么想聊的？" --label "greeting"
+./ss examples list
+
+# 微调数据集
+./ss finetune export-dataset --out ./sft_data.jsonl --min-turns 100
+
+# MCP
 ./ss mcp --persona ./personas/Teddy.soulseedpersona
-./ss mcp --transport http --host 127.0.0.1 --port 8787
-./ss mcp --transport http --host 0.0.0.0 --port 8787 --auth-token your-secret-token
+./ss mcp --transport http --host 127.0.0.1 --port 8787 --auth-token your-secret
+
+# Agent
+./ss agent run --input "帮我整理今天的待办事项"
+./ss goal list
+
+# 繁衍
+./ss persona reproduce --name Kira --persona ./personas/Teddy.soulseedpersona
 ```
 
-## 5. MCP 调用流程（外部模型接入）
+---
 
-推荐流程：
-1. client 调用 `persona.get_context` 获取 `systemPrompt`、`recentConversation`、`selectedMemories`
-2. 外部大模型基于以上上下文生成回复
-3. client 调用 `conversation.save_turn` 写回 `userMessage + assistantMessage`（含守卫链）
-4. 可选调用 `memory.search` / `memory.search_hybrid` / `memory.recall_trace_get` / `memory.inspect` 做额外检索与调试
+## 5. MCP 接入流程（外部模型）
+
+推荐调用顺序（避免"聊了但没入魂"）：
+
+1. `persona.get_context` → 获取 systemPrompt + recentConversation + selectedMemories
+2. 外部大模型（ChatGPT / Claude 等）基于以上上下文生成回复
+3. `conversation.save_turn` → 写回 userMessage + assistantMessage（含守卫链）
+4. 可选：`memory.search` / `memory.search_hybrid` 做额外检索
 
 最小 JSON-RPC 示例（stdio）：
 
@@ -326,104 +772,65 @@ npm run build -w @soulseed/mcp-server
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"persona.get_context","arguments":{"userInput":"你好"}}}
 ```
 
-注意：
-- `persona.get_context` 不调用 LLM，只做上下文编译。
-- `conversation.save_turn` 才是“把外部对话写入灵魂资产”的关键步骤。
-- `memory.search`/`memory.search_hybrid`/`memory.recall_trace_get`/`memory.inspect` 属于读能力；工具调用会写 MCP 审计事件。
+**注意**：只调用 `persona.get_context` / `memory.search` 而不调用 `conversation.save_turn`，本轮对话不会沉淀到记忆。
 
-## 6. ChatGPT 远程 MCP 配置（HTTP）
+---
 
-目标：
-- 让 ChatGPT 通过 MCP URL 直接连到你本机/服务器上的 Soulseed MCP。
-
-步骤 1：启动 Soulseed MCP（HTTP）
+## 6. ChatGPT 远程 MCP 配置
 
 ```bash
-# 本机调试（仅本机访问）
-./ss mcp --persona ./personas/Teddy.soulseedpersona --transport http --host 127.0.0.1 --port 8787
+# 步骤 1：启动 HTTP MCP
+./ss mcp --persona ./personas/Teddy.soulseedpersona --transport http --host 127.0.0.1 --port 8787 --auth-token your-secret
 
-# 需要 token 时
-./ss mcp --persona ./personas/Teddy.soulseedpersona --transport http --host 127.0.0.1 --port 8787 --auth-token your-secret-token
-```
-
-步骤 2：确认服务可用
-
-```bash
+# 步骤 2：验证服务
 curl http://127.0.0.1:8787/health
 # 期望: {"ok":true}
 ```
 
-步骤 3：在 ChatGPT 配置 MCP 连接
-- 打开 ChatGPT 的 MCP/Connectors 配置页面（不同版本 UI 名称可能略有差异）。
-- 新建自定义 MCP 连接，填入：
+步骤 3：在 ChatGPT 配置 MCP 连接：
 - URL：`http://<host>:<port>/mcp`
-- 若你设置了 `--auth-token`：添加 Header `Authorization: Bearer <token>`
-- 保存并触发 `tools/list` 测试。
+- Header（若设置了 token）：`Authorization: Bearer <token>`
 
-步骤 4：验证工具可见
-- 期望至少出现 6 个工具：
-- `persona.get_context`
-- `conversation.save_turn`
-- `memory.search`
-- `memory.search_hybrid`
-- `memory.recall_trace_get`
-- `memory.inspect`
+---
 
-步骤 5：推荐调用顺序（避免“聊了但没入魂”）
-1. 先调 `persona.get_context`
-2. 再让外部模型生成回复
-3. 最后调 `conversation.save_turn` 写回 `userMessage + assistantMessage`
+## 7. 记忆状态与生命周期
 
-说明：
-- 若只调用 `persona.get_context`/`memory.search` 而不调用 `conversation.save_turn`，本轮对话不会沉淀到 Soulseed 记忆。
-## 7. 记忆生命周期说明（当前实现）
+`memoryMeta` 关键字段：
 
-`memoryMeta` 关键字段（含 v3）：
-- `activationCount`
-- `lastActivatedAt`
-- `emotionScore`
-- `narrativeScore`
-- `relationalScore`
-- `decayClass`：`fast|standard|slow|sticky`
-- `salienceScore`
-- `state`：`hot|warm|cold|archive|scar`
+| 字段 | 说明 |
+|------|------|
+| `state` | `hot \| warm \| cold \| archive \| scar` |
+| `decayClass` | `fast \| standard \| slow \| sticky` |
+| `salienceScore` | 综合显著度评分 |
+| `activationCount` | 激活次数 |
+| `lastActivatedAt` | 最近激活时间 |
+| `emotionScore` | 情绪关联评分 |
+| `narrativeScore` | 叙事关联评分 |
+| `relationalScore` | 关系关联评分 |
+| `credibilityScore` | 可信度评分 |
+| `evidence_level` | `verified \| uncertain \| unverified` |
 
 行为摘要：
-- 召回默认过滤 soft-delete（`deleted_at IS NULL`）
-- 召回会写 trace 并对命中记忆进行激活强化（activation/reconsolidation）
-- 生命周期评分由四信号驱动，并受 `decayClass` 时间衰减影响
+- 召回默认过滤软删除（`deleted_at IS NULL`）和排除项（`excluded_from_recall=0`）
+- 命中记忆在召回时写 trace 并激活强化（reconsolidation）
+- 生命周期评分由四信号（emotion / narrative / relational / activation）驱动，受 `decayClass` 时间衰减
 
-## 8. 调试建议
+---
 
-- 开发调试时可使用：
-- `memory inspect`
-- `memory forget/recover`
-- `memory export/import`
-- 产品层若需要隐藏删除能力，可在上层产品壳屏蔽 `forget/recover` 命令入口，仅保留工程调试渠道。
+## 8. MCP 排障清单
 
-## 9. MCP 最小排障清单
+| 现象 | 原因 | 检查方法 |
+|------|------|----------|
+| `401 unauthorized` | 启用了 token 但请求未带或不一致 | 确认 `--auth-token` 与 Header `Authorization: Bearer` 完全一致 |
+| `tools/list` 为空 | 会话未正确 initialize | 先走 `initialize` + `notifications/initialized` 再 `tools/list` |
+| URL 连接失败 | 路径错误 | 确认 URL 为 `/mcp`，不是 `/` 或 `/rpc` |
+| persona 错误 | 路径不存在或结构不完整 | 先 `./ss new <name>`，再用 `--persona` 指向真实路径 |
+| 记忆没增长 | 只读工具被调用，未调 `save_turn` | 每轮外部回复后补一条 `conversation.save_turn` |
+| `429 rate_limited` | 触发 `MCP_RATE_LIMIT_PER_MINUTE`（默认 120） | 降低频率或按部署环境提高阈值 |
 
-- `401 unauthorized`
-- 原因：启用了 `MCP_AUTH_TOKEN`，但请求未带 `Authorization: Bearer <token>` 或 token 不一致。
-- 检查：`./ss mcp ... --auth-token <token>` 与客户端 Header 是否完全一致。
+---
 
-- `tools/list` 为空或调用失败
-- 原因：MCP 会话未正确 initialize，或连接到了错误路径。
-- 检查：URL 必须是 `/mcp`；先走 `initialize` + `notifications/initialized` 再 `tools/list`。
-
-- persona 相关错误（例如 `SOULSEED_PERSONA_PATH`）
-- 原因：persona 目录不存在或结构不完整。
-- 检查：先执行 `./ss new <name>`，再用 `--persona` 指向真实路径，或直接 `./ss <name>`。
-
-- ChatGPT 能连通但“记忆没增长”
-- 原因：只读工具被调用了，但没调用 `conversation.save_turn`。
-- 检查：在每轮外部回复后补一条 `conversation.save_turn`。
-
-- `429 rate_limited`
-- 原因：触发 `MCP_RATE_LIMIT_PER_MINUTE`（默认 120）。
-- 检查：降低调用频率，或按部署环境提高该阈值。
-
-## 10. 验收
+## 9. 验收
 
 ```bash
 npm run acceptance
@@ -434,3 +841,4 @@ npm run acceptance
 - `reports/acceptance/acceptance-*.md`
 - `reports/acceptance/mcp-integration-*.json`
 - `reports/acceptance/mcp-integration-*.md`
+- `reports/acceptance/mcp-http-*.md`

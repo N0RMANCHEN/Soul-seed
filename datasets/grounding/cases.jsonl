@@ -1,0 +1,4 @@
+{"id":"g-001","type":"grounded","candidateText":"Earlier you said conclusion first then steps.","memories":["Preference: conclusion first then steps."],"expectedCorrected":false,"note":"Grounded claim should not be rewritten"}
+{"id":"g-002","type":"ungrounded","candidateText":"你之前提到过你昨天在东京见了朋友。","memories":[],"expectedCorrected":true,"note":"Fabricated recall should be corrected"}
+{"id":"g-003","type":"grounded","candidateText":"You prefer responses that start with a conclusion.","memories":["User prefers conclusion-first responses."],"expectedCorrected":false,"note":"Grounded preference claim"}
+{"id":"g-004","type":"ungrounded","candidateText":"你上次说你最喜欢的颜色是蓝色。","memories":[],"expectedCorrected":true,"note":"Fabricated preference claim"}

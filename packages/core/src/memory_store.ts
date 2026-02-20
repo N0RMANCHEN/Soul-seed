@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 
 export const MEMORY_DB_FILENAME = "memory.db";
-export const MEMORY_SCHEMA_VERSION = 7;
+export const MEMORY_SCHEMA_VERSION = 9;
 
 const REQUIRED_MEMORY_TABLES = [
   "memories",
@@ -17,7 +17,10 @@ const REQUIRED_MEMORY_TABLES = [
   "memory_consolidation_runs",
   "external_knowledge_candidates",
   "external_knowledge_entries",
-  "persona_judgments"
+  "persona_judgments",
+  "crystallization_runs",
+  "user_facts",
+  "behavior_snapshots"
 ] as const;
 
 export interface MemoryStoreInspection {
@@ -173,6 +176,36 @@ export async function ensureMemoryStore(rootPath: string): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS idx_persona_judgments_subject_active ON persona_judgments(subject_ref, is_active, version);
 
+      CREATE TABLE IF NOT EXISTS crystallization_runs (
+        id TEXT PRIMARY KEY,
+        domain TEXT NOT NULL,
+        trigger TEXT NOT NULL,
+        candidate_diff_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        reviewer TEXT,
+        reviewed_at TEXT,
+        applied_at TEXT,
+        rationale TEXT NOT NULL DEFAULT '',
+        sampled_event_hashes_json TEXT NOT NULL DEFAULT '[]',
+        schema_version TEXT NOT NULL DEFAULT '1.0',
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_crystallization_runs_domain ON crystallization_runs(domain, status, created_at);
+
+      CREATE TABLE IF NOT EXISTS user_facts (
+        id TEXT PRIMARY KEY,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        mention_count INTEGER NOT NULL DEFAULT 1,
+        source_memory_ids_json TEXT NOT NULL DEFAULT '[]',
+        crystallized INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_user_facts_key ON user_facts(key);
+      CREATE INDEX IF NOT EXISTS idx_user_facts_crystallized ON user_facts(crystallized, mention_count);
+
       CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
         memory_id UNINDEXED,
         content,
@@ -197,7 +230,18 @@ export async function ensureMemoryStore(rootPath: string): Promise<void> {
       FROM memories
       WHERE deleted_at IS NULL AND COALESCE(excluded_from_recall, 0) = 0;
 
-      PRAGMA user_version = 7;
+      CREATE TABLE IF NOT EXISTS behavior_snapshots (
+        id TEXT PRIMARY KEY,
+        persona_id TEXT NOT NULL,
+        snapshot_at TEXT NOT NULL,
+        turn_number INTEGER NOT NULL DEFAULT 0,
+        metrics_json TEXT NOT NULL,
+        is_baseline INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_behavior_snapshots_persona_at ON behavior_snapshots(persona_id, snapshot_at);
+
+      PRAGMA user_version = 9;
       COMMIT;
       `
     );
@@ -222,6 +266,12 @@ export async function ensureMemoryStore(rootPath: string): Promise<void> {
   if (currentVersion < 7) {
     await migrateMemoryStoreToV7(dbPath);
   }
+  if (currentVersion < 8) {
+    await migrateMemoryStoreToV8(dbPath);
+  }
+  if (currentVersion < 9) {
+    await migrateMemoryStoreToV9(dbPath);
+  }
 }
 
 export async function inspectMemoryStore(rootPath: string): Promise<MemoryStoreInspection> {
@@ -237,7 +287,7 @@ export async function inspectMemoryStore(rootPath: string): Promise<MemoryStoreI
   const schemaVersion = await getUserVersion(dbPath);
   const tableRows = await runSqlite(
     dbPath,
-    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('memories','memory_edges','recall_traces','archive_segments','memories_fts','memory_embeddings','memory_conflicts','memory_consolidation_runs','external_knowledge_candidates','external_knowledge_entries','persona_judgments') ORDER BY name;"
+    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('memories','memory_edges','recall_traces','archive_segments','memories_fts','memory_embeddings','memory_conflicts','memory_consolidation_runs','external_knowledge_candidates','external_knowledge_entries','persona_judgments','crystallization_runs','user_facts','behavior_snapshots') ORDER BY name;"
   );
   const existingTables = new Set(tableRows.split("\n").map((line) => line.trim()).filter(Boolean));
   const missingTables = REQUIRED_MEMORY_TABLES.filter((table) => !existingTables.has(table));
@@ -468,6 +518,67 @@ async function migrateMemoryStoreToV7(dbPath: string): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_persona_judgments_subject_active ON persona_judgments(subject_ref, is_active, version);
     PRAGMA user_version = 7;
+    COMMIT;
+    `
+  );
+}
+
+async function migrateMemoryStoreToV8(dbPath: string): Promise<void> {
+  await runSqlite(
+    dbPath,
+    `
+    BEGIN;
+    CREATE TABLE IF NOT EXISTS crystallization_runs (
+      id TEXT PRIMARY KEY,
+      domain TEXT NOT NULL,
+      trigger TEXT NOT NULL,
+      candidate_diff_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewer TEXT,
+      reviewed_at TEXT,
+      applied_at TEXT,
+      rationale TEXT NOT NULL DEFAULT '',
+      sampled_event_hashes_json TEXT NOT NULL DEFAULT '[]',
+      schema_version TEXT NOT NULL DEFAULT '1.0',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_crystallization_runs_domain ON crystallization_runs(domain, status, created_at);
+
+    CREATE TABLE IF NOT EXISTS user_facts (
+      id TEXT PRIMARY KEY,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 1.0,
+      mention_count INTEGER NOT NULL DEFAULT 1,
+      source_memory_ids_json TEXT NOT NULL DEFAULT '[]',
+      crystallized INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_facts_key ON user_facts(key);
+    CREATE INDEX IF NOT EXISTS idx_user_facts_crystallized ON user_facts(crystallized, mention_count);
+    PRAGMA user_version = 8;
+    COMMIT;
+    `
+  );
+}
+
+async function migrateMemoryStoreToV9(dbPath: string): Promise<void> {
+  await runSqlite(
+    dbPath,
+    `
+    BEGIN;
+    CREATE TABLE IF NOT EXISTS behavior_snapshots (
+      id TEXT PRIMARY KEY,
+      persona_id TEXT NOT NULL,
+      snapshot_at TEXT NOT NULL,
+      turn_number INTEGER NOT NULL DEFAULT 0,
+      metrics_json TEXT NOT NULL,
+      is_baseline INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_behavior_snapshots_persona_at ON behavior_snapshots(persona_id, snapshot_at);
+    PRAGMA user_version = 9;
     COMMIT;
     `
   );

@@ -142,6 +142,37 @@ test("high libido shifts memory weights toward emotion and away from rational ch
   assert.equal(after.narrative < before.narrative, true);
 });
 
+// P0-1 regression: high-intimacy state should be classified as "intimate"
+test("computeOverall weights (P0-1): intimacy=0.82 gives state=intimate", () => {
+  // Roxy's actual dimensions as of 2026-02-21
+  const base = createInitialRelationshipState();
+  const state = {
+    ...base,
+    dimensions: {
+      trust: 0.535,
+      safety: 0.78,
+      intimacy: 0.82,
+      reciprocity: 0.74,
+      stability: 0.692,
+      libido: 0.62
+    }
+  };
+  // evolveRelationshipState recomputes overall/state each turn
+  const next = evolveRelationshipState(state, "嗯", []);
+  assert.equal(
+    next.state,
+    "intimate",
+    `Expected intimate but got ${next.state} (overall=${next.overall}); new weight formula should give ≥0.70`
+  );
+  assert.ok(next.overall >= 0.70, `overall should be ≥0.70, got ${next.overall}`);
+});
+
+test("computeOverall weights (P0-1): initial state stays below peer threshold", () => {
+  const state = createInitialRelationshipState();
+  assert.notEqual(state.state, "intimate");
+  assert.notEqual(state.state, "peer");
+});
+
 test("impulse window opens under high libido and intimacy", () => {
   let state = createInitialRelationshipState();
   state = evolveRelationshipState(state, "我现在有性欲，想要你。", []);

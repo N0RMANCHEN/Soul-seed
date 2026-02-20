@@ -5,15 +5,21 @@ import path from "node:path";
 import { eventHash } from "./hash.js";
 import { ingestLifeEventMemory } from "./memory_ingest.js";
 import { ensureMemoryStore } from "./memory_store.js";
+import { createEmptySocialGraph, SOCIAL_GRAPH_FILENAME } from "./social_graph.js";
 import {
   createInitialRelationshipState,
   ensureRelationshipArtifacts,
   writeRelationshipState
 } from "./relationship_state.js";
+import {
+  PERSONA_SCHEMA_VERSION
+} from "./types.js";
 import type {
   LifeEvent,
   LifeEventInput,
   MemoryMeta,
+  CognitionState,
+  ModelRoutingConfig,
   PersonaHabits,
   PersonaInitOptions,
   PersonaConstitution,
@@ -58,6 +64,13 @@ const DEFAULT_CONSTITUTION: PersonaConstitution = {
 const DEFAULT_HABITS: PersonaHabits = {
   style: "concise",
   adaptability: "high"
+};
+
+const DEFAULT_COGNITION_STATE: CognitionState = {
+  instinctBias: 0.45,
+  epistemicStance: "balanced",
+  toolPreference: "auto",
+  updatedAt: isoNow()
 };
 
 const DEFAULT_VOICE_PROFILE: VoiceProfile = {
@@ -105,6 +118,7 @@ export async function initPersonaPackage(
       habits: "habits.json",
       userProfile: "user_profile.json",
       pinned: "pinned.json",
+      cognition: "cognition_state.json",
       soulLineage: "soul_lineage.json",
       lifeLog: "life.log.jsonl",
       memoryDb: "memory.db"
@@ -131,6 +145,7 @@ export async function initPersonaPackage(
     memories: [],
     updatedAt: createdAt
   });
+  await writeJson(path.join(outPath, "cognition_state.json"), normalizeCognitionState(undefined, createdAt));
   await writeJson(path.join(outPath, "soul_lineage.json"), createInitialSoulLineage(personaId));
   await writeJson(path.join(outPath, "relationship_state.json"), createInitialRelationshipState(createdAt));
   await writeJson(path.join(outPath, "voice_profile.json"), voiceProfile);
@@ -144,6 +159,7 @@ export async function initPersonaPackage(
   });
 
   await writeFile(path.join(outPath, "life.log.jsonl"), "", "utf8");
+  await writeJson(path.join(outPath, SOCIAL_GRAPH_FILENAME), createEmptySocialGraph());
   await ensureMemoryStore(outPath);
 }
 
@@ -157,6 +173,7 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
   const habits = await readJson<PersonaHabits>(path.join(rootPath, "habits.json"));
   const userProfile = await readJson<PersonaUserProfile>(path.join(rootPath, "user_profile.json"));
   const pinned = await readJson<PersonaPinned>(path.join(rootPath, "pinned.json"));
+  const cognition = await ensureCognitionStateArtifacts(rootPath);
 
   return {
     rootPath,
@@ -166,6 +183,7 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
     habits,
     userProfile,
     pinned,
+    cognition,
     relationshipState: artifacts.relationshipState,
     voiceProfile: artifacts.voiceProfile,
     soulLineage
@@ -198,6 +216,30 @@ export async function writeSoulLineage(rootPath: string, lineage: SoulLineage): 
   await writeJson(lineagePath, normalizeSoulLineage(lineage as unknown as Record<string, unknown>, lineage.personaId));
 }
 
+export const MAX_REPRODUCTION_COUNT = 10;
+
+export async function extractSpiritualLegacy(rootPath: string, maxChars = 500): Promise<string> {
+  const events = await readLifeEvents(rootPath);
+  const assistantMessages = events
+    .filter((ev) => ev.type === "assistant_message" && !ev.payload.proactive)
+    .slice(-20);
+
+  if (assistantMessages.length === 0) {
+    return "";
+  }
+
+  const snippets: string[] = [];
+  for (const ev of assistantMessages) {
+    const text = typeof ev.payload.text === "string" ? ev.payload.text.trim() : "";
+    if (text.length > 0) {
+      snippets.push(text.slice(0, 80));
+    }
+  }
+
+  const joined = snippets.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  return joined.slice(0, maxChars);
+}
+
 export async function createChildPersonaFromParent(params: {
   parentPath: string;
   childDisplayName: string;
@@ -208,8 +250,18 @@ export async function createChildPersonaFromParent(params: {
   parentPersonaId: string;
   childPersonaId: string;
   childPersonaPath: string;
+  spiritualLegacy: string;
 }> {
   const parentPkg = await loadPersonaPackage(params.parentPath);
+  const parentLineage = await ensureSoulLineageArtifacts(params.parentPath, parentPkg.persona.id);
+
+  // Check reproduction count limit
+  if (!params.forced && parentLineage.reproductionCount >= MAX_REPRODUCTION_COUNT) {
+    throw new Error(
+      `繁衍次数已达上限（${MAX_REPRODUCTION_COUNT}），无法继续繁衍。如需强制，请使用 --force-all`
+    );
+  }
+
   const childDirName = `${params.childDisplayName.trim() || "ChildSoul"}.soulseedpersona`;
   const childPersonaPath = path.resolve(
     params.childOutPath ?? path.join(path.dirname(params.parentPath), childDirName)
@@ -225,13 +277,23 @@ export async function createChildPersonaFromParent(params: {
     await writeJson(path.join(childPersonaPath, "habits.json"), parentPkg.habits);
   }
 
+  // Extract and store spiritual legacy
+  const spiritualLegacy = await extractSpiritualLegacy(params.parentPath);
+  if (spiritualLegacy.length > 0) {
+    const legacyPath = path.join(childPersonaPath, "spiritual_legacy.txt");
+    const legacyHeader = `精神遗产摘录（来自父灵魂 ${parentPkg.persona.displayName}, ${new Date().toISOString().slice(0, 10)}）\n\n`;
+    await writeFile(legacyPath, legacyHeader + spiritualLegacy, "utf8");
+  }
+
   const inherited = await extractInheritedMemories(params.parentPath);
+  // Prepend spiritual legacy excerpt as first pinned memory if available
+  const legacyPin =
+    spiritualLegacy.length > 0 ? [`[父灵魂遗产] ${spiritualLegacy.slice(0, 120)}`] : [];
   await writeJson(path.join(childPersonaPath, "pinned.json"), {
-    memories: inherited,
+    memories: [...legacyPin, ...inherited].slice(0, 8),
     updatedAt: new Date().toISOString()
   });
 
-  const parentLineage = await ensureSoulLineageArtifacts(params.parentPath, parentPkg.persona.id);
   const childLineage = await ensureSoulLineageArtifacts(childPersonaPath, childPkg.persona.id);
   const nowIso = new Date().toISOString();
   const parentNext: SoulLineage = {
@@ -250,7 +312,8 @@ export async function createChildPersonaFromParent(params: {
   return {
     parentPersonaId: parentPkg.persona.id,
     childPersonaId: childPkg.persona.id,
-    childPersonaPath
+    childPersonaPath,
+    spiritualLegacy
   };
 }
 
@@ -778,6 +841,61 @@ export async function patchHabits(
   return next;
 }
 
+export async function ensureCognitionStateArtifacts(rootPath: string): Promise<CognitionState> {
+  const cognitionPath = path.join(rootPath, "cognition_state.json");
+  const current = existsSync(cognitionPath)
+    ? await readJson<Record<string, unknown>>(cognitionPath)
+    : ({} as Record<string, unknown>);
+  const normalized = normalizeCognitionState(current);
+  await writeJson(cognitionPath, normalized);
+  return normalized;
+}
+
+export async function patchCognitionState(
+  rootPath: string,
+  patch: Partial<Pick<CognitionState, "instinctBias" | "epistemicStance" | "toolPreference">> & {
+    modelRouting?: Partial<ModelRoutingConfig> | null;
+  }
+): Promise<CognitionState> {
+  const cognitionPath = path.join(rootPath, "cognition_state.json");
+  const current = await ensureCognitionStateArtifacts(rootPath);
+  // Merge modelRouting: null means clear, object means merge
+  let nextModelRouting: ModelRoutingConfig | undefined = current.modelRouting;
+  if (patch.modelRouting === null) {
+    nextModelRouting = undefined;
+  } else if (patch.modelRouting && typeof patch.modelRouting === "object") {
+    const merged: ModelRoutingConfig = { ...(current.modelRouting ?? {}) };
+    const p = patch.modelRouting;
+    if (typeof p.instinct === "string") {
+      const v = p.instinct.trim();
+      if (v) merged.instinct = v; else delete merged.instinct;
+    }
+    if (typeof p.deliberative === "string") {
+      const v = p.deliberative.trim();
+      if (v) merged.deliberative = v; else delete merged.deliberative;
+    }
+    if (typeof p.meta === "string") {
+      const v = p.meta.trim();
+      if (v) merged.meta = v; else delete merged.meta;
+    }
+    nextModelRouting = (merged.instinct || merged.deliberative || merged.meta) ? merged : undefined;
+  }
+  const next = normalizeCognitionState({
+    ...current,
+    ...(Number.isFinite(patch.instinctBias) ? { instinctBias: Number(patch.instinctBias) } : {}),
+    ...(patch.epistemicStance ? { epistemicStance: patch.epistemicStance } : {}),
+    ...(patch.toolPreference ? { toolPreference: patch.toolPreference } : {}),
+    ...(nextModelRouting ? { modelRouting: nextModelRouting } : {}),
+    updatedAt: new Date().toISOString()
+  });
+  // If modelRouting was cleared (null patch), ensure it's not in output
+  if (patch.modelRouting === null) {
+    delete (next as Partial<CognitionState>).modelRouting;
+  }
+  await writeJson(cognitionPath, next);
+  return next;
+}
+
 export async function patchVoiceProfile(
   rootPath: string,
   patch: {
@@ -851,12 +969,31 @@ function normalizeSoulLineage(raw: Record<string, unknown>, personaId: string): 
   };
 }
 
+/** 0.1.0 schema 缺少 paths.cognition / soulLineage / memoryDb，在内存中补全 */
+const PERSONA_DEFAULT_PATHS: Required<NonNullable<PersonaMeta["paths"]>> = {
+  identity: "identity.json",
+  worldview: "worldview.json",
+  constitution: "constitution.json",
+  habits: "habits.json",
+  userProfile: "user_profile.json",
+  pinned: "pinned.json",
+  cognition: "cognition_state.json",
+  soulLineage: "soul_lineage.json",
+  lifeLog: "life.log.jsonl",
+  memoryDb: "memory.db"
+};
+
 function normalizePersonaMeta(raw: PersonaMeta): PersonaMeta {
   const defaultModel = normalizeDefaultModel(raw.defaultModel);
   const initProfile = normalizeInitProfile(raw.initProfile, raw.createdAt);
+  const isLegacy = raw.schemaVersion !== PERSONA_SCHEMA_VERSION;
+  const paths: PersonaMeta["paths"] = isLegacy
+    ? { ...PERSONA_DEFAULT_PATHS, ...(raw.paths ?? {}) }
+    : raw.paths;
   return {
     ...raw,
-    schemaVersion: raw.schemaVersion === "0.2.0" ? raw.schemaVersion : "0.1.0",
+    schemaVersion: isLegacy ? PERSONA_SCHEMA_VERSION : raw.schemaVersion,
+    paths,
     ...(defaultModel ? { defaultModel } : {}),
     ...(initProfile ? { initProfile } : {})
   };
@@ -943,6 +1080,46 @@ function normalizeVoiceProfile(input?: VoiceProfile): VoiceProfile {
           : DEFAULT_VOICE_PROFILE.thinkingPreview?.allowFiller
     }
   };
+}
+
+function normalizeModelRoutingConfig(raw: unknown): ModelRoutingConfig | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const r = raw as Record<string, unknown>;
+  const instinct = typeof r.instinct === "string" ? r.instinct.trim() : undefined;
+  const deliberative = typeof r.deliberative === "string" ? r.deliberative.trim() : undefined;
+  const meta = typeof r.meta === "string" ? r.meta.trim() : undefined;
+  const result: ModelRoutingConfig = {};
+  if (instinct) result.instinct = instinct;
+  if (deliberative) result.deliberative = deliberative;
+  if (meta) result.meta = meta;
+  if (!result.instinct && !result.deliberative && !result.meta) return undefined;
+  return result;
+}
+
+function normalizeCognitionState(input?: Record<string, unknown>, fallbackTs?: string): CognitionState {
+  const instinctBiasRaw = Number(input?.instinctBias);
+  const instinctBias = Number.isFinite(instinctBiasRaw) ? clamp01(instinctBiasRaw) : DEFAULT_COGNITION_STATE.instinctBias;
+  const epistemicStance =
+    input?.epistemicStance === "cautious" || input?.epistemicStance === "assertive" || input?.epistemicStance === "balanced"
+      ? input.epistemicStance
+      : DEFAULT_COGNITION_STATE.epistemicStance;
+  const toolPreference =
+    input?.toolPreference === "read_first" || input?.toolPreference === "reply_first" || input?.toolPreference === "auto"
+      ? input.toolPreference
+      : DEFAULT_COGNITION_STATE.toolPreference;
+  const updatedAt =
+    typeof input?.updatedAt === "string" && Number.isFinite(Date.parse(input.updatedAt))
+      ? input.updatedAt
+      : fallbackTs ?? new Date().toISOString();
+  const modelRouting = normalizeModelRoutingConfig(input?.modelRouting);
+  const result: CognitionState = {
+    instinctBias,
+    epistemicStance,
+    toolPreference,
+    updatedAt
+  };
+  if (modelRouting) result.modelRouting = modelRouting;
+  return result;
 }
 
 function normalizeDefaultModel(value: string | undefined): string | undefined {

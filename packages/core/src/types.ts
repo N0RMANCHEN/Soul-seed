@@ -6,6 +6,8 @@ export interface ChatMessage {
   content: string;
 }
 
+export const PERSONA_SCHEMA_VERSION = "0.2.0";
+
 export interface PersonaMeta {
   id: string;
   displayName: string;
@@ -15,6 +17,19 @@ export interface PersonaMeta {
   initProfile?: {
     template: "friend" | "peer" | "intimate" | "neutral" | "custom";
     initializedAt: string;
+  };
+  paths?: {
+    identity?: string;
+    worldview?: string;
+    constitution?: string;
+    habits?: string;
+    userProfile?: string;
+    pinned?: string;
+    cognition?: string;
+    soulLineage?: string;
+    lifeLog?: string;
+    memoryDb?: string;
+    [key: string]: string | undefined;
   };
 }
 
@@ -51,6 +66,20 @@ export interface PersonaUserProfile {
   preferredName: string;
 }
 
+export interface ModelRoutingConfig {
+  instinct?: string;
+  deliberative?: string;
+  meta?: string;
+}
+
+export interface CognitionState {
+  instinctBias: number;
+  epistemicStance: "balanced" | "cautious" | "assertive";
+  toolPreference: "auto" | "read_first" | "reply_first";
+  updatedAt: string;
+  modelRouting?: ModelRoutingConfig;
+}
+
 export interface AdultSafetyContext {
   adultMode: boolean;
   ageVerified: boolean;
@@ -71,6 +100,7 @@ export interface PersonaPackage {
   habits?: PersonaHabits;
   userProfile: PersonaUserProfile;
   pinned: PersonaPinned;
+  cognition: CognitionState;
   relationshipState?: RelationshipState;
   voiceProfile?: VoiceProfile;
   soulLineage?: SoulLineage;
@@ -179,6 +209,10 @@ export interface DecisionTrace {
   consistencyVerdict?: "allow" | "rewrite" | "reject";
   consistencyRuleHits?: string[];
   consistencyTraceId?: string;
+  routeDecision?: "instinct" | "deliberative";
+  routeReasonCodes?: string[];
+  routeTag?: "instinct" | "deliberative" | "meta";
+  modelUsed?: string;
 }
 
 export type PersonaJudgmentLabel = "fiction" | "non_fiction" | "mixed" | "uncertain";
@@ -271,6 +305,7 @@ export interface ProactiveStateSnapshot {
   probability: number;
   curiosity: number;
   annoyanceBias: number;
+  isInQuietHours?: boolean;
 }
 
 export interface ProactiveDecisionTrace {
@@ -278,9 +313,10 @@ export interface ProactiveDecisionTrace {
   emitted: boolean;
   probability: number;
   reason: string;
+  suppressReason?: string; // 未触发时的抑制原因
 }
 
-export type GoalStatus = "pending" | "active" | "blocked" | "completed" | "canceled";
+export type GoalStatus = "pending" | "active" | "blocked" | "completed" | "canceled" | "suspended";
 
 export interface GoalStep {
   id: string;
@@ -314,11 +350,20 @@ export interface GoalEvent {
     | "goal_updated"
     | "goal_completed"
     | "goal_blocked"
+    | "goal_suspended"
     | "goal_canceled"
     | "goal_step_started"
     | "goal_step_succeeded"
     | "goal_step_failed";
   payload: Record<string, unknown>;
+}
+
+export interface GoalContext {
+  goalId: string;
+  planVersion: number;
+  lastObservation?: string;
+  nextStepHint?: string;
+  updatedAt: string;
 }
 
 export interface ConsistencyRuleHit {
@@ -328,6 +373,8 @@ export interface ConsistencyRuleHit {
 }
 
 export interface ConsistencyCheckInput {
+  stage?: "pre_plan" | "pre_action" | "post_action" | "pre_reply";
+  policy?: "soft" | "hard";
   personaName: string;
   constitution: PersonaConstitution;
   selectedMemories?: string[];
@@ -342,6 +389,9 @@ export interface ConsistencyCheckResult {
   verdict: "allow" | "rewrite" | "reject";
   text: string;
   ruleHits: ConsistencyRuleHit[];
+  degradeRecommended: boolean;
+  degradeReasons: string[];
+  explanations: string[];
   traceId: string;
 }
 
@@ -360,6 +410,32 @@ export interface ExecutionObservation {
   error?: string;
 }
 
+export interface StepPolicy {
+  strategy: "tool_first" | "reply_first" | "clarify_first";
+  allowToolCalls: boolean;
+  maxRetries: number;
+}
+
+export interface StopCondition {
+  kind: "goal_completed" | "blocked_by_consistency" | "aborted" | "max_steps_reached" | "clarify_required";
+  reason: string;
+}
+
+export interface PlanState {
+  goalId: string;
+  version: number;
+  stepNo: number;
+  plannerSource: "llm" | "fallback_rule";
+  policy: StepPolicy;
+  history: Array<{
+    stepNo: number;
+    action: string;
+    observation: string;
+    verdict: "allow" | "rewrite" | "reject";
+  }>;
+  lastUpdatedAt: string;
+}
+
 export interface ExecutionResult {
   goalId: string;
   status: GoalStatus;
@@ -367,7 +443,11 @@ export interface ExecutionResult {
   steps: GoalStep[];
   consistencyVerdict: "allow" | "rewrite" | "reject";
   consistencyTraceId: string;
+  consistencyRuleHits: string[];
+  consistencyDegradeReasons: string[];
   traceIds: string[];
+  planState?: PlanState;
+  stopCondition?: StopCondition;
 }
 
 export type MemoryTier = "highlight" | "pattern" | "error";
@@ -442,6 +522,8 @@ export type LifeEventType =
   | "meta_intent_planned"
   | "meta_action_composed"
   | "meta_action_arbitrated"
+  | "instinct_reflection_logged"
+  | "cognition_state_updated"
   | "thinking_preview_emitted"
   | "persona_judgment_updated"
   | "persona_judgment_superseded"
@@ -453,7 +535,16 @@ export type LifeEventType =
   | "goal_step_started"
   | "goal_step_succeeded"
   | "goal_step_failed"
-  | "consistency_checked";
+  | "consistency_checked"
+  | "memory_crystallized"
+  | "constitution_crystallization_proposed"
+  | "constitution_crystallization_applied"
+  | "constitution_crystallization_rollback"
+  | "constitution_review_approved"
+  | "constitution_review_rejected"
+  | "social_graph_person_proposed"
+  | "social_graph_person_added"
+  | "social_graph_person_removed";
 
 export type SelfRevisionDomain =
   | "habits"

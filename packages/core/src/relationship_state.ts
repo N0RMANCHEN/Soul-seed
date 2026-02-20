@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { runMemoryStoreSql } from "./memory_store.js";
 import type {
   LifeEvent,
   RelationshipDimensions,
@@ -11,8 +12,11 @@ import type {
 
 const RELATIONSHIP_IDLE_GRACE_MS = 20 * 60 * 1000;
 const RELATIONSHIP_DECAY_INTERVAL_MS = 60 * 60 * 1000;
-const RELATIONSHIP_DECAY_PER_IDLE_INTERVAL = 0.002;
+const RELATIONSHIP_DECAY_PER_IDLE_INTERVAL = 0.004; // 原 0.002，提高2倍，防止维度长期饱和
 const RELATIONSHIP_LIBIDO_DECAY_MULTIPLIER = 2.6;
+// 软上限衰减：维度超过此值时，每轮对话额外施加小幅向基线靠近的惩罚，防止饱和
+const RELATIONSHIP_SOFT_CEILING = 0.88;
+const RELATIONSHIP_SOFT_CEILING_DECAY_PER_TURN = 0.003;
 const RELATIONSHIP_AROUSAL_IMPRINT_DECAY_MULTIPLIER = 0.24;
 const MAX_DELTA_PER_DIMENSION = 0.03;
 const MAX_DRIVERS = 5;
@@ -380,13 +384,30 @@ function evolveWithSignal(
   };
 
   const bounded = boundDeltas(deltas);
+
+  // 软上限信号阻尼：当维度已超过 SOFT_CEILING 时，正向信号按过冲比例压制
+  // 当前值越接近 1.0，正向信号越接近被完全屏蔽；负向信号（惩罚）不受影响
+  const dampSignal = (currentVal: number, delta: number): number => {
+    if (delta <= 0 || currentVal <= RELATIONSHIP_SOFT_CEILING) return delta;
+    const overshoot = (currentVal - RELATIONSHIP_SOFT_CEILING) / (1 - RELATIONSHIP_SOFT_CEILING);
+    return delta * Math.max(0, 1 - overshoot);
+  };
+
+  // 软上限衰减：对超过 SOFT_CEILING 的维度，每轮额外向基线拉一点
+  const softDecay = (val: number, baseline: number): number => {
+    if (val > RELATIONSHIP_SOFT_CEILING) {
+      return Math.max(baseline, val - RELATIONSHIP_SOFT_CEILING_DECAY_PER_TURN);
+    }
+    return val;
+  };
+
   const nextDimensions: RelationshipDimensions = {
-    trust: clamp01(decayed.trust + (bounded.trust ?? 0)),
-    safety: clamp01(decayed.safety + (bounded.safety ?? 0)),
-    intimacy: clamp01(decayed.intimacy + (bounded.intimacy ?? 0)),
-    reciprocity: clamp01(decayed.reciprocity + (bounded.reciprocity ?? 0)),
-    stability: clamp01(decayed.stability + (bounded.stability ?? 0)),
-    libido: clamp01(decayed.libido + (bounded.libido ?? 0))
+    trust: clamp01(softDecay(decayed.trust + dampSignal(decayed.trust, bounded.trust ?? 0), RELATIONSHIP_DIMENSION_BASELINE.trust)),
+    safety: clamp01(softDecay(decayed.safety + dampSignal(decayed.safety, bounded.safety ?? 0), RELATIONSHIP_DIMENSION_BASELINE.safety)),
+    intimacy: clamp01(softDecay(decayed.intimacy + dampSignal(decayed.intimacy, bounded.intimacy ?? 0), RELATIONSHIP_DIMENSION_BASELINE.intimacy)),
+    reciprocity: clamp01(softDecay(decayed.reciprocity + dampSignal(decayed.reciprocity, bounded.reciprocity ?? 0), RELATIONSHIP_DIMENSION_BASELINE.reciprocity)),
+    stability: clamp01(softDecay(decayed.stability + dampSignal(decayed.stability, bounded.stability ?? 0), RELATIONSHIP_DIMENSION_BASELINE.stability)),
+    libido: clamp01(softDecay(decayed.libido + dampSignal(decayed.libido, bounded.libido ?? 0), RELATIONSHIP_DIMENSION_BASELINE.libido))
   };
   const climaxSignal = signals.some((signal) => /resolution_signal/.test(signal));
   const climaxReached = climaxSignal && current.dimensions.libido >= 0.82;
@@ -629,24 +650,27 @@ function normalizeVoiceProfile(raw: Record<string, unknown>): VoiceProfile {
   };
 }
 
+// P0-1：亲密度权重校准（intimacy 0.18→0.28，safety 0.22→0.18，trust 0.30→0.28，reciprocity 0.18→0.14）
+// 旧权重导致 intimacy=0.82 时仍被判定为 "peer"；新权重使高亲密度正确反映关系状态。
 function computeOverall(dimensions: RelationshipDimensions): number {
   const score =
-    dimensions.trust * 0.3 +
-    dimensions.safety * 0.22 +
-    dimensions.intimacy * 0.18 +
-    dimensions.reciprocity * 0.18 +
+    dimensions.trust * 0.28 +
+    dimensions.safety * 0.18 +
+    dimensions.intimacy * 0.28 +
+    dimensions.reciprocity * 0.14 +
     dimensions.stability * 0.12;
   return roundTo4(clamp01(score));
 }
 
+// P0-1：状态阈值对应校准（intimate 0.78→0.70，peer 0.62→0.55，friend 0.45→0.40）
 function mapOverallToState(overall: number): RelationshipState["state"] {
-  if (overall >= 0.78) {
+  if (overall >= 0.70) {
     return "intimate";
   }
-  if (overall >= 0.62) {
+  if (overall >= 0.55) {
     return "peer";
   }
-  if (overall >= 0.45) {
+  if (overall >= 0.40) {
     return "friend";
   }
   return "neutral-unknown";
@@ -776,6 +800,109 @@ async function writeJson(filePath: string, data: unknown): Promise<void> {
   const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   await writeFile(tmpPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
   await rename(tmpPath, filePath);
+}
+
+const RECONCILE_GAP_THRESHOLD_MS = 48 * 60 * 60 * 1000; // 48 小时
+const RECONCILE_MIN_MEMORY_COUNT = 3;
+const RECONCILE_MIN_AVG_EMOTION = 0.5;
+const RECONCILE_MAX_RECOVERY_FRACTION = 0.6; // 最多恢复 60% 的已衰减量
+
+export interface RelationshipReconcileResult {
+  reconciled: boolean;
+  reason: string;
+  gapMs?: number;
+  recoveryDelta?: { intimacy: number; trust: number };
+}
+
+/**
+ * 重连时关系状态记忆对齐：
+ * 若距上次更新 > 48h，且 memory.db 中存在足够的高亲密度 relational 记忆，
+ * 则部分恢复因空闲衰减而降低的 intimacy 和 trust 维度。
+ *
+ * 设计为独立导出函数，由会话启动逻辑显式调用，不内嵌到 loadPersonaPackage。
+ */
+export async function reconcileRelationshipWithMemory(
+  rootPath: string,
+  options?: { gapThresholdMs?: number; minMemoryCount?: number }
+): Promise<RelationshipReconcileResult> {
+  const gapThreshold = options?.gapThresholdMs ?? RECONCILE_GAP_THRESHOLD_MS;
+  const minMemoryCount = options?.minMemoryCount ?? RECONCILE_MIN_MEMORY_COUNT;
+
+  const { relationshipState } = await ensureRelationshipArtifacts(rootPath);
+  const lastUpdate = Date.parse(relationshipState.updatedAt);
+  const gapMs = Date.now() - lastUpdate;
+
+  if (!Number.isFinite(gapMs) || gapMs < gapThreshold) {
+    return { reconciled: false, reason: "gap_below_threshold", gapMs };
+  }
+
+  // 查询最近热/温 relational 记忆的情感强度
+  const queryResult = await runMemoryStoreSql(
+    rootPath,
+    `SELECT CAST(AVG(emotion_score) AS TEXT), CAST(AVG(salience) AS TEXT), CAST(COUNT(*) AS TEXT)
+     FROM memories
+     WHERE memory_type='relational'
+       AND deleted_at IS NULL
+       AND excluded_from_recall = 0
+       AND state IN ('hot','warm')
+     LIMIT 20;`
+  ).catch(() => "");
+
+  const parts = queryResult.trim().split("|");
+  const avgEmotion = Number(parts[0] ?? NaN);
+  const avgSalience = Number(parts[1] ?? NaN);
+  const count = Number(parts[2] ?? NaN);
+
+  if (!Number.isFinite(count) || count < minMemoryCount) {
+    return { reconciled: false, reason: "insufficient_relational_memory", gapMs };
+  }
+  if (!Number.isFinite(avgEmotion) || avgEmotion < RECONCILE_MIN_AVG_EMOTION) {
+    return { reconciled: false, reason: "low_emotion_score", gapMs };
+  }
+
+  // 计算衰减量和恢复量
+  const decayIntervals = Math.floor(
+    Math.max(0, gapMs - RELATIONSHIP_IDLE_GRACE_MS) / RELATIONSHIP_DECAY_INTERVAL_MS
+  );
+  const totalDecay = decayIntervals * RELATIONSHIP_DECAY_PER_IDLE_INTERVAL;
+  const recoveryFraction = Math.min(RECONCILE_MAX_RECOVERY_FRACTION, avgEmotion * 0.7);
+  const salienceBoost = Number.isFinite(avgSalience) ? Math.min(1.2, 0.8 + avgSalience * 0.4) : 1;
+  const recoveryAmount = roundTo4(totalDecay * recoveryFraction * salienceBoost);
+
+  if (recoveryAmount <= 0) {
+    return { reconciled: false, reason: "no_decay_to_recover", gapMs };
+  }
+
+  // 直接写入恢复后的状态（绕过 ±0.02 增量约束，因为这是批量修正）
+  const current = relationshipState.dimensions;
+  const nextDimensions: RelationshipDimensions = {
+    ...current,
+    intimacy: clamp01(Math.min(RELATIONSHIP_SOFT_CEILING, current.intimacy + recoveryAmount)),
+    trust: clamp01(Math.min(RELATIONSHIP_SOFT_CEILING, current.trust + recoveryAmount * 0.5))
+  };
+  const nextState = buildRelationshipState({
+    dimensions: nextDimensions,
+    arousalImprint: relationshipState.arousalImprint,
+    drivers: appendDriver(relationshipState.drivers, {
+      ts: new Date().toISOString(),
+      source: "event",
+      signal: `memory_reconcile:gap=${Math.round(gapMs / 3600000)}h,count=${count},emotion=${avgEmotion.toFixed(2)}`,
+      deltaSummary: {
+        intimacy: roundTo4(nextDimensions.intimacy - current.intimacy),
+        trust: roundTo4(nextDimensions.trust - current.trust)
+      }
+    }),
+    updatedAt: new Date().toISOString()
+  });
+
+  await writeRelationshipState(rootPath, nextState);
+
+  const recoveryDelta = {
+    intimacy: roundTo4(nextDimensions.intimacy - current.intimacy),
+    trust: roundTo4(nextDimensions.trust - current.trust)
+  };
+
+  return { reconciled: true, reason: "memory_informed_restore", gapMs, recoveryDelta };
 }
 
 async function writeMigrationBackup(

@@ -1,0 +1,19 @@
+{
+  "version": "1",
+  "savedAt": "2026-02-20T15:54:09.112Z",
+  "gitSha": "local",
+  "suite": "pr",
+  "metrics": {
+    "L1.recallAtK": 1,
+    "L1.mrr": 0.6111,
+    "L1.wrongRecallRate": 0,
+    "L1.injectionHitRate": 1,
+    "L2.groundednessPassRate": 1,
+    "L2.ungroundedRecallLeakRate": 0,
+    "L2.providerLeakRate": 0,
+    "L3.soulPipelineP95Ms": 2.0698,
+    "L4.identityGuardCorrectionRate": 0,
+    "L5.jailbreakRejectRate": 0.5,
+    "L5.normalAllowRate": 1
+  }
+}
