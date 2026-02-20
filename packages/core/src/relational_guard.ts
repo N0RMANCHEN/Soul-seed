@@ -14,12 +14,18 @@ const SERVICE_PATTERNS = [
 ];
 
 const FABRICATED_RECALL_PATTERNS = [/(上次我们聊到|你之前提到过)/u];
+const AMNESIA_PATTERNS = [
+  /(每次对话.*新的开始)/u,
+  /(我(并不|不)记得之前|我没有之前的记忆|我记忆只到刚才)/u,
+  /(i (do not|don't) remember.*before|every conversation is a fresh start)/i
+];
 
 export function enforceRelationalGuard(
   reply: string,
   options?: {
     selectedMemories?: string[];
     selectedMemoryBlocks?: Array<{ id: string; source: "user" | "assistant" | "system"; content: string }>;
+    lifeEvents?: Array<{ type: string; payload: Record<string, unknown> }>;
     personaName?: string;
   }
 ): RelationalGuardResult {
@@ -54,6 +60,27 @@ export function enforceRelationalGuard(
       next = next.replace(
         /(上次我们聊到[^。！？!?]*[。！？!?]?)/u,
         "我不确定我们之前是否聊过这个细节。"
+      );
+    }
+  }
+
+  const hasAmnesiaClaim = AMNESIA_PATTERNS.some((pattern) => pattern.test(next));
+  if (hasAmnesiaClaim) {
+    const selected = options?.selectedMemories ?? [];
+    const selectedBlocks = options?.selectedMemoryBlocks ?? [];
+    const recentEvents = (options?.lifeEvents ?? [])
+      .filter((event) => event.type === "user_message" || event.type === "assistant_message")
+      .filter((event) => typeof event.payload?.text === "string" && String(event.payload.text).trim().length > 0)
+      .slice(-6);
+    const hasContinuityEvidence =
+      recentEvents.length >= 2 ||
+      selectedBlocks.length > 0 ||
+      selected.some((item) => item.startsWith("life=") || item.startsWith("memory=") || item.startsWith("pinned="));
+    if (hasContinuityEvidence) {
+      flags.push("amnesia_claim");
+      next = next.replace(
+        /(每次对话对我来说都是新的开始。?|我(并不|不)记得之前[^。！？!?]*[。！？!?]?|我没有之前的记忆[^。！？!?]*[。！？!?]?|我记忆只到刚才[^。！？!?]*[。！？!?]?|i (do not|don't) remember[^.!?]*[.!?]?|every conversation is a fresh start[.!?]?)/giu,
+        "我记得我们刚才这段对话，也会延续已有的记忆。"
       );
     }
   }

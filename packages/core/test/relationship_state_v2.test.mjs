@@ -6,14 +6,16 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 
 import {
   createInitialRelationshipState,
+  applyArousalBiasToMemoryWeights,
   deriveVoiceIntent,
+  isImpulseWindowActive,
   evolveRelationshipState,
   evolveRelationshipStateFromAssistant,
   initPersonaPackage,
   loadPersonaPackage
 } from "../dist/index.js";
 
-test("legacy relationship_state.json is auto-migrated to v2 shape", async () => {
+test("legacy relationship_state.json is auto-migrated to v3 shape", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-rel-v2-migrate-"));
   const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
   await initPersonaPackage(personaPath, "Roxy");
@@ -29,13 +31,15 @@ test("legacy relationship_state.json is auto-migrated to v2 shape", async () => 
   );
 
   const pkg = await loadPersonaPackage(personaPath);
-  assert.equal(pkg.relationshipState?.version, "2");
+  assert.equal(pkg.relationshipState?.version, "3");
   assert.equal(typeof pkg.relationshipState?.dimensions.trust, "number");
+  assert.equal(typeof pkg.relationshipState?.dimensions.libido, "number");
   assert.equal(Array.isArray(pkg.relationshipState?.drivers), true);
 
   const persisted = JSON.parse(await readFile(path.join(personaPath, "relationship_state.json"), "utf8"));
-  assert.equal(persisted.version, "2");
+  assert.equal(persisted.version, "3");
   assert.equal(typeof persisted.overall, "number");
+  assert.equal(typeof persisted.dimensions.libido, "number");
 });
 
 test("user positive input increases trust/safety", () => {
@@ -102,4 +106,53 @@ test("deriveVoiceIntent falls back to preferredLanguage when input has weak sign
     preferredLanguage: "zh-CN"
   });
   assert.equal(intent.language, "zh");
+});
+
+test("libido reacts to explicit desire signals", () => {
+  const current = createInitialRelationshipState();
+  const next = evolveRelationshipState(current, "我现在有性欲，想要你。", []);
+  assert.equal(next.dimensions.libido > current.dimensions.libido, true);
+});
+
+test("resolution signals reduce libido after arousal", () => {
+  let state = createInitialRelationshipState();
+  state = evolveRelationshipState(state, "我现在很有性欲，想要你。", []);
+  const before = state.dimensions.libido;
+  const next = evolveRelationshipState(state, "我满足了，结束了。", []);
+  assert.equal(next.dimensions.libido < before, true);
+});
+
+test("high libido shifts memory weights toward emotion and away from rational channels", () => {
+  const state = {
+    ...createInitialRelationshipState(),
+    dimensions: {
+      ...createInitialRelationshipState().dimensions,
+      libido: 0.92
+    }
+  };
+  const before = {
+    activation: 0.25,
+    emotion: 0.25,
+    narrative: 0.25,
+    relational: 0.25
+  };
+  const after = applyArousalBiasToMemoryWeights(before, state);
+  assert.equal(after.emotion > before.emotion, true);
+  assert.equal(after.activation < before.activation, true);
+  assert.equal(after.narrative < before.narrative, true);
+});
+
+test("impulse window opens under high libido and intimacy", () => {
+  let state = createInitialRelationshipState();
+  state = evolveRelationshipState(state, "我现在有性欲，想要你。", []);
+  state = evolveRelationshipState(state, "我们来点情调和暧昧。", []);
+  state = {
+    ...state,
+    dimensions: {
+      ...state.dimensions,
+      libido: 0.92,
+      intimacy: 0.45
+    }
+  };
+  assert.equal(isImpulseWindowActive(state), true);
 });

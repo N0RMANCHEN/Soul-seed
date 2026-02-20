@@ -132,3 +132,40 @@ test("doctor reports contamination exclusion drift warning", async () => {
   const result = await doctorPersona(personaPath);
   assert.equal(result.issues.some((item) => item.code === "memory_contamination_exclusion_drift"), true);
 });
+
+test("doctor reports missing archive segment for archived_ref memory", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-doctor-archive-ref-"));
+  const personaPath = path.join(tmpDir, "Aster.soulseedpersona");
+  await initPersonaPackage(personaPath, "Aster");
+
+  execFileSync("sqlite3", [
+    path.join(personaPath, "memory.db"),
+    [
+      "INSERT INTO memories (id, memory_type, content, salience, state, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, origin_role, evidence_level, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at)",
+      "VALUES (",
+      "'arch-ref-1',",
+      "'episodic',",
+      "'[archived_ref] segment=memory_archive:209901:missing id=arch-ref-1 checksum=deadbeef summary=test',",
+      "0.1,",
+      "'archive',",
+      "1,",
+      "'2026-01-01T00:00:00.000Z',",
+      "0.2,",
+      "0.2,",
+      "0.9,",
+      "'system',",
+      "'derived',",
+      "1,",
+      "0,",
+      "'seed:arch-ref-1',",
+      "'2026-01-01T00:00:00.000Z',",
+      "'2026-01-01T00:00:00.000Z',",
+      "NULL",
+      ");"
+    ].join(" ")
+  ]);
+
+  const result = await doctorPersona(personaPath);
+  assert.equal(result.ok, false);
+  assert.equal(result.issues.some((item) => item.code === "archive_segment_missing"), true);
+});

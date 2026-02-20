@@ -98,6 +98,9 @@ npm run build
 # 8) 一键验收（使用隔离 QA persona，不污染 Roxy）
 npm run acceptance
 # 验收报告输出到 reports/acceptance/
+
+# 9) 质量与评测体系
+# 见 doc/Quality-Evaluation.md
 ```
 
 ---
@@ -156,6 +159,16 @@ Roadmap 已迁移到 `doc/Roadmap.md`，避免 README 过长与重复维护。
 - **“先用 DeepSeek API 跑通全链路”** 的强制优先级与验收标准
 
 请直接查看：`doc/Roadmap.md`
+
+## 质量与评测体系（迁移说明）
+
+质量治理与评测方案已整理到 `doc/Quality-Evaluation.md`。  
+其中包含：
+- 分层评测框架（L0-L5）与指标字典
+- PR/Nightly/Release 门禁策略
+- 数据集分层规范与 90 天实施路线
+
+请直接查看：`doc/Quality-Evaluation.md`
 
 ---
 

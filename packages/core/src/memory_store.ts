@@ -4,9 +4,18 @@ import { promisify } from "node:util";
 import path from "node:path";
 
 export const MEMORY_DB_FILENAME = "memory.db";
-export const MEMORY_SCHEMA_VERSION = 3;
+export const MEMORY_SCHEMA_VERSION = 5;
 
-const REQUIRED_MEMORY_TABLES = ["memories", "memory_edges", "recall_traces", "archive_segments"] as const;
+const REQUIRED_MEMORY_TABLES = [
+  "memories",
+  "memory_edges",
+  "recall_traces",
+  "archive_segments",
+  "memories_fts",
+  "memory_embeddings",
+  "memory_conflicts",
+  "memory_consolidation_runs"
+] as const;
 
 export interface MemoryStoreInspection {
   exists: boolean;
@@ -82,7 +91,62 @@ export async function ensureMemoryStore(rootPath: string): Promise<void> {
         created_at TEXT NOT NULL
       );
 
-      PRAGMA user_version = 3;
+      CREATE TABLE IF NOT EXISTS memory_embeddings (
+        memory_id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        dim INTEGER NOT NULL,
+        vector_json TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (memory_id) REFERENCES memories(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_memory_embeddings_updated ON memory_embeddings(updated_at);
+
+      CREATE TABLE IF NOT EXISTS memory_conflicts (
+        id TEXT PRIMARY KEY,
+        conflict_key TEXT NOT NULL,
+        winner_memory_id TEXT NOT NULL,
+        loser_memory_ids_json TEXT NOT NULL,
+        resolution_policy TEXT NOT NULL,
+        resolved_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_memory_conflicts_key ON memory_conflicts(conflict_key, resolved_at);
+
+      CREATE TABLE IF NOT EXISTS memory_consolidation_runs (
+        id TEXT PRIMARY KEY,
+        trigger TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        stats_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_memory_consolidation_runs_created ON memory_consolidation_runs(created_at);
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+        memory_id UNINDEXED,
+        content,
+        tokenize = 'unicode61'
+      );
+      CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(memory_id, content)
+        SELECT NEW.id, NEW.content
+        WHERE NEW.deleted_at IS NULL AND COALESCE(NEW.excluded_from_recall, 0) = 0;
+      END;
+      CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+        DELETE FROM memories_fts WHERE memory_id = OLD.id;
+        INSERT INTO memories_fts(memory_id, content)
+        SELECT NEW.id, NEW.content
+        WHERE NEW.deleted_at IS NULL AND COALESCE(NEW.excluded_from_recall, 0) = 0;
+      END;
+      CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+        DELETE FROM memories_fts WHERE memory_id = OLD.id;
+      END;
+      INSERT INTO memories_fts(memory_id, content)
+      SELECT id, content
+      FROM memories
+      WHERE deleted_at IS NULL AND COALESCE(excluded_from_recall, 0) = 0;
+
+      PRAGMA user_version = 5;
       COMMIT;
       `
     );
@@ -94,6 +158,12 @@ export async function ensureMemoryStore(rootPath: string): Promise<void> {
   }
   if (currentVersion < 3) {
     await migrateMemoryStoreToV3(dbPath);
+  }
+  if (currentVersion < 4) {
+    await migrateMemoryStoreToV4(dbPath);
+  }
+  if (currentVersion < 5) {
+    await migrateMemoryStoreToV5(dbPath);
   }
 }
 
@@ -110,7 +180,7 @@ export async function inspectMemoryStore(rootPath: string): Promise<MemoryStoreI
   const schemaVersion = await getUserVersion(dbPath);
   const tableRows = await runSqlite(
     dbPath,
-    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('memories','memory_edges','recall_traces','archive_segments') ORDER BY name;"
+    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('memories','memory_edges','recall_traces','archive_segments','memories_fts','memory_embeddings','memory_conflicts','memory_consolidation_runs') ORDER BY name;"
   );
   const existingTables = new Set(tableRows.split("\n").map((line) => line.trim()).filter(Boolean));
   const missingTables = REQUIRED_MEMORY_TABLES.filter((table) => !existingTables.has(table));
@@ -197,6 +267,82 @@ async function migrateMemoryStoreToV3(dbPath: string): Promise<void> {
     UPDATE memories SET origin_role = COALESCE(origin_role, 'system');
     UPDATE memories SET evidence_level = COALESCE(evidence_level, 'derived');
     PRAGMA user_version = 3;
+    COMMIT;
+    `
+  );
+}
+
+async function migrateMemoryStoreToV4(dbPath: string): Promise<void> {
+  await runSqlite(
+    dbPath,
+    `
+    BEGIN;
+    CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+      memory_id UNINDEXED,
+      content,
+      tokenize = 'unicode61'
+    );
+    CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+      INSERT INTO memories_fts(memory_id, content)
+      SELECT NEW.id, NEW.content
+      WHERE NEW.deleted_at IS NULL AND COALESCE(NEW.excluded_from_recall, 0) = 0;
+    END;
+    CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+      DELETE FROM memories_fts WHERE memory_id = OLD.id;
+      INSERT INTO memories_fts(memory_id, content)
+      SELECT NEW.id, NEW.content
+      WHERE NEW.deleted_at IS NULL AND COALESCE(NEW.excluded_from_recall, 0) = 0;
+    END;
+    CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+      DELETE FROM memories_fts WHERE memory_id = OLD.id;
+    END;
+    DELETE FROM memories_fts;
+    INSERT INTO memories_fts(memory_id, content)
+    SELECT id, content
+    FROM memories
+    WHERE deleted_at IS NULL AND COALESCE(excluded_from_recall, 0) = 0;
+    PRAGMA user_version = 4;
+    COMMIT;
+    `
+  );
+}
+
+async function migrateMemoryStoreToV5(dbPath: string): Promise<void> {
+  await runSqlite(
+    dbPath,
+    `
+    BEGIN;
+    CREATE TABLE IF NOT EXISTS memory_embeddings (
+      memory_id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dim INTEGER NOT NULL,
+      vector_json TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (memory_id) REFERENCES memories(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_embeddings_updated ON memory_embeddings(updated_at);
+
+    CREATE TABLE IF NOT EXISTS memory_conflicts (
+      id TEXT PRIMARY KEY,
+      conflict_key TEXT NOT NULL,
+      winner_memory_id TEXT NOT NULL,
+      loser_memory_ids_json TEXT NOT NULL,
+      resolution_policy TEXT NOT NULL,
+      resolved_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_conflicts_key ON memory_conflicts(conflict_key, resolved_at);
+
+    CREATE TABLE IF NOT EXISTS memory_consolidation_runs (
+      id TEXT PRIMARY KEY,
+      trigger TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      stats_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_consolidation_runs_created ON memory_consolidation_runs(created_at);
+    PRAGMA user_version = 5;
     COMMIT;
     `
   );

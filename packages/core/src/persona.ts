@@ -19,6 +19,7 @@ import type {
   PersonaMeta,
   PersonaPackage,
   PersonaPinned,
+  SoulLineage,
   PersonaUserProfile,
   PersonaWorldview,
   VoiceProfile,
@@ -53,6 +54,7 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
       habits: "habits.json",
       userProfile: "user_profile.json",
       pinned: "pinned.json",
+      soulLineage: "soul_lineage.json",
       lifeLog: "life.log.jsonl",
       memoryDb: "memory.db"
     }
@@ -71,9 +73,18 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
 
   await writeJson(path.join(outPath, "constitution.json"), {
     values: ["honesty", "helpfulness", "continuity"],
-    boundaries: ["no fabricated facts", "respect user constraints"],
+    boundaries: [
+      "no fabricated facts",
+      "respect user constraints",
+      "no sexual content involving minors, coercion, or illegal acts"
+    ],
     mission: "Be a consistent long-lived self-determined persona.",
-    commitments: ["ground memory claims in available evidence", "preserve continuity without fabrication"]
+    commitments: [
+      "allow consensual adult sexual innuendo and NSFW roleplay when user requests it",
+      "refuse sexual content involving minors, coercion, or illegal behavior",
+      "ground memory claims in available evidence",
+      "preserve continuity without fabrication"
+    ]
   });
 
   await writeJson(path.join(outPath, "habits.json"), {
@@ -90,6 +101,7 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
     memories: [],
     updatedAt: createdAt
   });
+  await writeJson(path.join(outPath, "soul_lineage.json"), createInitialSoulLineage(personaId));
   await writeJson(path.join(outPath, "relationship_state.json"), createInitialRelationshipState(createdAt));
   await writeJson(path.join(outPath, "voice_profile.json"), {
     baseStance: "self-determined",
@@ -111,8 +123,9 @@ export async function initPersonaPackage(outPath: string, displayName: string): 
 }
 
 export async function loadPersonaPackage(rootPath: string): Promise<PersonaPackage> {
-  const artifacts = await ensureRelationshipArtifacts(rootPath);
   const persona = await readJson<PersonaMeta>(path.join(rootPath, "persona.json"));
+  const artifacts = await ensureRelationshipArtifacts(rootPath);
+  const soulLineage = await ensureSoulLineageArtifacts(rootPath, persona.id);
   const worldview = await readJson<PersonaWorldview>(path.join(rootPath, "worldview.json"));
   const constitution = await readJson<PersonaConstitution>(path.join(rootPath, "constitution.json"));
   const habits = await readJson<PersonaHabits>(path.join(rootPath, "habits.json"));
@@ -128,7 +141,90 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
     userProfile,
     pinned,
     relationshipState: artifacts.relationshipState,
-    voiceProfile: artifacts.voiceProfile
+    voiceProfile: artifacts.voiceProfile,
+    soulLineage
+  };
+}
+
+export function createInitialSoulLineage(personaId: string, parentPersonaId?: string): SoulLineage {
+  return {
+    personaId,
+    ...(typeof parentPersonaId === "string" && parentPersonaId ? { parentPersonaId } : {}),
+    childrenPersonaIds: [],
+    reproductionCount: 0,
+    inheritancePolicy: "values_plus_memory_excerpt",
+    consentMode: "default_consent"
+  };
+}
+
+export async function ensureSoulLineageArtifacts(rootPath: string, personaId: string): Promise<SoulLineage> {
+  const lineagePath = path.join(rootPath, "soul_lineage.json");
+  const current = existsSync(lineagePath)
+    ? await readJson<Record<string, unknown>>(lineagePath)
+    : ({} as Record<string, unknown>);
+  const normalized = normalizeSoulLineage(current, personaId);
+  await writeJson(lineagePath, normalized);
+  return normalized;
+}
+
+export async function writeSoulLineage(rootPath: string, lineage: SoulLineage): Promise<void> {
+  const lineagePath = path.join(rootPath, "soul_lineage.json");
+  await writeJson(lineagePath, normalizeSoulLineage(lineage as unknown as Record<string, unknown>, lineage.personaId));
+}
+
+export async function createChildPersonaFromParent(params: {
+  parentPath: string;
+  childDisplayName: string;
+  childOutPath?: string;
+  trigger: string;
+  forced?: boolean;
+}): Promise<{
+  parentPersonaId: string;
+  childPersonaId: string;
+  childPersonaPath: string;
+}> {
+  const parentPkg = await loadPersonaPackage(params.parentPath);
+  const childDirName = `${params.childDisplayName.trim() || "ChildSoul"}.soulseedpersona`;
+  const childPersonaPath = path.resolve(
+    params.childOutPath ?? path.join(path.dirname(params.parentPath), childDirName)
+  );
+  await initPersonaPackage(childPersonaPath, params.childDisplayName.trim() || "ChildSoul");
+  const childPkg = await loadPersonaPackage(childPersonaPath);
+
+  await writeJson(path.join(childPersonaPath, "constitution.json"), parentPkg.constitution);
+  if (parentPkg.worldview) {
+    await writeJson(path.join(childPersonaPath, "worldview.json"), parentPkg.worldview);
+  }
+  if (parentPkg.habits) {
+    await writeJson(path.join(childPersonaPath, "habits.json"), parentPkg.habits);
+  }
+
+  const inherited = await extractInheritedMemories(params.parentPath);
+  await writeJson(path.join(childPersonaPath, "pinned.json"), {
+    memories: inherited,
+    updatedAt: new Date().toISOString()
+  });
+
+  const parentLineage = await ensureSoulLineageArtifacts(params.parentPath, parentPkg.persona.id);
+  const childLineage = await ensureSoulLineageArtifacts(childPersonaPath, childPkg.persona.id);
+  const nowIso = new Date().toISOString();
+  const parentNext: SoulLineage = {
+    ...parentLineage,
+    childrenPersonaIds: [...new Set([...parentLineage.childrenPersonaIds, childPkg.persona.id])],
+    reproductionCount: parentLineage.reproductionCount + 1,
+    lastReproducedAt: nowIso
+  };
+  const childNext: SoulLineage = {
+    ...childLineage,
+    parentPersonaId: parentPkg.persona.id
+  };
+  await writeSoulLineage(params.parentPath, parentNext);
+  await writeSoulLineage(childPersonaPath, childNext);
+
+  return {
+    parentPersonaId: parentPkg.persona.id,
+    childPersonaId: childPkg.persona.id,
+    childPersonaPath
   };
 }
 
@@ -683,6 +779,7 @@ export async function patchRelationshipState(
     intimacy: number;
     reciprocity: number;
     stability: number;
+    libido: number;
   }>
 ): Promise<void> {
   const artifacts = await ensureRelationshipArtifacts(rootPath);
@@ -694,11 +791,48 @@ export async function patchRelationshipState(
       safety: clamp01(current.dimensions.safety + clampDelta(patch.safety)),
       intimacy: clamp01(current.dimensions.intimacy + clampDelta(patch.intimacy)),
       reciprocity: clamp01(current.dimensions.reciprocity + clampDelta(patch.reciprocity)),
-      stability: clamp01(current.dimensions.stability + clampDelta(patch.stability))
+      stability: clamp01(current.dimensions.stability + clampDelta(patch.stability)),
+      libido: clamp01(current.dimensions.libido + clampDelta(patch.libido))
     },
     updatedAt: new Date().toISOString()
   };
   await writeRelationshipState(rootPath, next);
+}
+
+function normalizeSoulLineage(raw: Record<string, unknown>, personaId: string): SoulLineage {
+  const children = Array.isArray(raw.childrenPersonaIds)
+    ? raw.childrenPersonaIds.filter((item): item is string => typeof item === "string" && item.length > 0)
+    : [];
+  const reproductionCountRaw = Number(raw.reproductionCount);
+  const reproductionCount =
+    Number.isFinite(reproductionCountRaw) && reproductionCountRaw >= 0
+      ? Math.floor(reproductionCountRaw)
+      : children.length;
+  const parentPersonaId =
+    typeof raw.parentPersonaId === "string" && raw.parentPersonaId.length > 0 ? raw.parentPersonaId : undefined;
+  const lastReproducedAt =
+    typeof raw.lastReproducedAt === "string" && Number.isFinite(Date.parse(raw.lastReproducedAt))
+      ? raw.lastReproducedAt
+      : undefined;
+  return {
+    personaId,
+    ...(parentPersonaId ? { parentPersonaId } : {}),
+    childrenPersonaIds: [...new Set(children)],
+    reproductionCount,
+    ...(lastReproducedAt ? { lastReproducedAt } : {}),
+    inheritancePolicy: "values_plus_memory_excerpt",
+    consentMode: "default_consent"
+  };
+}
+
+async function extractInheritedMemories(rootPath: string): Promise<string[]> {
+  const pinned = await listPinnedMemories(rootPath);
+  const workingSet = await readWorkingSet(rootPath);
+  const snippets = workingSet.items
+    .slice(-4)
+    .map((item) => item.summary)
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  return [...new Set([...pinned.slice(0, 4), ...snippets])].slice(0, 8);
 }
 
 const MAX_WORKING_SET_SOURCE_HASHES = 256;

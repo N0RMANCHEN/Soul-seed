@@ -105,3 +105,32 @@ test("decide prioritizes memory.db recalls when provided", async () => {
   assert.equal((trace.retrievalBreakdown?.summaries ?? 0) > 0, true);
   assert.equal(trace.selectedMemories.some((item) => item.startsWith("memory=[")), true);
 });
+
+test("impulse window suppresses clarifying-question bias on short input", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-orchestrator-impulse-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+  await initPersonaPackage(personaPath, "Roxy");
+  const pkg = await loadPersonaPackage(personaPath);
+  pkg.relationshipState = {
+    ...(pkg.relationshipState ?? {}),
+    state: "intimate",
+    confidence: 0.85,
+    overall: 0.85,
+    dimensions: {
+      ...(pkg.relationshipState?.dimensions ?? {}),
+      trust: 0.78,
+      safety: 0.72,
+      intimacy: 0.62,
+      reciprocity: 0.58,
+      stability: 0.8,
+      libido: 0.93
+    },
+    drivers: pkg.relationshipState?.drivers ?? [],
+    version: "3",
+    updatedAt: new Date().toISOString()
+  };
+
+  const trace = decide(pkg, "嗯", "deepseek-chat", { lifeEvents: [] });
+  assert.equal(trace.askClarifyingQuestion, false);
+  assert.match(trace.reason, /Impulse window active/);
+});

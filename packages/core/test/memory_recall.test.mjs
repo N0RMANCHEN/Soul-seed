@@ -5,7 +5,13 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 
-import { appendLifeEvent, initPersonaPackage, recallMemoriesWithTrace } from "../dist/index.js";
+import {
+  appendLifeEvent,
+  getRecallQueryCacheStats,
+  initPersonaPackage,
+  recallMemoriesWithTrace,
+  resetRecallQueryCache
+} from "../dist/index.js";
 
 function sqlite(dbPath, sql) {
   return execFileSync("sqlite3", [dbPath, sql], { encoding: "utf8" }).trim();
@@ -226,7 +232,7 @@ test("recall can select keyword-matching memory even when low salience", async (
     (item) =>
       typeof item.keywordHits === "number" &&
       item.keywordHits > 0 &&
-      (item.candidateSource === "keyword" || item.candidateSource === "both")
+      (item.candidateSource === "fts" || item.candidateSource === "hybrid" || item.candidateSource === "vector")
   );
   assert.equal(keywordRoutedCandidate, true);
 });
@@ -260,6 +266,38 @@ test("recall trace includes candidate source and keyword hit metadata", async ()
   const scores = JSON.parse(scoresRaw);
   const hit = scores.find((item) => typeof item.keywordHits === "number" && item.keywordHits > 0);
   assert.notEqual(hit, undefined);
-  assert.equal(["salience", "keyword", "both"].includes(hit.candidateSource), true);
+  assert.equal(["salience", "fts", "vector", "hybrid"].includes(hit.candidateSource), true);
   assert.equal(typeof hit.scoreBreakdown, "object");
+  assert.equal(typeof hit.scoreBreakdown.ftsScore, "number");
+  assert.equal(typeof hit.scoreBreakdown.vectorScore, "number");
+});
+
+test("recall query cache records miss and hit", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-memory-recall-cache-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+
+  await initPersonaPackage(personaPath, "Roxy");
+  await appendLifeEvent(personaPath, {
+    type: "user_message",
+    payload: {
+      text: "缓存验证记忆：我偏好先给结论。",
+      memoryMeta: {
+        tier: "highlight",
+        storageCost: 3,
+        retrievalCost: 2,
+        source: "chat",
+        salienceScore: 0.92,
+        state: "warm"
+      }
+    }
+  });
+
+  resetRecallQueryCache();
+  await recallMemoriesWithTrace(personaPath, "你记得我偏好吗");
+  await recallMemoriesWithTrace(personaPath, "你记得我偏好吗");
+
+  const stats = getRecallQueryCacheStats();
+  assert.equal(stats.misses >= 1, true);
+  assert.equal(stats.hits >= 1, true);
+  assert.equal(stats.entries >= 1, true);
 });

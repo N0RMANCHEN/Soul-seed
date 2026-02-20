@@ -1,10 +1,21 @@
 # Soulseed Roadmap（P0-P5 执行版）
 
 ## 基线
-- 更新日期：2026-02-18
+- 更新日期：2026-02-20
 - 目标：本地优先、四类类人记忆、强可解释、可长期运行、在线检索额外时延 P95 `<=150ms`
 - 任务编号规则：`P{优先级}-{序号}`，数字越小优先级越高
 - 状态：`done` / `in_progress` / `todo` / `blocked`
+
+## 代码审查快照（2026-02-20）
+- 范围：`packages/core/src`、`packages/cli/src`、`packages/mcp-server/src` 全量源码 + 对应测试
+- 规模：源码文件 `42`，测试文件 `55`
+- 自动化结果：
+  - `npm run -s test` 全绿
+  - `core` `98/98` 通过，`cli` `15/15` 通过，`mcp-server` `16/16` 通过
+- 审查结论：
+  - 核心链路（记忆写入/召回/守卫/MCP）功能完整，处于“可用且可回归”状态
+  - 当前主要缺口不是功能缺失，而是“质量门禁体系尚未工程化落地”
+  - 存在中高优先工程风险（见下方 P3 与“立即执行清单”）
 
 ## P0（必须优先完成，阻塞主线）
 
@@ -241,14 +252,14 @@
   - 增加基础限流：`MCP_RATE_LIMIT_PER_MINUTE`（按 IP）
   - 增加调用日志：工具名、耗时、拒绝原因；HTTP 请求日志：method/url/duration
   - 回归结果：
-  - `npm test -w @soulseed/mcp-server` -> `15/15` pass
-  - `npm test -w @soulseed/core` -> `85/85` pass
-  - `npm test -w @soulseed/cli` -> `12/12` pass
+  - `npm test -w @soulseed/mcp-server` -> `16/16` pass
+  - `npm test -w @soulseed/core` -> `98/98` pass
+  - `npm test -w @soulseed/cli` -> `15/15` pass
 
 ## P2（中高优先，规模化与成本控制）
 
 ### P2-1 冷归档与分段压缩
-- 状态：`todo`
+- 状态：`done`
 - 交付：
   - `summaries/archive/segment-YYYYMM.jsonl`
   - 归档触发：事件数/冷记忆占比/时间窗口阈值
@@ -261,6 +272,15 @@
   - 实现主表降维保留（摘要+引用）
   - 为归档段生成 checksum 与清单索引
   - 增加 doctor 引用断裂检测与修复建议
+- 已完成（2026-02-20）：
+  - 新增 `archiveColdMemories`（`packages/core/src/memory_archive.ts`）
+  - 新增 CLI：`./ss memory archive`
+  - 已支持 `summaries/archive/segment-YYYYMM.jsonl` 归档文件落盘
+  - 已支持主表摘要引用保留 + `excluded_from_recall=1` 归档隔离
+  - 已支持 `archive_segments` 批次索引与 checksum 记录
+- 已完成（2026-02-20 补充）：
+  - chat 关闭时自动触发冷归档维护（阈值保护）
+  - `doctor` 新增 archive 引用健康检查（segment/checksum/file）
 
 ### P2-2 working_set 降级与缓存视图化
 - 状态：`done`
@@ -281,7 +301,7 @@
   - chat 召回主读路径已切换为优先 `memory.db`，无结果时回退 `life.log`
 
 ### P2-3 存储/内存预算治理
-- 状态：`todo`
+- 状态：`done`
 - 交付：
   - 预算目标：`memory.db <300MB/年/重度 persona`
   - 进程缓存 `<64MB`，LRU 最近召回缓存
@@ -293,11 +313,20 @@
   - 增加召回缓存命中率指标与埋点
   - 构建重度 persona 压测数据集与基准流程
   - 输出增长曲线、命中率与阈值告警报告
+- 已完成（2026-02-20）：
+  - 新增预算快照能力：`inspectMemoryBudget`（`packages/core/src/memory_budget.ts`）
+  - 新增 CLI：`./ss memory budget [--target-mb 300]`
+- 已完成（2026-02-20 补充）：
+  - 召回链路新增进程内 LRU+TTL 缓存（上限默认 16MB，可配 `SOULSEED_RECALL_CACHE_MAX_BYTES`，最大 64MB）
+  - 新增缓存命中率埋点：`getRecallQueryCacheStats`（hits/misses/evictions/hitRate）
+  - `memory budget` 输出新增 `recallCache` 与 `process.under64Mb` 指标
+  - 新增重度 persona 压测入口：`./ss memory eval budget`
+  - 压测报告包含增长曲线、缓存命中率、进程内存占用与阈值告警（可 `--out` 落盘）
 
 ## P3（中优先，工程可靠性）
 
 ### P3-1 doctor 扩展（记忆专项）
-- 状态：`todo`
+- 状态：`in_progress`
 - 交付：
   - schema/version 校验
   - `source_event_hash` 存在性校验
@@ -306,11 +335,15 @@
   - 错误分级明确（error/warning）
   - 每类错误有修复建议
 - 拆分任务：
-  - 增加 schema/version 深度校验
-  - 增加 `source_event_hash` 存在性与可追溯校验
+  - 增加 `source_event_hash` 存在性与可追溯校验（补齐 orphan memory 检查）
   - 增加 archive checksum 与 recall trace 完整性校验
-  - 定义错误分级规范与建议修复动作
-  - 输出 machine-readable doctor 报告
+  - 增加 `memory_embeddings` 一致性与脏索引检查
+  - 完善错误分级规范与建议修复动作
+  - 保持 machine-readable doctor 报告稳定 schema
+- 已完成（本轮确认）：
+  - schema/version 校验、memory 字段范围校验已在 `doctor` 落地
+  - life log hash 链校验 + scar 断链记录已在 `doctor/runtime` 落地
+  - 多类事件 payload 合法性校验已覆盖（relationship/self-revision/narrative 等）
 
 ### P3-2 CI 与回归门禁
 - 状态：`todo`
@@ -328,9 +361,11 @@
   - 建立最小门禁（typecheck + test）与分支保护
   - 对在线链路改动增加必填验收报告校验
   - 对齐本地与 CI 命令入口，避免双标准
+- 审查补充：
+  - 当前仓库未发现 `.github/workflows/*`，该任务仍是阻塞项
 
 ### P3-3 迁移一致性审计
-- 状态：`todo`
+- 状态：`in_progress`
 - 交付：
   - 迁移前后对账：数量、哈希、关键记忆可召回一致性
 - DoD：
@@ -340,6 +375,11 @@
   - 实现自动化对账脚本与差异分类
   - 增加关键记忆抽样召回对比测试
   - 产出审计报告并支持失败阻断
+- 已完成（本轮确认）：
+  - 迁移后 life log hash 链校验已内置（失败回滚）
+  - 迁移报告（`memory-migration-report.json`）与备份/回滚链路可用
+- 待补关键点：
+  - 缺“迁移前后召回一致性”自动对账脚本（当前只有结构一致性）
 
 ### P3-4 MCP 兼容性与回归门禁
 - 状态：`done`
@@ -358,11 +398,28 @@
   - 增加回归失败时的最小定位日志
 - 完成记录（2026-02-18）：
   - `packages/mcp-server/test/mcp_handshake.test.mjs`：协议握手 + tools/list 声明验证
-  - `packages/mcp-server/test/mcp_tools.test.mjs`：chat.send 正常/拒绝、memory.search、memory.inspect 找到/找不到
+  - `packages/mcp-server/test/mcp_tools.test.mjs`：`persona.get_context` / `conversation.save_turn`、`memory.search`、`memory.search_hybrid`、`memory.recall_trace_get`、`memory.inspect` 覆盖
   - `packages/mcp-server/test/mcp_budget.test.mjs`：session budget 上限与跨工具独立计数
   - `packages/mcp-server/test/mcp_reject.test.mjs`：deny-by-default、adapter 抛错 → error 块而非 uncaught exception
   - `scripts/mcp_smoke.sh`：一键 smoke test，输出到 `reports/acceptance/mcp-smoke-<ts>.json`
   - 根 `package.json` lint/typecheck/build/test 全部加入 `@soulseed/mcp-server`
+
+### P3-5 质量评测体系工程化落地
+- 状态：`todo`
+- 交付：
+  - 按 `doc/Quality-Evaluation.md` 落地 L0-L5 分层评测
+  - 统一质量报告：`reports/quality/scorecard.json`
+  - PR/Nightly/Release 三档门禁
+- DoD：
+  - PR 至少强制 L0-L2（完整性/检索/落地）
+  - Nightly 覆盖 L0-L5 并产出趋势报告
+  - 关键指标回退触发阻断或告警升级
+- 拆分任务：
+  - 新增聚合入口脚本（建议：`scripts/eval_all.sh`）
+  - 建立 `datasets/retrieval|grounding|continuity|safety` 基线集
+  - 固化指标字典与阈值（baseline + delta）
+  - 将 scorecard 接入 CI 工件归档与发布门禁
+  - 建立回归失败最小定位输出（case id + trace id）
 
 ## P4（中低优先，体验增强）
 
@@ -409,37 +466,67 @@
   - 实现回滚命令与一致性校验
   - 增加一次端到端演练脚本
 
-## P5（阶段 B：RAG 增强，增量接入）
-
-### P5-1 本地向量索引接入
+### P4-4 安全默认值与高风险行为门控
 - 状态：`todo`
 - 交付：
-  - 本地 embedding + 向量索引（HNSW/SQLite VSS/轻量库）
-  - 配置开关：`memory_config.json` 中 `rag.enabled=true`
+  - `chat` 默认安全策略改为最小权限（adult safety 默认关或按环境显式开启）
+  - 移除或强门控“关键词自动强制繁衍”路径
+  - 将高风险行为统一纳入显式确认与审计
 - DoD：
-  - 关闭 RAG 时行为与阶段 A 一致
-  - 打开 RAG 后不破坏现有 CLI 接口
+  - 无显式参数/确认时，不触发成人内容放行或强制繁衍动作
+  - 高风险路径有测试覆盖与拒绝日志
 - 拆分任务：
-  - 评估并选型本地向量方案（HNSW/SQLite VSS）
-  - 定义 embedding 生成、存储、更新流程
-  - 接入 `rag.enabled` 开关与灰度策略
-  - 增加 RAG on/off 行为一致性回归测试
-  - 增加索引构建与重建脚本
+  - 调整 `CHAT_POLICY_DEFAULTS` 默认值并补 CLI 参数文档
+  - 将 `detectForcedReproductionKeyword` 改为显式命令确认流
+  - 增加 `doctor`/lint 规则扫描高风险默认值
+  - 增加回归测试：默认拒绝、显式确认后放行、审计事件完整
+
+## P5（阶段 B：Hybrid RAG + 蒸馏提纯，Goal/Task 暂缓）
+
+### P5-1 本地向量索引接入
+- 状态：`done`
+- 交付：
+  - EmbeddingProvider 可插拔（`deepseek|local`）
+  - 向量索引与元数据落库：`memory_embeddings`
+  - CLI：`memory index build|rebuild`
+- DoD：
+  - 无 `DEEPSEEK_API_KEY` 时可自动降级 `local` provider
+  - 索引构建可增量跳过未变内容（基于 `content_hash`）
+  - 不破坏现有 CLI 命令集与默认行为
+- 完成记录（2026-02-18）：
+  - 新增 `packages/core/src/memory_embeddings.ts`（provider 抽象、构建、向量检索）
+  - `memory.db` schema 升级到 v5，新增 `memory_embeddings` 表与索引
+  - CLI 新增 `./ss memory index build|rebuild`
 
 ### P5-2 混合检索策略
-- 状态：`todo`
+- 状态：`done`
 - 交付：
   - `hybrid_score = α*vector + β*bm25 + γ*memory_salience`
   - 结构化过滤作为先决条件
 - DoD：
   - 语义召回率提升（基线对比）
   - P95 延迟仍在目标预算内
-- 拆分任务：
-  - 设计 `vector/bm25/salience` 权重配置与默认值
-  - 实现结构化过滤前置与混合打分重排
-  - 建立离线评测集并对比纯结构化基线
-  - 增加线上指标埋点（召回率、P95 延迟）
-  - 做权重调参与回滚开关
+- 已完成：
+  - recall pipeline 已升级为 FTS + vector + salience 融合，trace 包含 `candidateSource/ftsScore/vectorScore/hybridScore/fusionWeights`
+  - 新增 API：`searchMemoriesHybrid`、`getRecallTraceById`
+  - CLI 新增：`memory search --debug-trace`、`memory recall-trace`
+  - MCP 新增只读工具：`memory.search_hybrid`、`memory.recall_trace_get`
+  - 新增离线评测入口：`runRecallRegression` + CLI `memory eval recall`
+- 待完成：
+  - 无（后续评测门禁工作迁移到 `P3-5`）
+
+### P5-3 蒸馏提纯增强
+- 状态：`in_progress`
+- 交付：
+  - consolidate 扩展去重、冲突检测、版本化审计
+  - 冲突表与运行记录：`memory_conflicts`、`memory_consolidation_runs`
+  - CLI 支持 `--conflict-policy newest|trusted`
+- 已完成：
+  - `runMemoryConsolidation` 已输出 `pinCandidates`、`conflict` 统计与 `consolidationRunId`
+  - chat open/close 自动轻量 consolidate 保持启用
+- 待完成：
+  - full 模式夜间调度（cron）默认化文档/脚本
+  - 冲突策略的更细粒度 key 规范与回放评测
 
 ## 关键接口变更（统一登记）
 - `packages/core/src/types.ts`
@@ -447,26 +534,35 @@
   - 扩展 `LifeEventType`
   - 新增 recall trace 类型
 - `packages/core/src/index.ts`
-  - 导出 `memory_store`、`memory_recall`、`memory_archive`
+  - 导出 `memory_store`、`memory_recall`、`memory_embeddings`、`memory_consolidation`、`memory_eval`
 - `packages/cli/src/index.ts`
   - 新增 `memory` 子命令路由
+  - 新增 `memory index/search/recall-trace/eval recall`
   - 新增主动消息控制命令
+- `packages/mcp-server/src/*`
+  - 新增 `memory.search_hybrid`、`memory.recall_trace_get`
 - persona 目录
   - 新增 `memory.db`
-  - 新增 `summaries/archive/`
-  - 新增 `memory_config.json`
+  - 新增/维护 `summaries/archive/`
 
-## 里程碑映射（6 周）
-- Week 1-2：`P0-1~P0-4` + `P1-1` 启动
-- Week 3-4：`P1-2~P1-3` + `P2-1~P2-2` + `P3-1`
-- Week 5-6：`P1-4~P1-5` + `P3-2~P3-4` + `P5-1` 预研
-- Week 5：`P2-3` + `P3-2~P3-3` + 回归稳定
-- Week 6：阶段 A 验收发布
-- 后续 2-4 周：`P5-1~P5-2`
+## 下一阶段里程碑映射（4 周）
+- Week 1：`P3-2` 启动（CI workflow + verify 门禁）+ `P3-5` 指标与 scorecard 骨架
+- Week 2：`P3-5` L0-L2 接入 PR 门禁 + `P3-1` 补齐 orphan memory / embeddings 体检
+- Week 3：`P3-3` 迁移前后召回一致性审计脚本 + `P5-3` 冲突 key 细化
+- Week 4：Nightly L0-L5 跑通 + 发布前门禁演练（含 acceptance 工件）
 
 ## 验收总表
 - 功能：四类记忆、软遗忘/恢复（调试能力）、完整 CLI memory 命令可用
+- 功能：Hybrid RAG（FTS+向量）与记忆提纯增强命令可用
 - 一致性：life.log hash 链有效，迁移可回滚且对账通过
 - 可解释：recall trace 全链路可审计
 - 性能：Recall P95 `<=150ms`（不含模型推理）
 - 回归：现有 `chat/rename/doctor` 不退化
+
+## 立即执行清单（基于本轮全量审查）
+1. `P3-2`：先把 CI 门禁落地（当前无 `.github/workflows` 是最大工程风险）。
+2. `P3-5`：按 `doc/Quality-Evaluation.md` 落地 L0-L2 到 PR（先监控再扩大到 L3-L5）。
+3. `P3-1`：补 `doctor` 的 orphan memory / embeddings 一致性检查，减少 silent corruption 风险。
+4. `P3-3`：增加迁移“召回一致性对账”自动化，避免结构正确但检索退化。
+5. `P4-4`：收紧安全默认值并下线“关键词自动强制繁衍”路径（改为显式确认）。
+6. `P5-3`：完成 consolidate full 模式调度与冲突策略回放评测，收敛记忆提纯行为。

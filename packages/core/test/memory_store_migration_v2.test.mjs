@@ -64,3 +64,29 @@ test("ensureMemoryStore migrates schema v1 to current schema with new memory col
   ]);
   assert.deepEqual(got, expected);
 });
+
+test("ensureMemoryStore maintains FTS table and keeps it in sync", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-memory-store-fts-"));
+  const personaPath = path.join(tmpDir, "Aster.soulseedpersona");
+  const dbPath = path.join(personaPath, "memory.db");
+
+  await initPersonaPackage(personaPath, "Aster");
+  await ensureMemoryStore(personaPath);
+
+  const ftsExists = sqlite(
+    dbPath,
+    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memories_fts';"
+  );
+  assert.equal(ftsExists, "1");
+
+  const before = Number(sqlite(dbPath, "SELECT COUNT(*) FROM memories_fts;"));
+  await runMemoryStoreSql(
+    personaPath,
+    [
+      "INSERT INTO memories (id, memory_type, content, salience, state, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, origin_role, evidence_level, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at)",
+      "VALUES ('fts-sync-1','semantic','FTS sync content',0.6,'warm',1,'2026-02-18T00:00:00.000Z',0.2,0.2,0.9,'user','verified',0,0,'fts-sync-hash','2026-02-18T00:00:00.000Z','2026-02-18T00:00:00.000Z',NULL);"
+    ].join(" ")
+  );
+  const after = Number(sqlite(dbPath, "SELECT COUNT(*) FROM memories_fts;"));
+  assert.equal(after >= before + 1, true);
+});

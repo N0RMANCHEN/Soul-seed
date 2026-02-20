@@ -17,6 +17,7 @@ test("loadPersonaPackage ensures relationship and voice artifacts", async () => 
   const pkg = await loadPersonaPackage(personaPath);
   assert.equal(pkg.relationshipState?.state, "neutral-unknown");
   assert.equal(pkg.voiceProfile?.serviceModeAllowed, false);
+  assert.equal(typeof pkg.soulLineage?.personaId, "string");
 
   const backups = await readdir(path.join(personaPath, "migration-backups"));
   assert.equal(backups.length > 0, true);

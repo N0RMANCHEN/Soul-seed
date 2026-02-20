@@ -25,20 +25,38 @@ test("chat supports proactive controls and dynamic AI label after rename", async
     "/proactive status",
     "你可以自己改名",
     "/rename confirm Astra",
+    "/reproduce force LabKid",
     "你可以自己改名",
-    "/exit"
+    "/exit",
+    "确认退出"
   ]);
 
   assert.equal(chatResult.status, 0);
-  assert.match(chatResult.stdout, /主动消息: 已关闭/);
+  assert.match(chatResult.stdout, /主动消息: 人格自决模式/);
   assert.match(chatResult.stdout, /overall=/);
   assert.match(chatResult.stdout, /dimensions: trust=/);
-  assert.match(chatResult.stdout, /已开启主动消息（每 1 分钟）/);
-  assert.match(chatResult.stdout, /主动消息: 已开启（每 1 分钟）/);
-  assert.match(chatResult.stdout, /已关闭主动消息/);
+  assert.match(chatResult.stdout, /我会按自己的状态决定主动节奏/);
   assert.match(chatResult.stdout, /Roxy> 我想把名字调整为“Astra”/);
   assert.match(chatResult.stdout, /已在聊天内确认改名：Astra/);
+  assert.match(chatResult.stdout, /已强制繁衍:/);
   assert.match(chatResult.stdout, /Astra> 我想把名字调整为“Mira”/);
+  assert.match(chatResult.stdout, /回复“确认退出”我就先安静退下/);
+});
+
+test("chat exits when /exit is repeated during exit confirmation", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-chat-test-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+
+  const initResult = spawnSync(process.execPath, [cliPath, "init", "--name", "Roxy", "--out", personaPath], {
+    encoding: "utf8"
+  });
+  assert.equal(initResult.status, 0);
+
+  const chatResult = await runChatScript(personaPath, ["/exit", "/exit"]);
+  assert.equal(chatResult.status, 0);
+
+  const promptMatches = chatResult.stdout.match(/回复“确认退出”我就先安静退下/g) ?? [];
+  assert.equal(promptMatches.length, 1);
 });
 
 function runChatScript(personaPath, lines) {

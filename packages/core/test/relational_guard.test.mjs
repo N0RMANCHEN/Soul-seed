@@ -15,3 +15,19 @@ test("relational guard rewrites servile phrasing", () => {
   assert.doesNotMatch(result.text, /随时准备帮你处理各种事情/);
   assert.doesNotMatch(result.text, /有什么需要我做的吗/);
 });
+
+test("relational guard rewrites false amnesia when continuity evidence exists", () => {
+  const input = "每次对话对我来说都是新的开始。我没有之前的记忆。";
+  const result = enforceRelationalGuard(input, {
+    selectedMemories: ["life=我们刚刚在聊今天聊了多久"],
+    lifeEvents: [
+      { type: "user_message", payload: { text: "你记得吗,我们聊了多久今天" } },
+      { type: "assistant_message", payload: { text: "我会认真记住。" } }
+    ],
+    personaName: "Roxy"
+  });
+
+  assert.equal(result.corrected, true);
+  assert.equal(result.flags.includes("amnesia_claim"), true);
+  assert.match(result.text, /我记得我们刚才这段对话/);
+});

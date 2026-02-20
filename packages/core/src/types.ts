@@ -33,6 +33,13 @@ export interface PersonaUserProfile {
   preferredName: string;
 }
 
+export interface AdultSafetyContext {
+  adultMode: boolean;
+  ageVerified: boolean;
+  explicitConsent: boolean;
+  fictionalRoleplay: boolean;
+}
+
 export interface PersonaPinned {
   memories: string[];
   updatedAt?: string;
@@ -48,6 +55,7 @@ export interface PersonaPackage {
   pinned: PersonaPinned;
   relationshipState?: RelationshipState;
   voiceProfile?: VoiceProfile;
+  soulLineage?: SoulLineage;
 }
 
 export interface RelationshipDimensions {
@@ -56,6 +64,7 @@ export interface RelationshipDimensions {
   intimacy: number;
   reciprocity: number;
   stability: number;
+  libido: number;
 }
 
 export interface RelationshipDriver {
@@ -70,9 +79,20 @@ export interface RelationshipState {
   confidence: number;
   overall: number;
   dimensions: RelationshipDimensions;
+  arousalImprint?: number;
   drivers: RelationshipDriver[];
-  version: "2";
+  version: "3";
   updatedAt: string;
+}
+
+export interface SoulLineage {
+  personaId: string;
+  parentPersonaId?: string;
+  childrenPersonaIds: string[];
+  reproductionCount: number;
+  lastReproducedAt?: string;
+  inheritancePolicy: "values_plus_memory_excerpt";
+  consentMode: "default_consent";
 }
 
 export interface VoiceProfile {
@@ -140,6 +160,53 @@ export interface McpCallRecord {
   };
 }
 
+export type CapabilityName =
+  | "session.capability_discovery"
+  | "session.show_modes"
+  | "session.owner_auth"
+  | "session.read_file"
+  | "session.proactive_status"
+  | "session.proactive_tune"
+  | "session.set_mode"
+  | "session.exit";
+
+export type CapabilityRiskLevel = "low" | "medium" | "high";
+
+export interface CapabilityCallRequest {
+  name: CapabilityName;
+  input?: Record<string, unknown>;
+  source?: "dialogue" | "slash" | "mcp" | "system";
+}
+
+export interface CapabilityCallResult {
+  ok: boolean;
+  name: CapabilityName;
+  status: "executed" | "confirm_required" | "rejected" | "clarify";
+  message: string;
+  output?: Record<string, unknown>;
+}
+
+export interface OwnerAuthContext {
+  ownerTokenProvided?: boolean;
+  ownerAuthPassed: boolean;
+  reason?: string;
+  expiresAt?: string;
+}
+
+export interface ProactiveStateSnapshot {
+  ts: string;
+  probability: number;
+  curiosity: number;
+  annoyanceBias: number;
+}
+
+export interface ProactiveDecisionTrace {
+  ts: string;
+  emitted: boolean;
+  probability: number;
+  reason: string;
+}
+
 export type MemoryTier = "highlight" | "pattern" | "error";
 export type MemoryMetaSource = "chat" | "system" | "acceptance";
 export type MemoryDecayClass = "fast" | "standard" | "slow" | "sticky";
@@ -177,11 +244,19 @@ export type LifeEventType =
   | "rename_confirmed_via_chat"
   | "memory_weight_updated"
   | "memory_compacted"
+  | "memory_consolidated"
+  | "memory_consolidation_failed"
   | "memory_soft_forgotten"
   | "memory_recovered"
   | "memory_contamination_flagged"
   | "relationship_state_updated"
+  | "libido_state_updated"
   | "voice_intent_selected"
+  | "reproduction_intent_detected"
+  | "soul_reproduction_completed"
+  | "soul_reproduction_rejected"
+  | "soul_reproduction_forced"
+  | "force_mode_toggled"
   | "narrative_drift_detected"
   | "constitution_review_requested"
   | "worldview_revised"
@@ -191,7 +266,16 @@ export type LifeEventType =
   | "self_revision_conflicted"
   | "scar"
   | "mcp_tool_called"
-  | "mcp_tool_rejected";
+  | "mcp_tool_rejected"
+  | "capability_intent_detected"
+  | "capability_call_requested"
+  | "capability_call_confirmed"
+  | "capability_call_rejected"
+  | "capability_call_succeeded"
+  | "owner_auth_succeeded"
+  | "owner_auth_failed"
+  | "proactive_decision_made"
+  | "proactive_message_emitted";
 
 export type SelfRevisionDomain =
   | "habits"

@@ -151,6 +151,8 @@ test("HTTP transport supports initialize + tools/list + tools/call", { timeout: 
   assert.equal(toolNames.includes("persona.get_context"), true);
   assert.equal(toolNames.includes("conversation.save_turn"), true);
   assert.equal(toolNames.includes("memory.search"), true);
+  assert.equal(toolNames.includes("memory.search_hybrid"), true);
+  assert.equal(toolNames.includes("memory.recall_trace_get"), true);
   assert.equal(toolNames.includes("memory.inspect"), true);
 
   const call = await postJson(

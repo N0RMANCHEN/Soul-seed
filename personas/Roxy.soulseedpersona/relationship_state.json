@@ -1,61 +1,66 @@
 {
-  "state": "friend",
-  "confidence": 0.56,
-  "overall": 0.5602,
+  "state": "intimate",
+  "confidence": 0.85,
+  "overall": 0.8534,
   "dimensions": {
-    "trust": 0.562,
-    "safety": 0.9096,
-    "intimacy": 0.3,
-    "reciprocity": 0.35,
-    "stability": 0.621
+    "trust": 0.7463,
+    "safety": 0.98,
+    "intimacy": 0.7438,
+    "reciprocity": 0.8941,
+    "stability": 0.992,
+    "libido": 0.4528
   },
+  "arousalImprint": 0,
   "drivers": [
     {
-      "ts": "2026-02-18T08:48:19.859Z",
+      "ts": "2026-02-20T04:56:35.284Z",
+      "source": "user",
+      "signal": "user_negative_affect+user_low_information_turn",
+      "deltaSummary": {
+        "trust": -0.015,
+        "safety": -0.02,
+        "stability": -0.008
+      }
+    },
+    {
+      "ts": "2026-02-20T05:00:33.335Z",
+      "source": "user",
+      "signal": "user_positive_affect",
+      "deltaSummary": {
+        "trust": 0.015,
+        "safety": 0.01,
+        "reciprocity": 0.012
+      }
+    },
+    {
+      "ts": "2026-02-20T05:02:05.651Z",
+      "source": "assistant",
+      "signal": "assistant_clarification",
+      "deltaSummary": {
+        "safety": 0.012,
+        "stability": 0.01
+      }
+    },
+    {
+      "ts": "2026-02-20T05:02:39.138Z",
+      "source": "user",
+      "signal": "user_negative_affect",
+      "deltaSummary": {
+        "trust": -0.015,
+        "safety": -0.02,
+        "stability": -0.008
+      }
+    },
+    {
+      "ts": "2026-02-20T05:03:15.157Z",
       "source": "assistant",
       "signal": "assistant_empathic_response",
       "deltaSummary": {
         "trust": 0.008,
         "intimacy": 0.006
-      }
-    },
-    {
-      "ts": "2026-02-18T09:15:59.947Z",
-      "source": "assistant",
-      "signal": "assistant_empathic_response",
-      "deltaSummary": {
-        "trust": 0.008,
-        "intimacy": 0.006
-      }
-    },
-    {
-      "ts": "2026-02-18T09:16:17.210Z",
-      "source": "assistant",
-      "signal": "assistant_clarification",
-      "deltaSummary": {
-        "safety": 0.012,
-        "stability": 0.01
-      }
-    },
-    {
-      "ts": "2026-02-18T09:16:39.390Z",
-      "source": "assistant",
-      "signal": "assistant_clarification",
-      "deltaSummary": {
-        "safety": 0.012,
-        "stability": 0.01
-      }
-    },
-    {
-      "ts": "2026-02-18T09:18:16.553Z",
-      "source": "assistant",
-      "signal": "assistant_clarification",
-      "deltaSummary": {
-        "safety": 0.012,
-        "stability": 0.01
       }
     }
   ],
-  "version": "2",
-  "updatedAt": "2026-02-18T12:37:00.454Z"
+  "version": "3",
+  "updatedAt": "2026-02-20T05:03:15.157Z"
 }

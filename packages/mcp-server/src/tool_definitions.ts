@@ -56,6 +56,39 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     }
   },
   {
+    name: "session.capability_list",
+    description:
+      "List unified session capability contracts (name/risk/owner-only/confirmation) shared across channels.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: "session.capability_call",
+    description:
+      "Call a unified session capability. Supports either direct capability name + input or free-text intent text.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        capability: {
+          type: "string",
+          description: "Capability name, e.g. session.read_file or session.exit."
+        },
+        text: {
+          type: "string",
+          description: "Free text for rule-first intent detection."
+        },
+        input: {
+          type: "object",
+          description: "Capability arguments payload."
+        }
+      },
+      required: []
+    }
+  },
+  {
     name: "memory.search",
     description: "Search the persona's memory store using a text query. Returns ranked results.",
     inputSchema: {
@@ -73,6 +106,45 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         }
       },
       required: ["query"]
+    }
+  },
+  {
+    name: "memory.search_hybrid",
+    description:
+      "Search persona memory with Hybrid RAG (FTS + vector + salience fusion) and return ranked results with scores.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The search query string."
+        },
+        maxResults: {
+          type: "integer",
+          description: "Maximum number of results to return (default: 12).",
+          minimum: 1,
+          maximum: 100
+        },
+        debugTrace: {
+          type: "boolean",
+          description: "Whether to include full recall trace payload in response."
+        }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "memory.recall_trace_get",
+    description: "Read a recall trace by trace ID for debugging. Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        traceId: {
+          type: "string",
+          description: "Recall trace ID returned by memory.search or memory.search_hybrid."
+        }
+      },
+      required: ["traceId"]
     }
   },
   {

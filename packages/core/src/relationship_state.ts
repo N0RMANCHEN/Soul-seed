@@ -12,15 +12,23 @@ import type {
 const RELATIONSHIP_IDLE_GRACE_MS = 20 * 60 * 1000;
 const RELATIONSHIP_DECAY_INTERVAL_MS = 60 * 60 * 1000;
 const RELATIONSHIP_DECAY_PER_IDLE_INTERVAL = 0.002;
+const RELATIONSHIP_LIBIDO_DECAY_MULTIPLIER = 2.6;
+const RELATIONSHIP_AROUSAL_IMPRINT_DECAY_MULTIPLIER = 0.24;
 const MAX_DELTA_PER_DIMENSION = 0.03;
 const MAX_DRIVERS = 5;
+const LIBIDO_AROUSAL_START = 0.52;
+const LIBIDO_AROUSAL_MIN_START = 0.22;
+const AROUSAL_IMPRINT_GAIN_ON_CLIMAX = 0.04;
+const AROUSAL_IMPRINT_MAX = 0.36;
+const LIBIDO_EXTREME_PROACTIVE_START = 0.86;
 
 const RELATIONSHIP_DIMENSION_BASELINE: RelationshipDimensions = {
   trust: 0.45,
   safety: 0.48,
   intimacy: 0.25,
   reciprocity: 0.35,
-  stability: 0.45
+  stability: 0.45,
+  libido: 0.35
 };
 
 export const DEFAULT_RELATIONSHIP_STATE: RelationshipState = createInitialRelationshipState();
@@ -105,13 +113,107 @@ export function deriveVoiceIntent(params: {
   const question = /[?？]/.test(input);
   const stance =
     params.relationshipState.state === "neutral-unknown" ? "neutral" : params.relationshipState.state;
-  const tone = question ? "plain" : stance === "intimate" ? "warm" : "reflective";
+  const arousal = deriveCognitiveBalanceFromLibido(params.relationshipState);
+  const extremeProactive = isExtremeProactiveWindowActive(params.relationshipState);
+  if (extremeProactive) {
+    return {
+      stance: "intimate",
+      tone: "direct",
+      serviceMode: false,
+      language
+    };
+  }
+  const tone = question ? "plain" : stance === "intimate" || arousal.arousalState !== "low" ? "warm" : "reflective";
   return {
     stance,
     tone,
     serviceMode: false,
     language
   };
+}
+
+export function isExtremeProactiveWindowActive(relationshipState: RelationshipState): boolean {
+  const libido = clamp01(relationshipState.dimensions.libido);
+  const intimacy = clamp01(relationshipState.dimensions.intimacy);
+  const arousal = deriveCognitiveBalanceFromLibido(relationshipState);
+  return libido >= LIBIDO_EXTREME_PROACTIVE_START && intimacy >= 0.52 && arousal.arousalState !== "low";
+}
+
+export function deriveCognitiveBalanceFromLibido(relationshipState: RelationshipState): {
+  arousalState: "low" | "rising" | "aroused" | "overridden";
+  rationalControl: number;
+  emotionalDrive: number;
+} {
+  const libido = clamp01(relationshipState.dimensions.libido);
+  const arousalStart = getLibidoArousalStart(relationshipState);
+  const arousedStart = Math.min(0.95, arousalStart + 0.08);
+  const overriddenStart = Math.min(0.98, arousalStart + 0.22);
+  if (libido < arousalStart) {
+    return {
+      arousalState: "low",
+      rationalControl: 1,
+      emotionalDrive: 1
+    };
+  }
+  const intensity = clamp01((libido - arousalStart) / (1 - arousalStart));
+  const rationalControl = roundTo4(clamp01(1 - intensity * 0.45));
+  const emotionalDrive = roundTo4(1 + intensity * 0.7);
+  return {
+    arousalState: libido >= overriddenStart ? "overridden" : libido >= arousedStart ? "aroused" : "rising",
+    rationalControl,
+    emotionalDrive
+  };
+}
+
+export function applyArousalBiasToMemoryWeights(
+  weights: { activation: number; emotion: number; narrative: number; relational: number },
+  relationshipState: RelationshipState
+): { activation: number; emotion: number; narrative: number; relational: number } {
+  const balance = deriveCognitiveBalanceFromLibido(relationshipState);
+  if (balance.arousalState === "low") {
+    return weights;
+  }
+  const arousalStart = getLibidoArousalStart(relationshipState);
+  const intensity = clamp01((relationshipState.dimensions.libido - arousalStart) / (1 - arousalStart));
+  const rationalPenalty = 0.4 * intensity;
+  const emotionBoost = 0.5 * intensity;
+
+  const next = {
+    activation: Math.max(0, weights.activation * (1 - rationalPenalty)),
+    emotion: Math.max(0, weights.emotion * (1 + emotionBoost)),
+    narrative: Math.max(0, weights.narrative * (1 - rationalPenalty)),
+    relational: Math.max(0, weights.relational * (1 + emotionBoost * 0.6))
+  };
+
+  const sum = next.activation + next.emotion + next.narrative + next.relational;
+  if (!Number.isFinite(sum) || sum <= 0) {
+    return weights;
+  }
+  return {
+    activation: roundTo4(next.activation / sum),
+    emotion: roundTo4(next.emotion / sum),
+    narrative: roundTo4(next.narrative / sum),
+    relational: roundTo4(next.relational / sum)
+  };
+}
+
+function getLibidoArousalStart(relationshipState: RelationshipState): number {
+  const intimacy = clamp01(relationshipState.dimensions.intimacy);
+  const intimacyShift = intimacy * 0.34;
+  const imprint = clamp01(relationshipState.arousalImprint ?? 0);
+  const imprintShift = imprint * 0.24;
+  return Math.max(LIBIDO_AROUSAL_MIN_START, LIBIDO_AROUSAL_START - intimacyShift - imprintShift);
+}
+
+export function isImpulseWindowActive(relationshipState: RelationshipState): boolean {
+  const balance = deriveCognitiveBalanceFromLibido(relationshipState);
+  if (balance.arousalState === "overridden") {
+    return true;
+  }
+  if (balance.arousalState !== "aroused") {
+    return false;
+  }
+  return relationshipState.dimensions.intimacy >= 0.38 || relationshipState.dimensions.trust >= 0.62;
 }
 
 export function evolveRelationshipState(
@@ -131,6 +233,10 @@ export function evolveRelationshipState(
   const intimatePattern = /亲密|最懂我|爱你|老婆|宝贝|intimate|love you|dear/i;
   const peerPattern = /伙伴|搭子|并肩|peer|teammate/i;
   const friendPattern = /朋友|friend/i;
+  const libidoUpPattern = /性欲|想要你|欲望|发情|sex|sexual|horny|aroused/i;
+  const libidoDownPattern = /别碰我|不想要|拒绝|stop|no sex|turn off/i;
+  const moodPattern = /情调|氛围|暧昧|挑逗|耳语|烛光|romantic|tease|seduce|foreplay/i;
+  const resolutionPattern = /满足了|结束了|冷静了|贤者时间|finished|satisfied|came|orgasm|release/i;
 
   if (positivePattern.test(text)) {
     addDelta(deltas, "trust", 0.015);
@@ -147,6 +253,7 @@ export function evolveRelationshipState(
   if (intimatePattern.test(text)) {
     addDelta(deltas, "intimacy", 0.018);
     addDelta(deltas, "trust", 0.006);
+    addDelta(deltas, "libido", 0.012);
     signals.push("user_intimacy_signal");
   } else if (peerPattern.test(text)) {
     addDelta(deltas, "reciprocity", 0.014);
@@ -160,6 +267,23 @@ export function evolveRelationshipState(
   if (/[?？]/.test(text)) {
     addDelta(deltas, "safety", 0.004);
     signals.push("user_clarifying_question");
+  }
+  if (libidoUpPattern.test(text)) {
+    addDelta(deltas, "libido", 0.02);
+    signals.push("user_libido_up_signal");
+  }
+  if (moodPattern.test(text)) {
+    addDelta(deltas, "intimacy", 0.01);
+    addDelta(deltas, "libido", 0.018);
+    signals.push("user_mood_signal");
+  }
+  if (libidoDownPattern.test(text)) {
+    addDelta(deltas, "libido", -0.03);
+    signals.push("user_libido_down_signal");
+  }
+  if (resolutionPattern.test(text)) {
+    addDelta(deltas, "libido", -0.05);
+    signals.push("user_resolution_signal");
   }
   if (text.length <= 2 || /^嗯|ok|好的|好吧$/i.test(lowered)) {
     signals.push("user_low_information_turn");
@@ -187,6 +311,23 @@ export function evolveRelationshipStateFromAssistant(
     addDelta(deltas, "trust", 0.008);
     addDelta(deltas, "intimacy", 0.006);
     signals.push("assistant_empathic_response");
+  }
+  if (/想你|想抱你|亲密|desire|want you|sexual/i.test(text)) {
+    addDelta(deltas, "libido", 0.014);
+    signals.push("assistant_libido_up_signal");
+  }
+  if (/氛围|情调|romantic|tease|whisper|candlelight/i.test(text)) {
+    addDelta(deltas, "intimacy", 0.008);
+    addDelta(deltas, "libido", 0.014);
+    signals.push("assistant_mood_signal");
+  }
+  if (/尊重你的边界|不做这个|stop here|respect your boundary/i.test(text)) {
+    addDelta(deltas, "libido", -0.018);
+    signals.push("assistant_libido_down_signal");
+  }
+  if (/慢慢平复|冷静下来|结束吧|we are done|you can rest now/i.test(text)) {
+    addDelta(deltas, "libido", -0.04);
+    signals.push("assistant_resolution_signal");
   }
   if (/对不起|抱歉|sorry/i.test(text)) {
     addDelta(deltas, "safety", 0.004);
@@ -224,7 +365,12 @@ function evolveWithSignal(
     safety: decayTowardBaseline(current.dimensions.safety, RELATIONSHIP_DIMENSION_BASELINE.safety, decayAmount),
     intimacy: decayTowardBaseline(current.dimensions.intimacy, RELATIONSHIP_DIMENSION_BASELINE.intimacy, decayAmount),
     reciprocity: decayTowardBaseline(current.dimensions.reciprocity, RELATIONSHIP_DIMENSION_BASELINE.reciprocity, decayAmount),
-    stability: decayTowardBaseline(current.dimensions.stability, RELATIONSHIP_DIMENSION_BASELINE.stability, decayAmount)
+    stability: decayTowardBaseline(current.dimensions.stability, RELATIONSHIP_DIMENSION_BASELINE.stability, decayAmount),
+    libido: decayTowardBaseline(
+      current.dimensions.libido,
+      RELATIONSHIP_DIMENSION_BASELINE.libido,
+      decayAmount * RELATIONSHIP_LIBIDO_DECAY_MULTIPLIER
+    )
   };
 
   const bounded = boundDeltas(deltas);
@@ -233,12 +379,21 @@ function evolveWithSignal(
     safety: clamp01(decayed.safety + (bounded.safety ?? 0)),
     intimacy: clamp01(decayed.intimacy + (bounded.intimacy ?? 0)),
     reciprocity: clamp01(decayed.reciprocity + (bounded.reciprocity ?? 0)),
-    stability: clamp01(decayed.stability + (bounded.stability ?? 0))
+    stability: clamp01(decayed.stability + (bounded.stability ?? 0)),
+    libido: clamp01(decayed.libido + (bounded.libido ?? 0))
   };
+  const climaxSignal = signals.some((signal) => /resolution_signal/.test(signal));
+  const climaxReached = climaxSignal && current.dimensions.libido >= 0.82;
+  const nextArousalImprint = computeNextArousalImprint(current, decayAmount, climaxReached);
 
   const hasSignal =
     signals.length > 0 &&
-    (bounded.trust ?? 0) + (bounded.safety ?? 0) + (bounded.intimacy ?? 0) + (bounded.reciprocity ?? 0) + (bounded.stability ?? 0) !==
+    (bounded.trust ?? 0) +
+      (bounded.safety ?? 0) +
+      (bounded.intimacy ?? 0) +
+      (bounded.reciprocity ?? 0) +
+      (bounded.stability ?? 0) +
+      (bounded.libido ?? 0) !==
       0;
   const drivers = hasSignal
     ? appendDriver(current.drivers, {
@@ -251,6 +406,7 @@ function evolveWithSignal(
 
   return buildRelationshipState({
     dimensions: nextDimensions,
+    arousalImprint: nextArousalImprint,
     drivers,
     updatedAt: now.toISOString()
   });
@@ -258,6 +414,7 @@ function evolveWithSignal(
 
 function buildRelationshipState(params: {
   dimensions: RelationshipDimensions;
+  arousalImprint?: number;
   drivers: RelationshipDriver[];
   updatedAt: string;
 }): RelationshipState {
@@ -268,8 +425,9 @@ function buildRelationshipState(params: {
     confidence: roundTo2(overall),
     overall,
     dimensions: normalizedDimensions,
+    arousalImprint: roundTo4(clamp01(params.arousalImprint ?? 0)),
     drivers: params.drivers.slice(-MAX_DRIVERS),
-    version: "2",
+    version: "3",
     updatedAt: params.updatedAt
   };
 }
@@ -288,9 +446,11 @@ function normalizeRelationshipState(raw: Record<string, unknown>): RelationshipS
   const fallbackScore = clamp01(Number.isFinite(confidence) ? confidence : 0.5);
   const resolvedOverall = clamp01(Number.isFinite(overall) ? overall : fallbackScore);
   const dimensions = normalizeDimensionsFromRaw(raw.dimensions, legacyState, resolvedOverall);
+  const arousalImprint = normalizeArousalImprint(raw.arousalImprint);
   const drivers = normalizeDrivers(raw.drivers);
   return buildRelationshipState({
     dimensions,
+    arousalImprint,
     drivers,
     updatedAt
   });
@@ -309,13 +469,15 @@ function normalizeDimensionsFromRaw(
   const intimacy = Number(raw.intimacy ?? NaN);
   const reciprocity = Number(raw.reciprocity ?? NaN);
   const stability = Number(raw.stability ?? NaN);
+  const libido = Number(raw.libido ?? NaN);
   if ([trust, safety, intimacy, reciprocity, stability].every((value) => Number.isFinite(value))) {
     return normalizeDimensions({
       trust,
       safety,
       intimacy,
       reciprocity,
-      stability
+      stability,
+      libido: Number.isFinite(libido) ? libido : RELATIONSHIP_DIMENSION_BASELINE.libido
     });
   }
   return inferDimensionsFromLegacy(state, overall);
@@ -333,7 +495,8 @@ function inferDimensionsFromLegacy(
     safety: RELATIONSHIP_DIMENSION_BASELINE.safety * (1 - blend) + blend * 0.9 + boost * 0.7,
     intimacy: RELATIONSHIP_DIMENSION_BASELINE.intimacy * (1 - blend) + blend * 0.85 + boost,
     reciprocity: RELATIONSHIP_DIMENSION_BASELINE.reciprocity * (1 - blend) + blend * 0.88 + boost * 0.6,
-    stability: RELATIONSHIP_DIMENSION_BASELINE.stability * (1 - blend) + blend * 0.8 + boost * 0.5
+    stability: RELATIONSHIP_DIMENSION_BASELINE.stability * (1 - blend) + blend * 0.8 + boost * 0.5,
+    libido: RELATIONSHIP_DIMENSION_BASELINE.libido
   });
 }
 
@@ -343,7 +506,8 @@ function normalizeDimensions(dimensions: RelationshipDimensions): RelationshipDi
     safety: roundTo4(clamp01(dimensions.safety)),
     intimacy: roundTo4(clamp01(dimensions.intimacy)),
     reciprocity: roundTo4(clamp01(dimensions.reciprocity)),
-    stability: roundTo4(clamp01(dimensions.stability))
+    stability: roundTo4(clamp01(dimensions.stability)),
+    libido: roundTo4(clamp01(dimensions.libido))
   };
 }
 
@@ -366,7 +530,8 @@ function normalizeDrivers(raw: unknown): RelationshipDriver[] {
             safety: toFinite(item.deltaSummary.safety),
             intimacy: toFinite(item.deltaSummary.intimacy),
             reciprocity: toFinite(item.deltaSummary.reciprocity),
-            stability: toFinite(item.deltaSummary.stability)
+            stability: toFinite(item.deltaSummary.stability),
+            libido: toFinite(item.deltaSummary.libido)
           })
         : {};
       return {
@@ -377,6 +542,31 @@ function normalizeDrivers(raw: unknown): RelationshipDriver[] {
       };
     })
     .slice(-MAX_DRIVERS);
+}
+
+function normalizeArousalImprint(raw: unknown): number {
+  const num = Number(raw);
+  if (!Number.isFinite(num)) {
+    return 0;
+  }
+  return roundTo4(clamp01(num));
+}
+
+function computeNextArousalImprint(
+  current: RelationshipState,
+  decayAmount: number,
+  climaxReached: boolean
+): number {
+  const currentImprint = clamp01(current.arousalImprint ?? 0);
+  const decayed = decayTowardBaseline(
+    currentImprint,
+    0,
+    decayAmount * RELATIONSHIP_AROUSAL_IMPRINT_DECAY_MULTIPLIER
+  );
+  if (!climaxReached) {
+    return roundTo4(clamp01(decayed));
+  }
+  return roundTo4(Math.min(AROUSAL_IMPRINT_MAX, decayed + AROUSAL_IMPRINT_GAIN_ON_CLIMAX));
 }
 
 function normalizeVoiceProfile(raw: Record<string, unknown>): VoiceProfile {
@@ -465,7 +655,8 @@ function boundDeltas(delta: Partial<RelationshipDimensions>): Partial<Relationsh
     safety: boundDelta(delta.safety),
     intimacy: boundDelta(delta.intimacy),
     reciprocity: boundDelta(delta.reciprocity),
-    stability: boundDelta(delta.stability)
+    stability: boundDelta(delta.stability),
+    libido: boundDelta(delta.libido)
   };
 }
 
@@ -496,6 +687,9 @@ function compactDeltaSummary(delta: Partial<RelationshipDimensions>): Partial<Re
   }
   if (typeof delta.stability === "number" && delta.stability !== 0) {
     next.stability = roundTo4(delta.stability);
+  }
+  if (typeof delta.libido === "number" && delta.libido !== 0) {
+    next.libido = roundTo4(delta.libido);
   }
   return next;
 }

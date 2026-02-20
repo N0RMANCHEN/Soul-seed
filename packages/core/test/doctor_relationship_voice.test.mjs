@@ -43,3 +43,21 @@ test("doctor rejects invalid voice_intent_selected event payload", async () => {
   assert.equal(report.ok, false);
   assert.equal(report.issues.some((i) => i.code === "invalid_voice_intent_event"), true);
 });
+
+test("doctor rejects invalid soul_reproduction_forced payload", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-doctor-repro-event-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+  await initPersonaPackage(personaPath, "Roxy");
+
+  await appendLifeEvent(personaPath, {
+    type: "soul_reproduction_forced",
+    payload: {
+      parentPersonaId: "",
+      trigger: ""
+    }
+  });
+
+  const report = await doctorPersona(personaPath);
+  assert.equal(report.ok, false);
+  assert.equal(report.issues.some((i) => i.code === "invalid_soul_reproduction_event"), true);
+});

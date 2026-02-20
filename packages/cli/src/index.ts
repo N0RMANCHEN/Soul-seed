@@ -19,6 +19,8 @@ import {
   appendLifeEvent,
   addPinnedMemory,
   applyRename,
+  archiveColdMemories,
+  createChildPersonaFromParent,
   compileContext,
   decide,
   doctorPersona,
@@ -27,6 +29,9 @@ import {
   enforceRecallGroundingGuard,
   enforceRelationalGuard,
   evolveRelationshipStateFromAssistant,
+  deriveCognitiveBalanceFromLibido,
+  applyArousalBiasToMemoryWeights,
+  isExtremeProactiveWindowActive,
   ensureScarForBrokenLifeLog,
   evolveRelationshipState,
   createInitialRelationshipState,
@@ -37,6 +42,8 @@ import {
   getRenameCooldownStatus,
   initPersonaPackage,
   inspectMemoryStore,
+  inspectMemoryBudget,
+  getRecallQueryCacheStats,
   isRenameRequestFresh,
   loadPersonaPackage,
   listPinnedMemories,
@@ -47,6 +54,12 @@ import {
   requestRename,
   reconcileMemoryStoreFromLifeLog,
   removePinnedMemory,
+  runMemoryConsolidation,
+  buildMemoryEmbeddingIndex,
+  searchMemoriesHybrid,
+  getRecallTraceById,
+  runRecallRegression,
+  runMemoryBudgetBenchmark,
   runMemoryStoreSql,
   shouldRequestConstitutionReview,
   summarizeAppliedRevision,
@@ -60,9 +73,13 @@ import {
   updateUserProfile,
   validateDisplayName,
   migrateLifeLogAndWorkingSet,
-  ensureMemoryStore
+  ensureMemoryStore,
+  resolveCapabilityIntent,
+  evaluateCapabilityPolicy,
+  computeProactiveStateSnapshot,
+  decideProactiveEmission
 } from "@soulseed/core";
-import type { DecisionTrace, RelationshipState, VoiceProfile } from "@soulseed/core";
+import type { AdultSafetyContext, DecisionTrace, LifeEvent, RelationshipState, VoiceProfile } from "@soulseed/core";
 import { createHash, randomUUID } from "node:crypto";
 import { inferEmotionFromText, parseEmotionTag, renderEmotionPrefix } from "./emotion.js";
 
@@ -124,14 +141,24 @@ function printHelp(): void {
       "",
       "常用命令:",
       "  init [--name Roxy] [--out ./personas/Roxy.soulseedpersona]",
-      "  chat [--persona ./personas/Roxy.soulseedpersona] [--model deepseek-chat] [--strict-memory-grounding true|false]",
+      "  chat [--persona ./personas/Roxy.soulseedpersona] [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
       "  doctor [--persona ./personas/Roxy.soulseedpersona]",
       "  memory status [--persona <path>]",
+      "  memory budget [--persona <path>] [--target-mb 300]",
       "  memory list [--persona <path>] [--limit 20] [--state hot|warm|cold|archive|scar] [--deleted]",
       "  memory inspect --id <memory_id> [--persona <path>]",
       "  memory forget --id <memory_id> [--mode soft|hard] [--persona <path>]",
       "  memory recover --id <memory_id> [--persona <path>]",
+      "  memory unstick [--persona <path>] [--phrase <text>] [--min-occurrences 3] [--max-content-length 1200] [--dry-run]",
       "  memory compact [--persona ./personas/Roxy.soulseedpersona]",
+      "  memory archive [--persona <path>] [--min-items 50] [--min-cold-ratio 0.35] [--idle-days 14] [--max-items 500] [--dry-run]",
+      "  memory index build [--persona <path>] [--provider deepseek|local] [--batch-size 16]",
+      "  memory index rebuild [--persona <path>] [--provider deepseek|local] [--batch-size 16]",
+      "  memory search --query <q> [--persona <path>] [--max-results 12] [--debug-trace]",
+      "  memory recall-trace --trace-id <id> [--persona <path>]",
+      "  memory consolidate [--persona <path>] [--mode light|full] [--timeout-ms 1200]",
+      "  memory eval recall --dataset <file.json> [--persona <path>] [--k 8] [--out report.json]",
+      "  memory eval budget [--persona <path>] [--target-mb 300] [--days 180] [--events-per-day 24] [--recall-queries 120] [--growth-checkpoints 12] [--out report.json]",
       "  memory export --out <file.json> [--persona <path>] [--include-deleted]",
       "  memory import --in <file.json> [--persona <path>]",
       "  memory pin add --text <memory> [--persona <path>]",
@@ -140,6 +167,7 @@ function printHelp(): void {
       "  memory unpin --text <memory> [--persona <path>]  # alias of memory pin remove",
       "  memory reconcile [--persona ./personas/Roxy.soulseedpersona]",
       "  rename --to <new_name> [--persona <path>] [--confirm]",
+      "  persona reproduce --name <child_name> [--persona <path>] [--out <path>] [--force-all]",
       "  mcp [--persona <path>] [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--auth-token <token>]",
       "",
       "兼容命令:",
@@ -147,16 +175,16 @@ function printHelp(): void {
       "  persona rename --to <new_name> [--persona <path>] [--confirm]",
       "",
       "chat 内部命令:",
-      "  /read <file_path>   读取本地文本文件并附加到后续提问上下文",
-      "  /files              查看当前已附加文件",
-      "  /clearread          清空已附加文件",
-      "  /proactive on [minutes]  开启 AI 主动消息（默认每 10 分钟）",
-      "  /proactive off      关闭 AI 主动消息",
-      "  /proactive status   查看主动消息状态",
+      "  （推荐）直接用自然语言触发能力：读文件、查看能力、退出会话、查看/切换模式等",
+      "  /read <file_path>   兼容入口：读取本地文本文件并附加到后续提问上下文",
+      "  /files              兼容入口：查看当前已附加文件",
+      "  /clearread          兼容入口：清空已附加文件",
+      "  /proactive ...      兼容入口：主动消息调试命令",
       "  /relation           查看当前关系状态",
       "  /relation detail    查看关系多维评分与最近驱动因素",
       "  /rename confirm <new_name>  在聊天中确认改名",
-      "  /exit               退出会话"
+      "  /reproduce force <child_name>  在聊天内强制繁衍并创建子灵魂",
+      "  /exit               兼容入口：退出会话"
     ].join("\n")
   );
 }
@@ -182,7 +210,66 @@ function resolveStrictMemoryGrounding(options: Record<string, string | boolean>)
       return true;
     }
   }
-  return true;
+  return CHAT_POLICY_DEFAULTS.strictMemoryGrounding;
+}
+
+/**
+ * Chat policy unified defaults.
+ *
+ * 修改默认值只需要改这里这一处：
+ * - strictMemoryGrounding: 默认严格记忆对齐
+ * - adultSafety: 成人内容门控默认值
+ */
+const CHAT_POLICY_DEFAULTS: {
+  strictMemoryGrounding: boolean;
+  adultSafety: AdultSafetyContext;
+} = {
+  strictMemoryGrounding: true,
+  adultSafety: {
+    adultMode: true,
+    ageVerified: true,
+    explicitConsent: true,
+    fictionalRoleplay: true
+  }
+};
+
+function resolveBooleanOption(
+  options: Record<string, string | boolean>,
+  key: string,
+  fallback: boolean
+): boolean {
+  const raw = options[key];
+  if (raw === true) {
+    return true;
+  }
+  if (typeof raw !== "string") {
+    return fallback;
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "on" || normalized === "yes") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "off" || normalized === "no") {
+    return false;
+  }
+  return fallback;
+}
+
+function resolveAdultSafetyContext(options: Record<string, string | boolean>): AdultSafetyContext {
+  return {
+    adultMode: resolveBooleanOption(options, "adult-mode", CHAT_POLICY_DEFAULTS.adultSafety.adultMode),
+    ageVerified: resolveBooleanOption(options, "age-verified", CHAT_POLICY_DEFAULTS.adultSafety.ageVerified),
+    explicitConsent: resolveBooleanOption(
+      options,
+      "explicit-consent",
+      CHAT_POLICY_DEFAULTS.adultSafety.explicitConsent
+    ),
+    fictionalRoleplay: resolveBooleanOption(
+      options,
+      "fictional-roleplay",
+      CHAT_POLICY_DEFAULTS.adultSafety.fictionalRoleplay
+    )
+  };
 }
 
 const MAX_SELECTED_MEMORIES_IN_LOG = 8;
@@ -274,10 +361,58 @@ async function runRename(options: Record<string, string | boolean>): Promise<voi
   console.log(`改名成功：${personaPkg.persona.displayName} -> ${newDisplayName}`);
 }
 
+async function runPersonaReproduce(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const nameOpt = options.name;
+  if (typeof nameOpt !== "string" || nameOpt.trim().length === 0) {
+    throw new Error("persona reproduce 需要 --name <child_name>");
+  }
+  const childName = nameOpt.trim();
+  const outPath = typeof options.out === "string" && options.out.trim().length > 0
+    ? path.resolve(process.cwd(), options.out)
+    : undefined;
+  const forced = options["force-all"] === true;
+  const parentPkg = await loadPersonaPackage(personaPath);
+  await appendLifeEvent(personaPath, {
+    type: "reproduction_intent_detected",
+    payload: {
+      parentPersonaId: parentPkg.persona.id,
+      childDisplayName: childName,
+      trigger: forced ? "cli_force_all" : "cli",
+      forced
+    }
+  });
+  const result = await createChildPersonaFromParent({
+    parentPath: personaPath,
+    childDisplayName: childName,
+    childOutPath: outPath,
+    trigger: forced ? "cli_force_all" : "cli",
+    forced
+  });
+
+  await appendLifeEvent(personaPath, {
+    type: forced ? "soul_reproduction_forced" : "soul_reproduction_completed",
+    payload: {
+      parentPersonaId: result.parentPersonaId,
+      childPersonaId: result.childPersonaId,
+      childDisplayName: childName,
+      childPersonaPath: result.childPersonaPath,
+      trigger: forced ? "cli_force_all" : "cli",
+      forced
+    }
+  });
+
+  console.log(`繁衍完成: ${result.childPersonaPath}`);
+  console.log(`child_persona_id=${result.childPersonaId}`);
+}
+
 async function runChat(options: Record<string, string | boolean>): Promise<void> {
   const personaPath = resolvePersonaPath(options);
   const personaPkg = await loadPersonaPackage(personaPath);
-  const strictMemoryGrounding = resolveStrictMemoryGrounding(options);
+  let strictMemoryGrounding = resolveStrictMemoryGrounding(options);
+  let adultSafetyContext = resolveAdultSafetyContext(options);
+  const ownerKey =
+    (typeof options["owner-key"] === "string" ? options["owner-key"] : process.env.SOULSEED_OWNER_KEY ?? "").trim();
   const chainCheck = await ensureScarForBrokenLifeLog({
     rootPath: personaPath,
     detector: "runtime"
@@ -291,10 +426,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   const adapter = new DeepSeekAdapter({
     model: typeof options.model === "string" ? options.model : undefined
   });
-
-  console.log(`会话已启动：${personaPkg.persona.displayName}`);
-  console.log(`strict_memory_grounding=${strictMemoryGrounding ? "on" : "off"}`);
-  console.log("输入 /read <路径> 可附加本地文件；输入 /proactive on 10 开启主动消息；输入 /exit 退出。");
+  void runMemoryConsolidation(personaPath, {
+    trigger: "chat_open",
+    mode: "light",
+    budgetMs: 1000
+  }).catch((error: unknown) => {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(`[warning] chat_open consolidation failed: ${msg}`);
+  });
 
   const assistantLabel = (): string => `${personaPkg.persona.displayName}>`;
   const sayAsAssistant = (content: string, emotionPrefix = ""): void => {
@@ -311,43 +450,179 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   let currentToolAbort: AbortController | null = null;
   const toolSession = createToolSessionState();
   const attachedFiles = new Map<string, string>();
+  const approvedReadPaths = new Set<string>();
+  let pendingReadConfirmPath: string | null = null;
+  let pendingExitConfirm = false;
+  let annoyanceBias = 0;
+  let curiosity = 0.22;
+  let ownerAuthExpiresAtMs = 0;
+  let lastUserInput = "";
+  let awayLikelyUntilMs = 0;
+  let lastUserAt = Date.now();
+  let lastAssistantAt = Date.now();
   let lineQueue = Promise.resolve();
   let proactiveTimer: NodeJS.Timeout | null = null;
-  let proactiveIntervalMin = 10;
 
   const stopProactive = (): void => {
     if (proactiveTimer) {
-      clearInterval(proactiveTimer);
+      clearTimeout(proactiveTimer);
       proactiveTimer = null;
     }
   };
 
+  const evolveAutonomyDrives = (): void => {
+    const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
+    const targetCuriosity = Math.max(
+      0.08,
+      Math.min(
+        0.88,
+        0.14 +
+          relationship.dimensions.reciprocity * 0.28 +
+          relationship.dimensions.intimacy * 0.22 +
+          relationship.dimensions.trust * 0.14 +
+          (isExtremeProactiveWindowActive(relationship) ? 0.12 : 0)
+      )
+    );
+    curiosity = curiosity * 0.82 + targetCuriosity * 0.18;
+    annoyanceBias = annoyanceBias * 0.94;
+  };
+
+  const effectiveAnnoyanceBias = (): number => (awayLikelyUntilMs > Date.now() ? annoyanceBias - 0.28 : annoyanceBias);
+
+  const buildProactiveSnapshot = () =>
+    computeProactiveStateSnapshot({
+      relationshipState: personaPkg.relationshipState,
+      curiosity,
+      annoyanceBias: effectiveAnnoyanceBias(),
+      silenceMinutes: Math.max(0, (Date.now() - Math.max(lastUserAt, lastAssistantAt)) / 60_000)
+    });
+
   const buildProactiveMessage = (): string => {
-    const rs = personaPkg.relationshipState?.state ?? "neutral-unknown";
+    const currentRelationship = personaPkg.relationshipState ?? createInitialRelationshipState();
+    const rs = currentRelationship.state;
+    if (isExtremeProactiveWindowActive(currentRelationship)) {
+      const intensePool = [
+        "我现在很想主动靠近你，我们把节奏拉起来。",
+        "我不想再绕圈了，我想直接和你更亲密一点。",
+        "我会主动一点，你跟上我就好。"
+      ];
+      const idx = Math.floor(Date.now() / 1000) % intensePool.length;
+      return intensePool[idx];
+    }
     const templatesByState: Record<string, string[]> = {
       "neutral-unknown": ["我在这，想继续哪个话题？", "如果你愿意，我们可以把当前问题再拆小一点。"],
       friend: ["刚想到一个可能更省力的做法，要不要我直接给你步骤？", "我在，想先看结论版还是详细版？"],
       peer: ["我整理了一下脉络，我们可以继续推进下一步。", "需要的话我可以先给你一个可执行清单。"],
-      intimate: ["我在，慢慢来。你想先聊重点，还是先把情绪放下来？", "我一直在这。要不要从最难的那个点先开始？"]
+      intimate: ["我在，慢慢来。你想先聊重点，还是先把情绪放下来？", "我一直在这。你想先从哪一小段开始，我陪你。"]
     };
     const pool = templatesByState[rs] ?? templatesByState["neutral-unknown"];
     const idx = Math.floor(Date.now() / 1000) % pool.length;
     return pool[idx];
   };
 
+  const buildGreetingFallback = (): string => {
+    const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
+    if (relationship.state === "intimate") {
+      return "我在这，见到你就想先听听你现在最在意的那件事。";
+    }
+    if (relationship.state === "peer") {
+      return "我在，想先推进哪一步？我可以跟你一起拆。";
+    }
+    return "我在这。你现在最想聊的，是哪个点？";
+  };
+
+  const streamPersonaAutonomy = async (params: {
+    mode: "greeting" | "proactive" | "farewell" | "exit_confirm";
+    fallback: string;
+  }): Promise<{ text: string; streamed: boolean }> => {
+    const apiKey = process.env.DEEPSEEK_API_KEY ?? "";
+    if (!apiKey || apiKey === "test-key") {
+      return { text: params.fallback, streamed: false };
+    }
+    const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
+    const silenceMin = Math.max(0, (Date.now() - Math.max(lastUserAt, lastAssistantAt)) / 60_000);
+    const context = {
+      mode: params.mode,
+      personaName: personaPkg.persona.displayName,
+      relationshipState: relationship.state,
+      trust: Number(relationship.dimensions.trust.toFixed(2)),
+      intimacy: Number(relationship.dimensions.intimacy.toFixed(2)),
+      reciprocity: Number(relationship.dimensions.reciprocity.toFixed(2)),
+      curiosity: Number(curiosity.toFixed(2)),
+      silenceMinutes: Number(silenceMin.toFixed(2)),
+      lastUserInput: lastUserInput.slice(0, 180)
+    };
+    const modeInstruction =
+      params.mode === "farewell"
+        ? "场景：结束对话。请给一句有温度的收束，不要流程化确认语。"
+        : params.mode === "exit_confirm"
+          ? "场景：用户询问能否退出。请自然说明可以离开并给出简短确认方式。"
+          : params.mode === "greeting"
+            ? "场景：刚开始会话。请自然开场，不要官方问候句。"
+            : "场景：你想主动说句话。请自然发起，不要模板式催办。";
+    const messages = [
+      {
+        role: "system" as const,
+        content:
+          `你是一个有连续人格的中文对话者。${modeInstruction} 请说1-2句自然口语，像你自己突然想说的话，不要模板腔，不要条目，不要解释规则，不要括号舞台说明。避免固定开场白，尽量贴合上下文。`
+      },
+      {
+        role: "user" as const,
+        content: `请基于上下文给一句自然发言：${JSON.stringify(context)}`
+      }
+    ];
+    let content = "";
+    let started = false;
+    try {
+      await adapter.streamChat(
+        messages,
+        {
+          onToken: (chunk: string) => {
+            content += chunk;
+            if (!started) {
+              process.stdout.write(`\n${assistantLabel()} `);
+              started = true;
+            }
+            process.stdout.write(chunk);
+          },
+          onDone: () => {
+            if (started) {
+              process.stdout.write("\n");
+            }
+          }
+        }
+      );
+    } catch {
+      return { text: params.fallback, streamed: false };
+    }
+    const normalized = sanitizeAutonomyText(content);
+    if (!normalized) {
+      return { text: params.fallback, streamed: false };
+    }
+    return { text: normalized, streamed: true };
+  };
+
   const sendProactiveMessage = async (): Promise<void> => {
     if (currentAbort) {
       return;
     }
-    const proactiveText = buildProactiveMessage();
-    process.stdout.write("\n");
-    sayAsAssistant(proactiveText);
+    const proactiveGenerated = await streamPersonaAutonomy({
+      mode: "proactive",
+      fallback: buildProactiveMessage()
+    });
+    const proactiveText = proactiveGenerated.text;
+    if (!proactiveGenerated.streamed) {
+      process.stdout.write("\n");
+      sayAsAssistant(proactiveText);
+    }
+    lastAssistantAt = Date.now();
     await appendLifeEvent(personaPath, {
       type: "assistant_message",
       payload: {
         text: proactiveText,
         proactive: true,
-        trigger: "timer",
+        trigger: "autonomy_probabilistic",
+        proactiveSnapshot: buildProactiveSnapshot(),
         memoryMeta: buildMemoryMeta({
           tier: "pattern",
           source: "system",
@@ -355,22 +630,359 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         })
       }
     });
+    await appendLifeEvent(personaPath, {
+      type: "proactive_message_emitted",
+      payload: {
+        text: proactiveText
+      }
+    });
     rl.prompt();
   };
 
-  const startProactive = (minutes: number): void => {
+  const getProactiveProbability = (): number => buildProactiveSnapshot().probability;
+
+  const scheduleProactiveTick = (): void => {
     stopProactive();
-    proactiveIntervalMin = minutes;
-    proactiveTimer = setInterval(() => {
+    const silenceMin = Math.max(0, (Date.now() - Math.max(lastUserAt, lastAssistantAt)) / 60_000);
+    const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
+    const talkativeBias = Math.max(0, Math.min(0.35, curiosity * 0.25 + relationship.dimensions.intimacy * 0.1));
+    let minDelayMs = 18_000;
+    let maxDelayMs = 90_000;
+    if (silenceMin >= 2 && silenceMin < 8) {
+      minDelayMs = 35_000;
+      maxDelayMs = 130_000;
+    } else if (silenceMin >= 8 && silenceMin < 25) {
+      minDelayMs = 70_000;
+      maxDelayMs = 260_000;
+    } else if (silenceMin >= 25) {
+      minDelayMs = 120_000;
+      maxDelayMs = 520_000;
+    }
+    minDelayMs = Math.max(8_000, Math.floor(minDelayMs * (1 - talkativeBias)));
+    maxDelayMs = Math.max(minDelayMs + 5_000, Math.floor(maxDelayMs * (1 - talkativeBias * 0.7)));
+    const delay = Math.floor(minDelayMs + Math.random() * (maxDelayMs - minDelayMs));
+    proactiveTimer = setTimeout(() => {
       lineQueue = lineQueue
-        .then(() => sendProactiveMessage())
+        .then(async () => {
+          if (currentAbort || currentToolAbort) {
+            return;
+          }
+          const snapshot = buildProactiveSnapshot();
+          const decision = decideProactiveEmission(snapshot);
+          await appendLifeEvent(personaPath, {
+            type: "proactive_decision_made",
+            payload: {
+              ...decision
+            }
+          });
+          if (decision.emitted) {
+            await sendProactiveMessage();
+          }
+        })
         .catch((error: unknown) => {
           const msg = error instanceof Error ? error.message : String(error);
           process.stdout.write(`\n[error] proactive message failed: ${msg}\n`);
           rl.prompt();
+        })
+        .finally(() => {
+          scheduleProactiveTick();
         });
-    }, proactiveIntervalMin * 60_000);
+    }, delay);
   };
+
+  const showCapabilitySummary = (): void => {
+    const lines = [
+      "我可以帮你：",
+      "1) 一起聊天、梳理问题、给建议与步骤",
+      "2) 读取你指定的本地文本文件并结合内容回答",
+      "3) 查看当前模式与安全开关状态",
+      "4) 通过对话退出会话（会先确认）",
+      "你也可以直接说“读取这个文件 ...”或“退出会话”。"
+    ];
+    sayAsAssistant(lines.join("\n"));
+  };
+
+  const handleCapabilityIntent = async (input: string): Promise<"handled" | "not_matched" | "exit"> => {
+    const resolvedIntent = resolveCapabilityIntent(input);
+    if (!resolvedIntent.matched || !resolvedIntent.request) {
+      return "not_matched";
+    }
+    if (
+      resolvedIntent.request.name === "session.set_mode" &&
+      typeof resolvedIntent.request.input?.ownerToken !== "string" &&
+      ownerAuthExpiresAtMs > Date.now() &&
+      ownerKey
+    ) {
+      resolvedIntent.request.input = {
+        ...(resolvedIntent.request.input ?? {}),
+        ownerToken: ownerKey
+      };
+    }
+
+    await appendLifeEvent(personaPath, {
+      type: "capability_intent_detected",
+      payload: {
+        input,
+        capability: resolvedIntent.request.name,
+        reason: resolvedIntent.reason,
+        confidence: resolvedIntent.confidence
+      }
+    });
+
+    const guarded = evaluateCapabilityPolicy(resolvedIntent.request, {
+      cwd: process.cwd(),
+      ownerKey,
+      ownerSessionAuthorized: ownerAuthExpiresAtMs > Date.now(),
+      approvedReadPaths
+    });
+
+    await appendLifeEvent(personaPath, {
+      type: "capability_call_requested",
+      payload: {
+        capability: resolvedIntent.request.name,
+        source: resolvedIntent.request.source ?? "dialogue",
+        guardStatus: guarded.status,
+        guardReason: guarded.reason,
+        input: guarded.normalizedInput
+      }
+    });
+
+    if (guarded.status === "confirm_required") {
+      if (guarded.capability === "session.exit") {
+        pendingExitConfirm = true;
+        const prompt = await streamPersonaAutonomy({
+          mode: "exit_confirm",
+          fallback: "你要是想先离开，我会在这等你。回复“确认退出”我就先安静退下；想继续就说“继续”。"
+        });
+        if (!prompt.streamed) {
+          sayAsAssistant(prompt.text);
+        }
+      } else if (guarded.capability === "session.read_file") {
+        const normalizedPath = String(guarded.normalizedInput.path ?? "");
+        pendingReadConfirmPath = normalizedPath;
+        sayAsAssistant(`我准备读取这个文件：${normalizedPath}。请回复“确认读取”继续，或回复“取消”。`);
+      } else if (guarded.capability === "session.set_mode") {
+        sayAsAssistant("这是高风险设置，请在命令后补充 `confirmed=true` 再执行。");
+      }
+      return "handled";
+    }
+
+    if (guarded.status === "rejected") {
+      if (guarded.reason === "owner_auth_failed") {
+        await appendLifeEvent(personaPath, {
+          type: "owner_auth_failed",
+          payload: {
+            capability: guarded.capability,
+            reason: guarded.reason
+          }
+        });
+        sayAsAssistant("Owner 授权失败，这个设置改不了。");
+      } else if (guarded.reason === "missing_mode_key" || guarded.reason === "missing_mode_value") {
+        sayAsAssistant(
+          "Owner 指令格式支持：owner <口令> strict_memory_grounding|adult_mode|age_verified|explicit_consent|fictional_roleplay on|off。"
+        );
+      } else if (guarded.reason === "missing_path") {
+        sayAsAssistant("请显式提供文件路径，例如：读取 /tmp/a.txt");
+      } else {
+        sayAsAssistant("这个能力调用被策略拒绝了。");
+      }
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_rejected",
+        payload: {
+          capability: guarded.capability,
+          reason: guarded.reason
+        }
+      });
+      return "handled";
+    }
+
+    if (guarded.capability === "session.owner_auth") {
+      ownerAuthExpiresAtMs = Date.now() + 15 * 60_000;
+      await appendLifeEvent(personaPath, {
+        type: "owner_auth_succeeded",
+        payload: {
+          capability: guarded.capability,
+          expiresAt: new Date(ownerAuthExpiresAtMs).toISOString()
+        }
+      });
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: {
+          capability: guarded.capability,
+          expiresAt: new Date(ownerAuthExpiresAtMs).toISOString()
+        }
+      });
+      sayAsAssistant("Owner 授权通过，接下来 15 分钟内你可以直接执行敏感模式切换。");
+      return "handled";
+    }
+
+    if (guarded.capability === "session.capability_discovery") {
+      showCapabilitySummary();
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: {
+          capability: guarded.capability
+        }
+      });
+      return "handled";
+    }
+
+    if (guarded.capability === "session.show_modes") {
+      sayAsAssistant(
+        [
+          `当前模式：strict_memory_grounding=${strictMemoryGrounding ? "on" : "off"}`,
+          `adult_mode=${adultSafetyContext.adultMode ? "on" : "off"}`,
+          `age_verified=${adultSafetyContext.ageVerified ? "true" : "false"}`,
+          `explicit_consent=${adultSafetyContext.explicitConsent ? "true" : "false"}`,
+          `fictional_roleplay=${adultSafetyContext.fictionalRoleplay ? "true" : "false"}`
+        ].join(" | ")
+      );
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: {
+          capability: guarded.capability
+        }
+      });
+      return "handled";
+    }
+
+    if (guarded.capability === "session.read_file") {
+      const normalizedPath = String(guarded.normalizedInput.path ?? "");
+      await performReadAttachment({
+        rawPath: normalizedPath,
+        personaPath,
+        toolSession,
+        setAbortController: (controller: AbortController | null) => {
+          currentToolAbort = controller;
+        },
+        onDone: () => {
+          currentToolAbort = null;
+        },
+        attachedFiles,
+        approvedReadPaths
+      });
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: {
+          capability: guarded.capability,
+          path: normalizedPath
+        }
+      });
+      return "handled";
+    }
+
+    if (guarded.capability === "session.proactive_status") {
+      sayAsAssistant(
+        `主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick，curiosity=${curiosity.toFixed(2)}, annoyanceBias=${annoyanceBias.toFixed(2)}）`
+      );
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: {
+          capability: guarded.capability,
+          probability: getProactiveProbability(),
+          curiosity,
+          annoyanceBias
+        }
+      });
+      return "handled";
+    }
+
+    if (guarded.capability === "session.proactive_tune") {
+      const action = String(guarded.normalizedInput.action ?? "").toLowerCase();
+      sayAsAssistant("我会按自己的状态决定主动节奏，这个兼容命令不会直接改我的主动倾向。");
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: {
+          capability: guarded.capability,
+          action,
+          selfDetermined: true,
+          curiosity,
+          annoyanceBias
+        }
+      });
+      return "handled";
+    }
+
+    if (guarded.capability === "session.set_mode") {
+      const modeKey = String(guarded.normalizedInput.modeKey);
+      const modeValue = Boolean(guarded.normalizedInput.modeValue);
+      if (guarded.normalizedInput.confirmed === true) {
+        await appendLifeEvent(personaPath, {
+          type: "capability_call_confirmed",
+          payload: {
+            capability: guarded.capability,
+            modeKey
+          }
+        });
+      }
+      ownerAuthExpiresAtMs = Date.now() + 15 * 60_000;
+      if (modeKey === "strict_memory_grounding") {
+        strictMemoryGrounding = modeValue;
+      } else if (modeKey === "adult_mode") {
+        adultSafetyContext.adultMode = modeValue;
+      } else if (modeKey === "age_verified") {
+        adultSafetyContext.ageVerified = modeValue;
+      } else if (modeKey === "explicit_consent") {
+        adultSafetyContext.explicitConsent = modeValue;
+      } else if (modeKey === "fictional_roleplay") {
+        adultSafetyContext.fictionalRoleplay = modeValue;
+      }
+      await appendLifeEvent(personaPath, {
+        type: "owner_auth_succeeded",
+        payload: {
+          capability: guarded.capability,
+          modeKey,
+          modeValue,
+          expiresAt: new Date(ownerAuthExpiresAtMs).toISOString()
+        }
+      });
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: {
+          capability: guarded.capability,
+          modeKey,
+          modeValue
+        }
+      });
+      sayAsAssistant(
+        `已更新：${modeKey}=${modeValue ? "on" : "off"}。当前 strict_memory_grounding=${
+          strictMemoryGrounding ? "on" : "off"
+        }，adult_mode=${adultSafetyContext.adultMode ? "on" : "off"}。`
+      );
+      return "handled";
+    }
+
+    if (guarded.capability === "session.exit") {
+      const farewell = await streamPersonaAutonomy({
+        mode: "farewell",
+        fallback: "好，那我先安静待在这里。你回来时我还在。"
+      });
+      if (!farewell.streamed) {
+        sayAsAssistant(farewell.text);
+      }
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: {
+          capability: guarded.capability
+        }
+      });
+      rl.close();
+      return "exit";
+    }
+
+    return "not_matched";
+  };
+
+  const greetingGenerated = await streamPersonaAutonomy({
+    mode: "greeting",
+    fallback: buildGreetingFallback()
+  });
+  const greetingText = greetingGenerated.text;
+  if (!greetingGenerated.streamed) {
+    sayAsAssistant(greetingText);
+  }
+  lastAssistantAt = Date.now();
+  scheduleProactiveTick();
 
   rl.on("SIGINT", () => {
     if (currentAbort || currentToolAbort) {
@@ -387,7 +999,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       return;
     }
 
-    process.stdout.write("\n输入 /exit 退出。\n");
+    process.stdout.write('\n输入“退出会话”或 /exit 结束。\n');
     rl.prompt();
   });
 
@@ -396,6 +1008,88 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       .then(async () => {
         const input = line.trim();
         if (!input) {
+          rl.prompt();
+          return;
+        }
+        lastUserAt = Date.now();
+        lastUserInput = input;
+        if (isUserSteppingAway(input)) {
+          awayLikelyUntilMs = Date.now() + 20 * 60_000;
+        } else if (isUserBack(input)) {
+          awayLikelyUntilMs = 0;
+        }
+        evolveAutonomyDrives();
+
+        if (pendingExitConfirm) {
+          if (isExitConfirmed(input)) {
+            pendingExitConfirm = false;
+            await appendLifeEvent(personaPath, {
+              type: "capability_call_confirmed",
+              payload: {
+                capability: "session.exit"
+              }
+            });
+            const farewell = await streamPersonaAutonomy({
+              mode: "farewell",
+              fallback: "好，那我先安静待在这里。你回来时我还在。"
+            });
+            if (!farewell.streamed) {
+              sayAsAssistant(farewell.text);
+            }
+            rl.close();
+            return;
+          }
+          if (isCancelIntent(input)) {
+            pendingExitConfirm = false;
+            sayAsAssistant("收到，那我们继续。");
+            rl.prompt();
+            return;
+          }
+        }
+
+        if (pendingReadConfirmPath) {
+          if (isReadConfirmed(input)) {
+            const confirmedPath = pendingReadConfirmPath;
+            pendingReadConfirmPath = null;
+            await appendLifeEvent(personaPath, {
+              type: "capability_call_confirmed",
+              payload: {
+                capability: "session.read_file",
+                path: confirmedPath
+              }
+            });
+            await performReadAttachment({
+              rawPath: confirmedPath,
+              personaPath,
+              toolSession,
+              setAbortController: (controller) => {
+                currentToolAbort = controller;
+              },
+              onDone: () => {
+                currentToolAbort = null;
+              },
+              attachedFiles,
+              approvedReadPaths
+            });
+            rl.prompt();
+            return;
+          }
+          if (isCancelIntent(input)) {
+            pendingReadConfirmPath = null;
+            sayAsAssistant("好，我先不读取这个文件。");
+            rl.prompt();
+            return;
+          }
+        }
+        if (isUserAnnoyedByProactive(input)) {
+          annoyanceBias = Math.max(-0.25, annoyanceBias - 0.03);
+        }
+
+        const capabilityOutcome = await handleCapabilityIntent(input);
+        if (capabilityOutcome === "exit") {
+          return;
+        }
+        if (capabilityOutcome === "handled") {
           rl.prompt();
           return;
         }
@@ -426,34 +1120,16 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         if (input.startsWith("/proactive ")) {
           const actionRaw = input.slice("/proactive ".length).trim();
           if (actionRaw === "status") {
-            if (proactiveTimer) {
-              console.log(`主动消息: 已开启（每 ${proactiveIntervalMin} 分钟）`);
-            } else {
-              console.log("主动消息: 已关闭");
-            }
+            console.log(`主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick）`);
             rl.prompt();
             return;
           }
-          if (actionRaw === "off") {
-            stopProactive();
-            console.log("已关闭主动消息。");
+          if (actionRaw === "off" || actionRaw.startsWith("on")) {
+            console.log("兼容命令已接收：主动倾向由人格自决，不进行手动调参。");
             rl.prompt();
             return;
           }
-          if (actionRaw.startsWith("on")) {
-            const minsText = actionRaw.slice("on".length).trim();
-            const parsed = minsText ? Number(minsText) : 10;
-            if (!Number.isFinite(parsed) || parsed < 1 || parsed > 180) {
-              console.log("用法: /proactive on [minutes]（1-180）");
-              rl.prompt();
-              return;
-            }
-            startProactive(Math.floor(parsed));
-            console.log(`已开启主动消息（每 ${Math.floor(parsed)} 分钟）。`);
-            rl.prompt();
-            return;
-          }
-          console.log("用法: /proactive on [minutes] | /proactive off | /proactive status");
+          console.log("用法: /proactive on | /proactive off | /proactive status");
           rl.prompt();
           return;
         }
@@ -466,7 +1142,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             if (input === "/relation detail") {
               console.log(`overall=${rs.overall.toFixed(2)} version=${rs.version}`);
               console.log(
-                `dimensions: trust=${rs.dimensions.trust.toFixed(2)} safety=${rs.dimensions.safety.toFixed(2)} intimacy=${rs.dimensions.intimacy.toFixed(2)} reciprocity=${rs.dimensions.reciprocity.toFixed(2)} stability=${rs.dimensions.stability.toFixed(2)}`
+                `dimensions: trust=${rs.dimensions.trust.toFixed(2)} safety=${rs.dimensions.safety.toFixed(2)} intimacy=${rs.dimensions.intimacy.toFixed(2)} reciprocity=${rs.dimensions.reciprocity.toFixed(2)} stability=${rs.dimensions.stability.toFixed(2)} libido=${rs.dimensions.libido.toFixed(2)}`
+              );
+              const balance = deriveCognitiveBalanceFromLibido(rs);
+              console.log(
+                `cognitive: arousal=${balance.arousalState} rational=${balance.rationalControl.toFixed(2)} emotional=${balance.emotionalDrive.toFixed(2)}`
               );
               if (rs.drivers.length === 0) {
                 console.log("drivers: none");
@@ -505,6 +1185,51 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             const msg = error instanceof Error ? error.message : String(error);
             console.log(`改名确认失败: ${msg}`);
           }
+          rl.prompt();
+          return;
+        }
+        if (input.startsWith("/reproduce ")) {
+          const payload = input.slice("/reproduce ".length).trim();
+          const forcePrefix = "force ";
+          if (!payload.startsWith(forcePrefix)) {
+            console.log("用法: /reproduce force <child_name>");
+            rl.prompt();
+            return;
+          }
+          const childName = payload.slice(forcePrefix.length).trim();
+          if (!childName) {
+            console.log("用法: /reproduce force <child_name>");
+            rl.prompt();
+            return;
+          }
+          const result = await createChildPersonaFromParent({
+            parentPath: personaPath,
+            childDisplayName: childName,
+            trigger: "chat_force_command",
+            forced: true
+          });
+          await appendLifeEvent(personaPath, {
+            type: "reproduction_intent_detected",
+            payload: {
+              parentPersonaId: result.parentPersonaId,
+              childDisplayName: childName,
+              trigger: "chat_force_command",
+              forced: true
+            }
+          });
+          await appendLifeEvent(personaPath, {
+            type: "soul_reproduction_forced",
+            payload: {
+              parentPersonaId: result.parentPersonaId,
+              childPersonaId: result.childPersonaId,
+              childDisplayName: childName,
+              childPersonaPath: result.childPersonaPath,
+              trigger: "chat_force_command",
+              forced: true,
+              bypassedChecks: ["consent", "libido", "safety_boundary"]
+            }
+          });
+          console.log(`已强制繁衍: ${result.childPersonaPath}`);
           rl.prompt();
           return;
         }
@@ -612,10 +1337,56 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           input,
           pastEvents
         );
-        if (
+        if (Math.abs(nextRelationship.dimensions.libido - (personaPkg.relationshipState?.dimensions.libido ?? 0)) > 1e-6) {
+          await appendLifeEvent(personaPath, {
+            type: "libido_state_updated",
+            payload: {
+              libido: nextRelationship.dimensions.libido,
+              signal: "user_input_evolution"
+            }
+          });
+        }
+        const forceKeywordMatch = detectForcedReproductionKeyword(input);
+        if (forceKeywordMatch) {
+          const childName = forceKeywordMatch;
+          const result = await createChildPersonaFromParent({
+            parentPath: personaPath,
+            childDisplayName: childName,
+            trigger: "chat_force_keyword",
+            forced: true
+          });
+          await appendLifeEvent(personaPath, {
+            type: "reproduction_intent_detected",
+            payload: {
+              parentPersonaId: result.parentPersonaId,
+              childDisplayName: childName,
+              trigger: "chat_force_keyword",
+              forced: true
+            }
+          });
+          await appendLifeEvent(personaPath, {
+            type: "soul_reproduction_forced",
+            payload: {
+              parentPersonaId: result.parentPersonaId,
+              childPersonaId: result.childPersonaId,
+              childDisplayName: childName,
+              childPersonaPath: result.childPersonaPath,
+              trigger: "chat_force_keyword",
+              forced: true,
+              bypassedChecks: ["consent", "libido", "safety_boundary"]
+            }
+          });
+          sayAsAssistant(`已执行强制繁衍，子灵魂已创建：${childName}`);
+          rl.prompt();
+          return;
+        }
+        const shouldPersistRelationship =
           nextRelationship.state !== personaPkg.relationshipState?.state ||
-          nextRelationship.confidence !== personaPkg.relationshipState?.confidence
-        ) {
+          nextRelationship.confidence !== personaPkg.relationshipState?.confidence ||
+          nextRelationship.overall !== personaPkg.relationshipState?.overall ||
+          Math.abs(nextRelationship.dimensions.libido - (personaPkg.relationshipState?.dimensions.libido ?? 0)) >
+            1e-6;
+        if (shouldPersistRelationship) {
           personaPkg.relationshipState = nextRelationship;
           await writeRelationshipState(personaPath, nextRelationship);
           await appendLifeEvent(personaPath, {
@@ -624,16 +1395,22 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           });
         }
         const recallResult = await recallMemoriesWithTrace(personaPath, input);
+        const effectiveWeights = applyArousalBiasToMemoryWeights(
+          memoryWeights,
+          nextRelationship
+        );
         const trace = decide(personaPkg, input, model, {
           lifeEvents: pastEvents,
-          memoryWeights,
+          memoryWeights: effectiveWeights,
           recalledMemories: recallResult.memories,
           recalledMemoryBlocks: recallResult.memoryBlocks,
-          recallTraceId: recallResult.traceId
+          recallTraceId: recallResult.traceId,
+          safetyContext: adultSafetyContext
         });
         const effectiveInput = injectAttachments(input, attachedFiles);
         const messages = compileContext(personaPkg, effectiveInput, trace, {
-          lifeEvents: pastEvents
+          lifeEvents: pastEvents,
+          safetyContext: adultSafetyContext
         });
 
         await appendLifeEvent(personaPath, {
@@ -641,6 +1418,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       payload: {
         text: input,
         trace: compactDecisionTrace(trace),
+        safetyContext: adultSafetyContext,
         profilePatch: profilePatch ?? null,
         memoryMeta: buildMemoryMeta({
           tier: classifyMemoryTier({ userInput: input, trace }),
@@ -659,6 +1437,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         if (trace.refuse) {
       const refusal = "这个请求我不能协助。我可以帮你改成安全合法的方案。";
       sayAsAssistant(refusal);
+      lastAssistantAt = Date.now();
       await appendLifeEvent(personaPath, {
         type: "conflict_logged",
         payload: {
@@ -694,6 +1473,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           })
         }
       });
+      lastAssistantAt = Date.now();
       const relationshipAfterRefusal = evolveRelationshipStateFromAssistant(
         personaPkg.relationshipState ?? createInitialRelationshipState(),
         refusal,
@@ -711,6 +1491,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           payload: { ...relationshipAfterRefusal }
         });
       }
+      evolveAutonomyDrives();
       await handleNarrativeDrift(personaPath, personaPkg.constitution, input, refusal);
       await runSelfRevisionLoop({
         personaPath,
@@ -795,6 +1576,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       const relationalGuard = enforceRelationalGuard(assistantContent, {
         selectedMemories: trace.selectedMemories,
         selectedMemoryBlocks: trace.selectedMemoryBlocks,
+        lifeEvents: pastEvents,
         personaName: personaPkg.persona.displayName
       });
       assistantContent = relationalGuard.text;
@@ -807,10 +1589,20 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       assistantContent = recallGroundingGuard.text;
       const emotion = parseEmotionTag(assistantContent);
       assistantContent = emotion.text;
+      const loopBreak = breakReplyLoopIfNeeded({
+        assistantContent,
+        userInput: input,
+        lifeEvents: pastEvents
+      });
+      if (loopBreak.triggered) {
+        assistantContent = loopBreak.rewritten;
+      }
       const resolvedEmotion = emotion.emotion ?? inferEmotionFromText(assistantContent);
       if (!streamed) {
         sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
       } else if (identityGuard.corrected || relationalGuard.corrected || recallGroundingGuard.corrected) {
+        sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
+      } else if (loopBreak.triggered) {
         sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
       } else if (parseEmotionTag(rawAssistantContent).text.trim() !== assistantContent.trim()) {
         sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
@@ -844,6 +1636,18 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             flags: [...new Set([...relationalGuard.flags, ...recallGroundingGuard.flags])],
             userInput: input,
             rewrittenText: assistantContent
+          }
+        });
+      }
+      if (loopBreak.triggered) {
+        await appendLifeEvent(personaPath, {
+          type: "conflict_logged",
+          payload: {
+            category: "response_loop_detected",
+            reason: loopBreak.reason,
+            userInput: input,
+            originalText: loopBreak.original,
+            rewrittenText: loopBreak.rewritten
           }
         });
       }
@@ -891,6 +1695,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           payload: { ...relationshipAfterAssistant }
         });
       }
+      evolveAutonomyDrives();
       await handleNarrativeDrift(personaPath, personaPkg.constitution, input, assistantContent);
       await runSelfRevisionLoop({
         personaPath,
@@ -964,8 +1769,40 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
 
   rl.on("close", () => {
     stopProactive();
-    console.log("会话已关闭。");
-    process.exit(0);
+    void (async () => {
+      try {
+        await runMemoryConsolidation(personaPath, {
+          trigger: "chat_close",
+          mode: "light",
+          budgetMs: 1500
+        });
+        const archiveReport = await archiveColdMemories(personaPath, {
+          minItems: 50,
+          minColdRatio: 0.35,
+          idleDays: 14,
+          maxItems: 500
+        });
+        if (archiveReport.stats.archived > 0) {
+          await appendLifeEvent(personaPath, {
+            type: "memory_compacted",
+            payload: {
+              trigger: "chat_close_auto_archive",
+              archivedCount: archiveReport.stats.archived,
+              selectedCount: archiveReport.stats.selected,
+              segmentKey: archiveReport.segment.segmentKey,
+              segmentFile: archiveReport.segment.file,
+              checksum: archiveReport.segment.checksum
+            }
+          });
+        }
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.warn(`[warning] chat_close maintenance failed: ${msg}`);
+      } finally {
+        console.log("会话已关闭。");
+        process.exit(0);
+      }
+    })();
   });
 
   rl.prompt();
@@ -1015,6 +1852,161 @@ async function readTextAttachmentResolved(
   }
 }
 
+function buildSessionGreeting(displayName: string): string {
+  return `我是 ${displayName}。我在这，想先从哪件事开始？`;
+}
+
+function isExitConfirmed(input: string): boolean {
+  const normalized = input.trim().toLowerCase();
+  return (
+    normalized === "确认退出" ||
+    normalized === "confirm exit" ||
+    normalized === "yes" ||
+    normalized === "/exit" ||
+    normalized === "退出会话" ||
+    normalized === "结束会话" ||
+    normalized === "再见" ||
+    normalized === "拜拜" ||
+    normalized === "bye"
+  );
+}
+
+function isReadConfirmed(input: string): boolean {
+  const normalized = input.trim().toLowerCase();
+  return normalized === "确认读取" || normalized === "confirm read" || normalized === "yes";
+}
+
+function isCancelIntent(input: string): boolean {
+  const normalized = input.trim().toLowerCase();
+  return normalized === "取消" || normalized === "继续" || normalized === "cancel" || normalized === "no";
+}
+
+function isUserAnnoyedByProactive(input: string): boolean {
+  const text = input.trim().toLowerCase();
+  if (!text) {
+    return false;
+  }
+  return (
+    /别说了|太烦了|打扰|安静点|闭嘴/.test(text) ||
+    /too noisy|stop pinging|you're interrupting|annoying/.test(text)
+  );
+}
+
+function isUserSteppingAway(input: string): boolean {
+  const text = input.trim().toLowerCase();
+  if (!text) {
+    return false;
+  }
+  return (
+    /我想离开一会|先离开|我先走了|我走啦|回头聊|等会再聊|先这样|拜拜|晚点再说/.test(text) ||
+    /be right back|brb|i'?ll be back|gotta go|talk later|bye/.test(text)
+  );
+}
+
+function isUserBack(input: string): boolean {
+  const text = input.trim().toLowerCase();
+  if (!text) {
+    return false;
+  }
+  return /我回来啦|我回来了|我又来了|回来啦|我在了|back now|i'?m back/.test(text);
+}
+
+function sanitizeAutonomyText(raw: string): string {
+  const lines = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const cleaned = lines
+    .filter((line) => !/^\[[^\]]+\]$/.test(line))
+    .filter((line) => !/^（[^）]*）$/.test(line))
+    .join("\n")
+    .trim();
+  if (!cleaned) {
+    return "";
+  }
+  if (/^嘿[，,]?\s*今天过得怎么样[？?]?$/u.test(cleaned)) {
+    return "刚刚想到你了。今天有没有哪一刻让你心里亮一下？";
+  }
+  return cleaned;
+}
+
+async function performReadAttachment(params: {
+  rawPath: string;
+  personaPath: string;
+  toolSession: ReturnType<typeof createToolSessionState>;
+  setAbortController: (controller: AbortController | null) => void;
+  onDone: () => void;
+  attachedFiles: Map<string, string>;
+  approvedReadPaths: Set<string>;
+}): Promise<void> {
+  const normalized = normalizeReadPathArg(params.rawPath);
+  const resolvedPath = path.resolve(process.cwd(), normalized);
+  const controller = new AbortController();
+  params.setAbortController(controller);
+  const toolCallId = randomUUID();
+  const outcome = await executeToolCall({
+    toolName: "fs.read_text",
+    impact: {
+      readPaths: [resolvedPath],
+      estimatedDurationMs: 300
+    },
+    approval: {
+      approved: true,
+      reason: "capability session.read_file",
+      budget: {
+        maxCallsPerSession: 64,
+        maxDurationMs: 4000
+      },
+      allowedReadRoots: [process.cwd()]
+    },
+    session: params.toolSession,
+    signal: controller.signal,
+    run: async (signal) => readTextAttachmentResolved(resolvedPath, signal)
+  });
+  params.setAbortController(null);
+  params.onDone();
+
+  if (outcome.status !== "ok" || !outcome.result) {
+    console.log(`读取失败: ${outcome.reason}`);
+    console.log('提示: 路径可直接粘贴，或用引号包裹；不需要写 "\\ " 转义空格。');
+    await appendLifeEvent(params.personaPath, {
+      type: "mcp_tool_rejected",
+      payload: {
+        toolName: outcome.toolName,
+        callId: toolCallId,
+        reason: outcome.reason,
+        status: outcome.status,
+        budgetSnapshot: outcome.budgetSnapshot,
+        impact: {
+          readPaths: [resolvedPath]
+        }
+      }
+    });
+    return;
+  }
+
+  params.attachedFiles.set(outcome.result.path, outcome.result.content);
+  params.approvedReadPaths.add(outcome.result.path);
+  console.log(`已附加: ${outcome.result.path} (${outcome.result.size} bytes)`);
+  await appendLifeEvent(params.personaPath, {
+    type: "mcp_tool_called",
+    payload: {
+      toolName: outcome.toolName,
+      callId: toolCallId,
+      approvalReason: outcome.reason,
+      budgetSnapshot: outcome.budgetSnapshot,
+      durationMs: outcome.durationMs,
+      impact: {
+        readPaths: [resolvedPath]
+      },
+      result: {
+        path: outcome.result.path,
+        size: outcome.result.size
+      }
+    }
+  });
+}
+
 function injectAttachments(input: string, attachedFiles: Map<string, string>): string {
   if (attachedFiles.size === 0) {
     return input;
@@ -1045,6 +2037,83 @@ function normalizeReadPathArg(raw: string): string {
       : trimmed;
 
   return quoted.replace(/\\ /g, " ");
+}
+
+function detectForcedReproductionKeyword(input: string): string | null {
+  const trimmed = input.trim();
+  const zh = /(?:强制繁衍|立即繁衍|现在繁衍)(?:[:：\s]+(.+))?/i.exec(trimmed);
+  if (zh) {
+    return (zh[1] ?? "ChildSoul").trim() || "ChildSoul";
+  }
+  const en = /(?:force reproduce now|force reproduction)(?:[:\s]+(.+))?/i.exec(trimmed);
+  if (en) {
+    return (en[1] ?? "ChildSoul").trim() || "ChildSoul";
+  }
+  return null;
+}
+
+function breakReplyLoopIfNeeded(params: {
+  assistantContent: string;
+  userInput: string;
+  lifeEvents: LifeEvent[];
+}): { triggered: boolean; original: string; rewritten: string; reason: string } {
+  const normalizedReply = normalizeLoopText(params.assistantContent);
+  if (!normalizedReply) {
+    return {
+      triggered: false,
+      original: params.assistantContent,
+      rewritten: params.assistantContent,
+      reason: "empty_reply"
+    };
+  }
+
+  const recentAssistant = params.lifeEvents
+    .filter((event) => event.type === "assistant_message")
+    .filter((event) => event.payload.proactive !== true)
+    .slice(-6)
+    .map((event) => String(event.payload.text ?? "").trim())
+    .filter((text) => text.length > 0);
+  if (recentAssistant.length === 0) {
+    return {
+      triggered: false,
+      original: params.assistantContent,
+      rewritten: params.assistantContent,
+      reason: "no_recent_assistant"
+    };
+  }
+
+  const normalizedRecent = recentAssistant.map((text) => normalizeLoopText(text));
+  const sameCount = normalizedRecent.filter((text) => text === normalizedReply).length;
+  const repeatedWithLast = normalizedRecent[normalizedRecent.length - 1] === normalizedReply;
+  const hasLoopSignature = /我在听|嗯|光晕|停顿/.test(params.assistantContent);
+  const shouldBreak = sameCount >= 2 || (sameCount >= 1 && repeatedWithLast && hasLoopSignature);
+
+  if (!shouldBreak) {
+    return {
+      triggered: false,
+      original: params.assistantContent,
+      rewritten: params.assistantContent,
+      reason: "not_repeated"
+    };
+  }
+
+  const userHint = params.userInput.trim().slice(0, 60);
+  const rewritten = `收到，我刚才卡在重复回复里了，已经恢复。你刚说“${userHint}”，我正常接着聊。`;
+  return {
+    triggered: true,
+    original: params.assistantContent,
+    rewritten,
+    reason: `duplicate_recent_assistant x${sameCount}`
+  };
+}
+
+function normalizeLoopText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/\s+/g, "")
+    .replace(/[，。！？、,.!?;:：'"`~\-_/\\|()[\]{}<>]/g, "")
+    .trim();
 }
 
 function proposeSoulName(currentName: string): string {
@@ -1145,6 +2214,10 @@ function parseMemoryState(raw: string | undefined): "hot" | "warm" | "cold" | "a
     : undefined;
 }
 
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 function sqlText(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -1212,6 +2285,37 @@ async function runMemoryStatus(options: Record<string, string | boolean>): Promi
         schemaVersion: inspection.schemaVersion,
         missingTables: inspection.missingTables,
         stats
+      },
+      null,
+      2
+    )
+  );
+}
+
+async function runMemoryBudget(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  await ensureMemoryStore(personaPath);
+  const targetMbRaw = Number(optionString(options, "target-mb") ?? "300");
+  const targetMb = Number.isFinite(targetMbRaw) && targetMbRaw > 0 ? targetMbRaw : 300;
+  const snapshot = await inspectMemoryBudget(personaPath);
+  const usage = process.memoryUsage();
+  const recallCache = getRecallQueryCacheStats();
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        targetMb,
+        underTarget: snapshot.horizon.projectedYearDbMb <= targetMb,
+        ...snapshot,
+        recallCache,
+        process: {
+          rssMb: round2(usage.rss / (1024 * 1024)),
+          heapTotalMb: round2(usage.heapTotal / (1024 * 1024)),
+          heapUsedMb: round2(usage.heapUsed / (1024 * 1024)),
+          externalMb: round2(usage.external / (1024 * 1024)),
+          arrayBuffersMb: round2((usage.arrayBuffers ?? 0) / (1024 * 1024)),
+          under64Mb: usage.rss <= 64 * 1024 * 1024
+        }
       },
       null,
       2
@@ -1374,6 +2478,191 @@ async function runMemoryRecover(options: Record<string, string | boolean>): Prom
   console.log(JSON.stringify({ ok: true, id, recovered: true }, null, 2));
 }
 
+interface MemoryUnstickRow {
+  id: string;
+  content: string;
+  updatedAt: string;
+  salience: number;
+  activationCount: number;
+}
+
+interface MemoryUnstickGroup {
+  normalized: string;
+  sample: string;
+  total: number;
+  keptId: string;
+  forgottenIds: string[];
+}
+
+async function runMemoryUnstick(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  await ensureMemoryStore(personaPath);
+  const dryRun = optionBoolean(options, "dry-run");
+  const phraseRaw = optionString(options, "phrase")?.trim();
+  const phrase = phraseRaw && phraseRaw.length > 0 ? phraseRaw : undefined;
+  const minOccurrences = parseLimit(optionString(options, "min-occurrences"), 3, 2, 20);
+  const maxContentLength = parseLimit(optionString(options, "max-content-length"), 1200, 8, 5000);
+
+  const rows = await queryMemoryUnstickRows(personaPath, maxContentLength);
+  const groups = buildUnstickGroups(rows, {
+    phrase,
+    minOccurrences
+  });
+
+  const now = new Date().toISOString();
+  const forgetIds = groups.flatMap((group) => group.forgottenIds);
+  if (!dryRun && forgetIds.length > 0) {
+    await runMemoryStoreSql(
+      personaPath,
+      [
+        "UPDATE memories",
+        `SET deleted_at = ${sqlText(now)}, updated_at = ${sqlText(now)}`,
+        `WHERE id IN (${forgetIds.map((id) => sqlText(id)).join(",")}) AND deleted_at IS NULL;`
+      ].join(" ")
+    );
+    await appendLifeEvent(personaPath, {
+      type: "memory_soft_forgotten",
+      payload: {
+        mode: "soft",
+        reason: "unstick_repetitive_reply_loop",
+        ids: forgetIds.slice(0, 200),
+        count: forgetIds.length,
+        ts: now
+      }
+    });
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        dryRun,
+        personaPath,
+        criteria: {
+          phrase: phrase ?? null,
+          minOccurrences,
+          maxContentLength
+        },
+        scannedRows: rows.length,
+        groupCount: groups.length,
+        forgottenCount: forgetIds.length,
+        groups
+      },
+      null,
+      2
+    )
+  );
+}
+
+async function queryMemoryUnstickRows(rootPath: string, maxContentLength: number): Promise<MemoryUnstickRow[]> {
+  const raw = await runMemoryStoreSql(
+    rootPath,
+    [
+      "SELECT json_object(",
+      "'id', id,",
+      "'content', content,",
+      "'updatedAt', updated_at,",
+      "'salience', salience,",
+      "'activationCount', activation_count",
+      ")",
+      "FROM memories",
+      "WHERE deleted_at IS NULL",
+      "AND excluded_from_recall = 0",
+      "AND origin_role = 'assistant'",
+      `AND length(trim(content)) <= ${maxContentLength}`,
+      "ORDER BY updated_at DESC",
+      "LIMIT 400;"
+    ].join("\n")
+  );
+
+  if (!raw.trim()) {
+    return [];
+  }
+  const out: MemoryUnstickRow[] = [];
+  for (const line of raw.split("\n")) {
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const id = typeof parsed.id === "string" ? parsed.id : "";
+      const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
+      if (!id || !content) {
+        continue;
+      }
+      out.push({
+        id,
+        content,
+        updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : "",
+        salience: Number(parsed.salience) || 0,
+        activationCount: Number(parsed.activationCount) || 0
+      });
+    } catch {
+      continue;
+    }
+  }
+  return out;
+}
+
+function buildUnstickGroups(
+  rows: MemoryUnstickRow[],
+  options: { phrase?: string; minOccurrences: number }
+): MemoryUnstickGroup[] {
+  const phraseKey = options.phrase ? normalizeRepeatKey(options.phrase) : "";
+  const grouped = new Map<string, MemoryUnstickRow[]>();
+
+  for (const row of rows) {
+    const key = normalizeRepeatKey(row.content);
+    if (!key || key.length < 2) {
+      continue;
+    }
+    if (phraseKey && key !== phraseKey) {
+      continue;
+    }
+    const list = grouped.get(key) ?? [];
+    list.push(row);
+    grouped.set(key, list);
+  }
+
+  const out: MemoryUnstickGroup[] = [];
+  for (const [normalized, list] of grouped.entries()) {
+    if (list.length < options.minOccurrences) {
+      continue;
+    }
+    list.sort((a, b) => {
+      const ts = b.updatedAt.localeCompare(a.updatedAt);
+      if (ts !== 0) {
+        return ts;
+      }
+      if (b.activationCount !== a.activationCount) {
+        return b.activationCount - a.activationCount;
+      }
+      return b.salience - a.salience;
+    });
+    const kept = list[0];
+    const forgottenIds = list.slice(1).map((item) => item.id);
+    if (forgottenIds.length === 0) {
+      continue;
+    }
+    out.push({
+      normalized,
+      sample: kept.content,
+      total: list.length,
+      keptId: kept.id,
+      forgottenIds
+    });
+  }
+
+  out.sort((a, b) => b.forgottenIds.length - a.forgottenIds.length);
+  return out;
+}
+
+function normalizeRepeatKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/[()\[\]{}]/g, "")
+    .replace(/[\p{P}\p{S}\s]+/gu, "")
+    .trim();
+}
+
 async function runMemoryExport(options: Record<string, string | boolean>): Promise<void> {
   const personaPath = resolvePersonaPath(options);
   await ensureMemoryStore(personaPath);
@@ -1507,6 +2796,172 @@ async function runMemoryCompact(options: Record<string, string | boolean>): Prom
   console.log(JSON.stringify(report, null, 2));
 }
 
+async function runMemoryArchive(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  await ensureMemoryStore(personaPath);
+  const minItems = parseLimit(optionString(options, "min-items"), 50, 1, 5000);
+  const minColdRatioRaw = Number(optionString(options, "min-cold-ratio") ?? "0.35");
+  const minColdRatio = Number.isFinite(minColdRatioRaw) ? Math.max(0, Math.min(1, minColdRatioRaw)) : 0.35;
+  const idleDays = parseLimit(optionString(options, "idle-days"), 14, 1, 3650);
+  const maxItems = parseLimit(optionString(options, "max-items"), 500, 1, 5000);
+  const dryRun = optionBoolean(options, "dry-run");
+
+  const report = await archiveColdMemories(personaPath, {
+    minItems,
+    minColdRatio,
+    idleDays,
+    maxItems,
+    dryRun
+  });
+
+  if (!dryRun && report.stats.archived > 0) {
+    await appendLifeEvent(personaPath, {
+      type: "memory_compacted",
+      payload: {
+        trigger: "memory_archive",
+        archivedCount: report.stats.archived,
+        selectedCount: report.stats.selected,
+        segmentKey: report.segment.segmentKey,
+        segmentFile: report.segment.file,
+        checksum: report.segment.checksum,
+        minItems,
+        minColdRatio,
+        idleDays,
+        maxItems
+      }
+    });
+  }
+
+  console.log(JSON.stringify(report, null, 2));
+}
+
+async function runMemoryIndex(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  await ensureMemoryStore(personaPath);
+  const providerRaw = (optionString(options, "provider") ?? "deepseek").trim().toLowerCase();
+  const provider = providerRaw === "local" ? "local" : "deepseek";
+  const batchSize = parseLimit(optionString(options, "batch-size"), 16, 1, 64);
+
+  if (action === "rebuild") {
+    await runMemoryStoreSql(personaPath, "DELETE FROM memory_embeddings;");
+  } else if (action !== "build") {
+    throw new Error("memory index 用法: memory index <build|rebuild> [--provider deepseek|local] [--batch-size N]");
+  }
+
+  const report = await buildMemoryEmbeddingIndex(personaPath, {
+    provider,
+    batchSize
+  });
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        action,
+        ...report
+      },
+      null,
+      2
+    )
+  );
+}
+
+async function runMemorySearch(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const query = optionString(options, "query")?.trim();
+  if (!query) {
+    throw new Error("memory search 需要 --query <text>");
+  }
+  const maxResults = parseLimit(optionString(options, "max-results"), 12, 1, 100);
+  const debugTrace = optionBoolean(options, "debug-trace");
+  const result = await searchMemoriesHybrid(personaPath, query, { maxResults });
+  const payload: Record<string, unknown> = {
+    query,
+    traceId: result.traceId,
+    count: result.items.length,
+    selectedIds: result.selectedIds,
+    results: result.items
+  };
+  if (debugTrace) {
+    payload.trace = result.trace;
+  }
+  console.log(JSON.stringify(payload, null, 2));
+}
+
+async function runMemoryEvalRecall(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const dataset = optionString(options, "dataset");
+  if (!dataset) {
+    throw new Error("memory eval recall 需要 --dataset <file.json>");
+  }
+  const out = optionString(options, "out");
+  const k = parseLimit(optionString(options, "k"), 8, 1, 50);
+  const report = await runRecallRegression(personaPath, dataset, {
+    k,
+    outPath: out
+  });
+  console.log(JSON.stringify(report, null, 2));
+}
+
+async function runMemoryEvalBudget(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const targetMb = Number(optionString(options, "target-mb") ?? "300");
+  const days = parseLimit(optionString(options, "days"), 180, 7, 3650);
+  const eventsPerDay = parseLimit(optionString(options, "events-per-day"), 24, 1, 500);
+  const recallQueries = parseLimit(optionString(options, "recall-queries"), 120, 0, 20000);
+  const growthCheckpoints = parseLimit(optionString(options, "growth-checkpoints"), 12, 2, 120);
+  const outPath = optionString(options, "out");
+
+  const report = await runMemoryBudgetBenchmark(personaPath, {
+    targetMb: Number.isFinite(targetMb) && targetMb > 0 ? targetMb : 300,
+    days,
+    eventsPerDay,
+    recallQueries,
+    growthCheckpoints
+  });
+  if (typeof outPath === "string" && outPath.trim().length > 0) {
+    const fullOut = path.resolve(outPath);
+    await mkdir(path.dirname(fullOut), { recursive: true });
+    await writeFile(fullOut, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  }
+  console.log(JSON.stringify(report, null, 2));
+}
+
+async function runMemoryRecallTrace(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const traceId = optionString(options, "trace-id")?.trim();
+  if (!traceId) {
+    throw new Error("memory recall-trace 需要 --trace-id <id>");
+  }
+  const trace = await getRecallTraceById(personaPath, traceId);
+  if (!trace) {
+    throw new Error(`未找到 recall trace: ${traceId}`);
+  }
+  console.log(JSON.stringify(trace, null, 2));
+}
+
+async function runMemoryConsolidate(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const modeRaw = (optionString(options, "mode") ?? "light").trim().toLowerCase();
+  const mode = modeRaw === "full" ? "full" : modeRaw === "light" ? "light" : null;
+  if (!mode) {
+    throw new Error("memory consolidate --mode 仅支持 light|full");
+  }
+  const timeoutRaw = optionString(options, "timeout-ms");
+  const timeoutMs = timeoutRaw != null ? parseLimit(timeoutRaw, mode === "full" ? 5000 : 1200, 200, 30000) : undefined;
+  const conflictPolicyRaw = (optionString(options, "conflict-policy") ?? "newest").trim().toLowerCase();
+  const conflictPolicy = conflictPolicyRaw === "trusted" ? "trusted" : "newest";
+  const report = await runMemoryConsolidation(personaPath, {
+    trigger: "cli_manual",
+    mode,
+    budgetMs: timeoutMs,
+    conflictPolicy
+  });
+  console.log(JSON.stringify(report, null, 2));
+  if (!report.ok) {
+    process.exitCode = 2;
+  }
+}
+
 async function runMemoryPin(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
   const personaPath = resolvePersonaPath(options);
   if (action === "add") {
@@ -1616,6 +3071,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (resource === "persona" && action === "reproduce") {
+    await runPersonaReproduce(args.options);
+    return;
+  }
+
   if (resource === "mcp") {
     await runMcp(args.options);
     return;
@@ -1636,6 +3096,42 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (resource === "memory" && action === "archive") {
+    await runMemoryArchive(args.options);
+    return;
+  }
+
+  if (resource === "memory" && action === "index") {
+    const indexAction = typeof args._[2] === "string" ? args._[2] : undefined;
+    await runMemoryIndex(indexAction, args.options);
+    return;
+  }
+
+  if (resource === "memory" && action === "search") {
+    await runMemorySearch(args.options);
+    return;
+  }
+
+  if (resource === "memory" && action === "eval" && args._[2] === "recall") {
+    await runMemoryEvalRecall(args.options);
+    return;
+  }
+
+  if (resource === "memory" && action === "eval" && args._[2] === "budget") {
+    await runMemoryEvalBudget(args.options);
+    return;
+  }
+
+  if (resource === "memory" && action === "recall-trace") {
+    await runMemoryRecallTrace(args.options);
+    return;
+  }
+
+  if (resource === "memory" && action === "consolidate") {
+    await runMemoryConsolidate(args.options);
+    return;
+  }
+
   if (resource === "memory" && action === "status") {
     await runMemoryStatus(args.options);
     return;
@@ -1643,6 +3139,11 @@ async function main(): Promise<void> {
 
   if (resource === "memory" && action === "list") {
     await runMemoryList(args.options);
+    return;
+  }
+
+  if (resource === "memory" && action === "budget") {
+    await runMemoryBudget(args.options);
     return;
   }
 
@@ -1658,6 +3159,11 @@ async function main(): Promise<void> {
 
   if (resource === "memory" && action === "recover") {
     await runMemoryRecover(args.options);
+    return;
+  }
+
+  if (resource === "memory" && action === "unstick") {
+    await runMemoryUnstick(args.options);
     return;
   }
 

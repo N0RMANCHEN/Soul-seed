@@ -121,5 +121,7 @@ test("MCP server responds to initialize + tools/list", { timeout: 20000 }, async
   assert.ok(toolNames.includes("persona.get_context"), `persona.get_context missing. Got: ${toolNames.join(", ")}`);
   assert.ok(toolNames.includes("conversation.save_turn"), `conversation.save_turn missing. Got: ${toolNames.join(", ")}`);
   assert.ok(toolNames.includes("memory.search"), `memory.search missing. Got: ${toolNames.join(", ")}`);
+  assert.ok(toolNames.includes("memory.search_hybrid"), `memory.search_hybrid missing. Got: ${toolNames.join(", ")}`);
+  assert.ok(toolNames.includes("memory.recall_trace_get"), `memory.recall_trace_get missing. Got: ${toolNames.join(", ")}`);
   assert.ok(toolNames.includes("memory.inspect"), `memory.inspect missing. Got: ${toolNames.join(", ")}`);
 });

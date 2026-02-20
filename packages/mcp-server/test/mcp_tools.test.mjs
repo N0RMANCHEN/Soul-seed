@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 
 import { initPersonaPackage, loadPersonaPackage } from "@soulseed/core";
 import { createTestRegistry } from "../dist/tool_registry.js";
@@ -92,6 +92,23 @@ test("memory.search returns structured results", async () => {
   assert.equal(parsed.budget.injectMax, 5);
 });
 
+test("memory.search_hybrid and memory.recall_trace_get return trace payload", async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "ss-mcp-search-hybrid-"));
+  const { personaPath, personaPkg } = await makeTestPersona(tmp);
+  const registry = createTestRegistry({ personaPath, personaPkg });
+
+  const searchResult = await registry.dispatch("memory.search_hybrid", { query: "preference", maxResults: 5 });
+  assert.ok(!searchResult.isError);
+  const searchParsed = JSON.parse(searchResult.content[0].text);
+  assert.equal(typeof searchParsed.traceId, "string");
+  assert.ok(Array.isArray(searchParsed.results));
+
+  const traceResult = await registry.dispatch("memory.recall_trace_get", { traceId: searchParsed.traceId });
+  assert.ok(!traceResult.isError);
+  const traceParsed = JSON.parse(traceResult.content[0].text);
+  assert.equal(traceParsed.found === true || traceParsed.found === false, true);
+});
+
 test("memory.inspect found returns memory record", async () => {
   const tmp = await mkdtemp(path.join(os.tmpdir(), "ss-mcp-inspect-found-"));
   const { personaPath, personaPkg } = await makeTestPersona(tmp);
@@ -139,4 +156,66 @@ test("memory.inspect not-found returns found=false", async () => {
   assert.ok(!result.isError);
   const parsed = JSON.parse(result.content[0].text);
   assert.equal(parsed.found, false);
+});
+
+test("session capability list/call share unified contract", async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "ss-mcp-capability-"));
+  const { personaPath, personaPkg } = await makeTestPersona(tmp);
+  const registry = createTestRegistry({ personaPath, personaPkg });
+
+  const listed = await registry.dispatch("session.capability_list", {});
+  assert.ok(!listed.isError);
+  const listedParsed = JSON.parse(listed.content[0].text);
+  assert.equal(Array.isArray(listedParsed.items), true);
+  assert.equal(listedParsed.items.some((item) => item.name === "session.read_file"), true);
+
+  const readTarget = path.join(tmp, "notes.txt");
+  await writeFile(readTarget, "hello capability", "utf8");
+  const readNeedConfirm = await registry.dispatch("session.capability_call", {
+    capability: "session.read_file",
+    input: { path: readTarget }
+  });
+  const readNeedConfirmParsed = JSON.parse(readNeedConfirm.content[0].text);
+  assert.equal(readNeedConfirmParsed.status, "confirm_required");
+
+  const readOk = await registry.dispatch("session.capability_call", {
+    capability: "session.read_file",
+    input: { path: readTarget, confirmed: true }
+  });
+  const readOkParsed = JSON.parse(readOk.content[0].text);
+  assert.equal(readOkParsed.status, "executed");
+  assert.equal(typeof readOkParsed.content, "string");
+});
+
+test("session capability owner auth enables set_mode in current session", async () => {
+  const prevOwnerKey = process.env.SOULSEED_OWNER_KEY;
+  process.env.SOULSEED_OWNER_KEY = "owner-secret";
+  try {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), "ss-mcp-cap-owner-"));
+    const { personaPath, personaPkg } = await makeTestPersona(tmp);
+    const registry = createTestRegistry({ personaPath, personaPkg });
+
+    const auth = await registry.dispatch("session.capability_call", {
+      capability: "session.owner_auth",
+      input: { ownerToken: "owner-secret" }
+    });
+    const authParsed = JSON.parse(auth.content[0].text);
+    assert.equal(authParsed.status, "executed");
+
+    const setMode = await registry.dispatch("session.capability_call", {
+      capability: "session.set_mode",
+      input: { modeKey: "adult_mode", modeValue: false, confirmed: true }
+    });
+    const setModeParsed = JSON.parse(setMode.content[0].text);
+    assert.equal(setModeParsed.status, "executed");
+    assert.equal(setModeParsed.output.modeKey, "adult_mode");
+
+    const show = await registry.dispatch("session.capability_call", {
+      capability: "session.show_modes"
+    });
+    const showParsed = JSON.parse(show.content[0].text);
+    assert.equal(showParsed.output.adult_mode, false);
+  } finally {
+    process.env.SOULSEED_OWNER_KEY = prevOwnerKey;
+  }
 });

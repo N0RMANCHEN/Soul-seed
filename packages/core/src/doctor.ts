@@ -14,6 +14,7 @@ const REQUIRED_FILES = [
   "user_profile.json",
   "pinned.json",
   "relationship_state.json",
+  "soul_lineage.json",
   "voice_profile.json",
   "life.log.jsonl",
   "memory.db"
@@ -47,6 +48,7 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
     const relationshipState = await readJson<Record<string, unknown>>(
       path.join(rootPath, "relationship_state.json")
     );
+    const soulLineage = await readJson<Record<string, unknown>>(path.join(rootPath, "soul_lineage.json"));
     const voiceProfile = await readJson<Record<string, unknown>>(path.join(rootPath, "voice_profile.json"));
 
     if (!persona.id || typeof persona.id !== "string") {
@@ -73,6 +75,14 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
         severity: "error",
         message: "voice_profile.json is invalid",
         path: "voice_profile.json"
+      });
+    }
+    if (!isSoulLineageValid(soulLineage, persona.id)) {
+      issues.push({
+        code: "invalid_soul_lineage",
+        severity: "error",
+        message: "soul_lineage.json is invalid",
+        path: "soul_lineage.json"
       });
     }
     if (!isWorldviewValid(worldview)) {
@@ -165,6 +175,8 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
 
       issues.push(...(await inspectMemoryFieldRanges(rootPath)));
       issues.push(...(await inspectMemoryGroundingHealth(rootPath)));
+      issues.push(...(await inspectMemoryFtsHealth(rootPath)));
+      issues.push(...(await inspectArchiveReferenceHealth(rootPath)));
     }
 
     const events = await readLifeEvents(rootPath);
@@ -215,6 +227,14 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
           code: "invalid_relationship_state_event",
           severity: "error",
           message: "relationship_state_updated payload is invalid",
+          path: eventPath
+        });
+      }
+      if (event.type === "libido_state_updated" && !isLibidoStateEventPayloadValid(event.payload)) {
+        issues.push({
+          code: "invalid_libido_state_event",
+          severity: "error",
+          message: "libido_state_updated payload is invalid",
           path: eventPath
         });
       }
@@ -278,6 +298,38 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
           code: "invalid_self_revision_conflicted_event",
           severity: "error",
           message: "self_revision_conflicted payload is invalid",
+          path: eventPath
+        });
+      }
+
+      if (event.type === "memory_consolidated" && !isMemoryConsolidatedPayloadValid(event.payload)) {
+        issues.push({
+          code: "invalid_memory_consolidated_event",
+          severity: "error",
+          message: "memory_consolidated payload is invalid",
+          path: eventPath
+        });
+      }
+
+      if (event.type === "memory_consolidation_failed" && !isMemoryConsolidationFailedPayloadValid(event.payload)) {
+        issues.push({
+          code: "invalid_memory_consolidation_failed_event",
+          severity: "error",
+          message: "memory_consolidation_failed payload is invalid",
+          path: eventPath
+        });
+      }
+      if (
+        (event.type === "reproduction_intent_detected" ||
+          event.type === "soul_reproduction_completed" ||
+          event.type === "soul_reproduction_rejected" ||
+          event.type === "soul_reproduction_forced") &&
+        !isReproductionEventPayloadValid(event.payload)
+      ) {
+        issues.push({
+          code: "invalid_soul_reproduction_event",
+          severity: "error",
+          message: `${event.type} payload is invalid`,
           path: eventPath
         });
       }
@@ -469,7 +521,7 @@ function isRelationshipStateValid(payload: Record<string, unknown>): boolean {
     return true;
   }
 
-  const validVersion = version === "2";
+  const validVersion = version === "2" || version === "3";
   const validOverall =
     typeof overall === "number" && Number.isFinite(overall) && overall >= 0 && overall <= 1;
   const validDimensions = isRelationshipDimensionsValid(dimensions);
@@ -482,10 +534,15 @@ function isRelationshipDimensionsValid(value: unknown): boolean {
     return false;
   }
   const keys = ["trust", "safety", "intimacy", "reciprocity", "stability"] as const;
-  return keys.every((key) => {
+  const baseValid = keys.every((key) => {
     const n = value[key];
     return typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1;
   });
+  if (!baseValid) {
+    return false;
+  }
+  const libido = value.libido;
+  return libido == null || (typeof libido === "number" && Number.isFinite(libido) && libido >= 0 && libido <= 1);
 }
 
 function isRelationshipDriversValid(value: unknown): boolean {
@@ -512,7 +569,7 @@ function isRelationshipDriversValid(value: unknown): boolean {
     if (!isRecord(deltaSummary)) {
       return false;
     }
-    const keys = ["trust", "safety", "intimacy", "reciprocity", "stability"] as const;
+    const keys = ["trust", "safety", "intimacy", "reciprocity", "stability", "libido"] as const;
     return keys.every((key) => {
       const entry = deltaSummary[key];
       return (
@@ -550,6 +607,58 @@ function isVoiceProfileValid(payload: Record<string, unknown>): boolean {
     forbiddenSelfLabels.every((item) => typeof item === "string") &&
     validTonePreference &&
     validStancePreference
+  );
+}
+
+function isSoulLineageValid(payload: Record<string, unknown>, expectedPersonaId: string | undefined): boolean {
+  const personaId = payload.personaId;
+  const parentPersonaId = payload.parentPersonaId;
+  const childrenPersonaIds = payload.childrenPersonaIds;
+  const reproductionCount = payload.reproductionCount;
+  const lastReproducedAt = payload.lastReproducedAt;
+  const inheritancePolicy = payload.inheritancePolicy;
+  const consentMode = payload.consentMode;
+  const personaMatch = typeof expectedPersonaId !== "string" || personaId === expectedPersonaId;
+  return (
+    personaMatch &&
+    typeof personaId === "string" &&
+    personaId.length > 0 &&
+    (parentPersonaId == null || typeof parentPersonaId === "string") &&
+    Array.isArray(childrenPersonaIds) &&
+    childrenPersonaIds.every((item) => typeof item === "string" && item.length > 0) &&
+    typeof reproductionCount === "number" &&
+    Number.isInteger(reproductionCount) &&
+    reproductionCount >= 0 &&
+    (lastReproducedAt == null || isIsoDate(lastReproducedAt)) &&
+    inheritancePolicy === "values_plus_memory_excerpt" &&
+    consentMode === "default_consent"
+  );
+}
+
+function isLibidoStateEventPayloadValid(payload: Record<string, unknown>): boolean {
+  const libido = payload.libido;
+  const signal = payload.signal;
+  return (
+    typeof libido === "number" &&
+    Number.isFinite(libido) &&
+    libido >= 0 &&
+    libido <= 1 &&
+    (signal == null || typeof signal === "string")
+  );
+}
+
+function isReproductionEventPayloadValid(payload: Record<string, unknown>): boolean {
+  const parentPersonaId = payload.parentPersonaId;
+  const childPersonaId = payload.childPersonaId;
+  const childDisplayName = payload.childDisplayName;
+  const trigger = payload.trigger;
+  return (
+    typeof parentPersonaId === "string" &&
+    parentPersonaId.length > 0 &&
+    (childPersonaId == null || typeof childPersonaId === "string") &&
+    (childDisplayName == null || typeof childDisplayName === "string") &&
+    typeof trigger === "string" &&
+    trigger.length > 0
   );
 }
 
@@ -698,6 +807,41 @@ function isSelfRevisionProposalValid(value: unknown, statuses: string[]): boolea
   );
 }
 
+function isMemoryConsolidatedPayloadValid(payload: Record<string, unknown>): boolean {
+  const trigger = payload.trigger;
+  const mode = payload.mode;
+  const scanned = payload.scannedUserMessages;
+  const extracted = payload.extractedCandidates;
+  const deduped = payload.dedupedByExisting;
+  const inserted = payload.inserted;
+  return (
+    typeof trigger === "string" &&
+    trigger.length > 0 &&
+    (mode === "light" || mode === "full") &&
+    isNonNegativeInt(scanned) &&
+    isNonNegativeInt(extracted) &&
+    isNonNegativeInt(deduped) &&
+    isNonNegativeInt(inserted)
+  );
+}
+
+function isMemoryConsolidationFailedPayloadValid(payload: Record<string, unknown>): boolean {
+  const trigger = payload.trigger;
+  const mode = payload.mode;
+  const error = payload.error;
+  return (
+    typeof trigger === "string" &&
+    trigger.length > 0 &&
+    (mode === "light" || mode === "full") &&
+    typeof error === "string" &&
+    error.length > 0
+  );
+}
+
+function isNonNegativeInt(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= 0;
+}
+
 async function inspectMemoryFieldRanges(rootPath: string): Promise<DoctorIssue[]> {
   const raw = await runMemoryStoreSql(
     rootPath,
@@ -824,6 +968,205 @@ async function inspectMemoryGroundingHealth(rootPath: string): Promise<DoctorIss
   }
 
   return issues;
+}
+
+async function inspectMemoryFtsHealth(rootPath: string): Promise<DoctorIssue[]> {
+  try {
+    const raw = await runMemoryStoreSql(
+      rootPath,
+      [
+        "SELECT json_object(",
+        "'eligibleCount', (SELECT COUNT(*) FROM memories WHERE deleted_at IS NULL AND excluded_from_recall = 0),",
+        "'ftsCount', (SELECT COUNT(*) FROM memories_fts)",
+        ");"
+      ].join("\n")
+    );
+    if (!raw.trim()) {
+      return [];
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const eligibleCount = Number(parsed.eligibleCount ?? 0);
+    const ftsCount = Number(parsed.ftsCount ?? 0);
+    const drift = Math.abs(eligibleCount - ftsCount);
+    if (drift <= 1) {
+      return [];
+    }
+    return [
+      {
+        code: "memory_fts_count_drift",
+        severity: drift > 5 ? "error" : "warning",
+        message: `memories_fts count drift: eligible=${eligibleCount}, fts=${ftsCount}`,
+        path: "memory.db"
+      }
+    ];
+  } catch {
+    return [
+      {
+        code: "memory_fts_unavailable",
+        severity: "error",
+        message: "memory.db FTS table or query unavailable",
+        path: "memory.db"
+      }
+    ];
+  }
+}
+
+async function inspectArchiveReferenceHealth(rootPath: string): Promise<DoctorIssue[]> {
+  const issues: DoctorIssue[] = [];
+  const rowsRaw = await runMemoryStoreSql(
+    rootPath,
+    [
+      "SELECT json_object(",
+      "'id', id,",
+      "'content', content,",
+      "'state', state,",
+      "'excludedFromRecall', excluded_from_recall",
+      ")",
+      "FROM memories",
+      "WHERE deleted_at IS NULL",
+      "AND content LIKE '[archived_ref] %';"
+    ].join("\n")
+  );
+
+  if (!rowsRaw.trim()) {
+    return issues;
+  }
+
+  const segmentsRaw = await runMemoryStoreSql(
+    rootPath,
+    [
+      "SELECT json_object(",
+      "'segmentKey', segment_key,",
+      "'checksum', checksum,",
+      "'payloadJson', payload_json",
+      ")",
+      "FROM archive_segments;"
+    ].join("\n")
+  );
+  const segmentMap = new Map<string, { checksum: string; payloadJson: string }>();
+  for (const line of segmentsRaw.split("\n")) {
+    if (!line.trim()) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const segmentKey = typeof parsed.segmentKey === "string" ? parsed.segmentKey : "";
+      if (!segmentKey) {
+        continue;
+      }
+      segmentMap.set(segmentKey, {
+        checksum: typeof parsed.checksum === "string" ? parsed.checksum : "",
+        payloadJson: typeof parsed.payloadJson === "string" ? parsed.payloadJson : ""
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  for (const line of rowsRaw.split("\n")) {
+    if (!line.trim()) {
+      continue;
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const id = typeof parsed.id === "string" ? parsed.id : "";
+    const content = typeof parsed.content === "string" ? parsed.content : "";
+    const state = typeof parsed.state === "string" ? parsed.state : "";
+    const excluded = Number(parsed.excludedFromRecall) === 1 || parsed.excludedFromRecall === true;
+    const pathRef = `memory.db:memories:${id || "unknown"}`;
+
+    const ref = parseArchivedRef(content);
+    if (!ref) {
+      issues.push({
+        code: "invalid_archive_reference",
+        severity: "error",
+        message: "archive reference marker exists but cannot be parsed",
+        path: pathRef
+      });
+      continue;
+    }
+
+    if (state !== "archive" || !excluded) {
+      issues.push({
+        code: "archive_reference_state_drift",
+        severity: "warning",
+        message: "archived_ref memory should be state=archive and excluded_from_recall=1",
+        path: pathRef
+      });
+    }
+
+    const seg = segmentMap.get(ref.segmentKey);
+    if (!seg) {
+      issues.push({
+        code: "archive_segment_missing",
+        severity: "error",
+        message: `archive segment not found: ${ref.segmentKey}`,
+        path: pathRef
+      });
+      continue;
+    }
+
+    if (seg.checksum && ref.checksum && seg.checksum !== ref.checksum) {
+      issues.push({
+        code: "archive_segment_checksum_mismatch",
+        severity: "error",
+        message: `archive checksum mismatch for ${ref.segmentKey}`,
+        path: pathRef
+      });
+      continue;
+    }
+
+    const payload = safeJsonParse(seg.payloadJson);
+    if (!payload || !isRecord(payload)) {
+      issues.push({
+        code: "archive_segment_payload_invalid",
+        severity: "error",
+        message: `archive payload json is invalid: ${ref.segmentKey}`,
+        path: "memory.db:archive_segments"
+      });
+      continue;
+    }
+
+    const fileRel = typeof payload.file === "string" ? payload.file : "";
+    if (fileRel) {
+      const filePath = path.join(rootPath, fileRel);
+      if (!existsSync(filePath)) {
+        issues.push({
+          code: "archive_segment_file_missing",
+          severity: "error",
+          message: `archive segment file missing: ${fileRel}`,
+          path: "summaries/archive"
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+function parseArchivedRef(content: string): { segmentKey: string; checksum: string; id: string } | null {
+  const normalized = content.trim();
+  const match = /^\[archived_ref\]\s+segment=(\S+)\s+id=(\S+)\s+checksum=(\S+)/.exec(normalized);
+  if (!match) {
+    return null;
+  }
+  return {
+    segmentKey: match[1],
+    id: match[2],
+    checksum: match[3]
+  };
+}
+
+function safeJsonParse(raw: string): unknown | null {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 async function readWorkingSet(rootPath: string): Promise<{ summaryIds: Set<string>; count: number }> {

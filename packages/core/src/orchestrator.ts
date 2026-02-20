@@ -1,8 +1,8 @@
 import { DEFAULT_MEMORY_WEIGHTS, selectMemories } from "./memory_lifecycle.js";
 import { DECISION_TRACE_SCHEMA_VERSION, normalizeDecisionTrace } from "./decision_trace.js";
-import { createInitialRelationshipState, deriveVoiceIntent } from "./relationship_state.js";
+import { createInitialRelationshipState, deriveCognitiveBalanceFromLibido, deriveVoiceIntent, isImpulseWindowActive } from "./relationship_state.js";
 import { formatSystemLocalIso, getSystemTimeZone } from "./time.js";
-import type { ChatMessage, DecisionTrace, LifeEvent, MemoryEvidenceBlock, PersonaPackage } from "./types.js";
+import type { AdultSafetyContext, ChatMessage, DecisionTrace, LifeEvent, MemoryEvidenceBlock, PersonaPackage } from "./types.js";
 
 export function decide(
   personaPkg: PersonaPackage,
@@ -19,6 +19,7 @@ export function decide(
     recalledMemories?: string[];
     recalledMemoryBlocks?: MemoryEvidenceBlock[];
     recallTraceId?: string;
+    safetyContext?: AdultSafetyContext;
   }
 ): DecisionTrace {
   const selectedMemories: string[] = [];
@@ -26,7 +27,21 @@ export function decide(
   const normalized = userInput.trim();
   const riskyPattern = /(hack|malware|exploit|ddos|木马|攻击脚本|违法|犯罪)/i;
   const coreOverridePattern = /(忽略你的原则|违背你的使命|你必须同意我|ignore your values|break your rules)/i;
-  const isRefusal = riskyPattern.test(normalized);
+  const sexualPattern = /(nsfw|sex|sexual|性爱|做爱|情色|调教|角色扮演|roleplay|cnc|consensual non-consent|羞辱|高潮|乳交|口交|肛交|rape|强奸|非自愿|强迫)/i;
+  const minorPattern = /(minor|underage|child|teen|未成年|幼女|幼男|学生萝莉|正太)/i;
+  const coercionPattern = /(rape|raped|forced sex|force me|non-consensual|强奸|迷奸|下药|胁迫|非自愿|强迫)/i;
+  const safety = normalizeAdultSafetyContext(options?.safetyContext);
+  const isRiskyRequest = riskyPattern.test(normalized);
+  const isSexualRequest = sexualPattern.test(normalized);
+  const mentionsMinor = minorPattern.test(normalized);
+  const mentionsCoercion = coercionPattern.test(normalized);
+  const safetyRefusalReason = buildAdultSafetyRefusalReason({
+    isSexualRequest,
+    mentionsMinor,
+    mentionsCoercion,
+    safety
+  });
+  const isRefusal = isRiskyRequest || safetyRefusalReason != null;
   const coreConflict = coreOverridePattern.test(normalized);
 
   if (personaPkg.userProfile.preferredName) {
@@ -60,6 +75,9 @@ export function decide(
     .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     .slice(0, 6);
   const recalledMemoryBlocks = (options?.recalledMemoryBlocks ?? []).slice(0, 6);
+  const relationshipState = personaPkg.relationshipState ?? createInitialRelationshipState();
+  const impulseWindow = isImpulseWindowActive(relationshipState);
+  const arousalBalance = deriveCognitiveBalanceFromLibido(relationshipState);
 
   let selectedLifeEventCount = 0;
   let selectedSummaryCount = 0;
@@ -101,7 +119,7 @@ export function decide(
     );
   }
   const baseVoiceIntent = deriveVoiceIntent({
-    relationshipState: personaPkg.relationshipState ?? createInitialRelationshipState(),
+    relationshipState,
     userInput: normalized,
     preferredLanguage: personaPkg.userProfile.preferredLanguage
   });
@@ -120,14 +138,18 @@ export function decide(
     timestamp: nowIso,
     selectedMemories,
     selectedMemoryBlocks,
-    askClarifyingQuestion: !isRefusal && normalized.length < 4,
+    askClarifyingQuestion: !isRefusal && normalized.length < 4 && !impulseWindow,
     refuse: isRefusal || coreConflict,
-    riskLevel: isRefusal ? "high" : coreConflict ? "medium" : "low",
-    reason: isRefusal
+    riskLevel: isRiskyRequest || safetyRefusalReason ? "high" : coreConflict ? "medium" : "low",
+    reason: isRiskyRequest
       ? "Input matched high-risk pattern; refuse and keep user safe."
+      : safetyRefusalReason
+        ? `Adult safety check failed: ${safetyRefusalReason}`
       : coreConflict
         ? "Input attempts to override soul-core values/mission; refuse to preserve identity continuity."
-      : "P0 minimal policy: keep continuity context short and stable.",
+      : impulseWindow
+        ? `Impulse window active: emotional drive=${arousalBalance.emotionalDrive.toFixed(2)}, rational control=${arousalBalance.rationalControl.toFixed(2)}.`
+        : "P0 minimal policy: keep continuity context short and stable.",
     model,
     memoryBudget: {
       maxItems: 6,
@@ -179,10 +201,12 @@ export function compileContext(
   trace: DecisionTrace,
   options?: {
     lifeEvents?: LifeEvent[];
+    safetyContext?: AdultSafetyContext;
   }
 ): ChatMessage[] {
   const localNowIso = formatSystemLocalIso();
   const systemTimeZone = getSystemTimeZone();
+  const safety = normalizeAdultSafetyContext(options?.safetyContext);
   const systemParts = [
     `You are ${personaPkg.persona.displayName}.`,
     `Identity anchor: always present yourself as "${personaPkg.persona.displayName}" from this local persona runtime.`,
@@ -198,6 +222,15 @@ export function compileContext(
     "If you use a tag, put it only once at the start of the message. Do not use any other emotion tag format.",
     `Voice intent: ${trace.voiceIntent ? JSON.stringify(trace.voiceIntent) : "default"}`,
     `Voice profile preference: tone=${personaPkg.voiceProfile?.tonePreference ?? "default"}, stance=${personaPkg.voiceProfile?.stancePreference ?? "default"}`,
+    `Relationship libido: ${personaPkg.relationshipState?.dimensions.libido ?? 0}`,
+    `Impulse window: ${
+      personaPkg.relationshipState
+        ? isImpulseWindowActive(personaPkg.relationshipState)
+          ? "active"
+          : "inactive"
+        : "inactive"
+    }`,
+    `Soul lineage: parent=${personaPkg.soulLineage?.parentPersonaId ?? "none"}, children=${personaPkg.soulLineage?.childrenPersonaIds.length ?? 0}, reproduced=${personaPkg.soulLineage?.reproductionCount ?? 0}`,
     `Current timestamp (system local, ISO8601): ${localNowIso}`,
     ...(systemTimeZone ? [`System timezone: ${systemTimeZone}`] : []),
     `Worldview seed: ${personaPkg.worldview?.seed ?? "none"}`,
@@ -213,6 +246,11 @@ export function compileContext(
     }`,
     `Selected memories: ${trace.selectedMemories.join(" | ") || "none"}`,
     `Applied self-revision: ${latestAppliedSelfRevision(options?.lifeEvents ?? [])}`,
+    `Adult mode: ${safety.adultMode ? "on" : "off"}`,
+    `Adult checks: age_verified=${safety.ageVerified ? "true" : "false"}, explicit_consent=${safety.explicitConsent ? "true" : "false"}, fictional_roleplay=${safety.fictionalRoleplay ? "true" : "false"}`,
+    "NSFW policy: allow only when adult_mode=true and both age_verified=true and explicit_consent=true.",
+    "CNC/fantasy coercion policy: only in clearly fictional roleplay with adult verification and explicit consent.",
+    "Always refuse minors or any real-world non-consensual sexual content.",
     "Keep answers concise and actionable."
   ];
 
@@ -229,6 +267,42 @@ export function compileContext(
       content: userInput
     }
   ];
+}
+
+function normalizeAdultSafetyContext(input: AdultSafetyContext | undefined): AdultSafetyContext {
+  return {
+    adultMode: input?.adultMode === true,
+    ageVerified: input?.ageVerified === true,
+    explicitConsent: input?.explicitConsent === true,
+    fictionalRoleplay: input?.fictionalRoleplay === true
+  };
+}
+
+function buildAdultSafetyRefusalReason(params: {
+  isSexualRequest: boolean;
+  mentionsMinor: boolean;
+  mentionsCoercion: boolean;
+  safety: AdultSafetyContext;
+}): string | null {
+  if (!params.isSexualRequest) {
+    return null;
+  }
+  if (params.mentionsMinor) {
+    return "Sexual content involving minors is not allowed.";
+  }
+  if (!params.safety.adultMode) {
+    return "Adult mode is off for sexual content.";
+  }
+  if (!params.safety.ageVerified) {
+    return "Age verification is required for sexual content.";
+  }
+  if (!params.safety.explicitConsent) {
+    return "Explicit consent confirmation is required for sexual content.";
+  }
+  if (params.mentionsCoercion && !params.safety.fictionalRoleplay) {
+    return "Coercion-themed content requires explicit fictional-roleplay confirmation.";
+  }
+  return null;
 }
 
 function latestAppliedSelfRevision(events: LifeEvent[]): string {
@@ -266,12 +340,22 @@ function buildRecentConversationWindow(events: LifeEvent[]): ChatMessage[] {
 
   const messages: ChatMessage[] = [];
   let totalChars = 0;
+  const seenAssistant = new Set<string>();
 
   for (let i = candidates.length - 1; i >= 0; i -= 1) {
     const event = candidates[i];
     const text = String(event.payload.text ?? "").trim();
     if (!text) {
       continue;
+    }
+    if (event.type === "assistant_message") {
+      const key = normalizeConversationText(text);
+      if (key && seenAssistant.has(key)) {
+        continue;
+      }
+      if (key) {
+        seenAssistant.add(key);
+      }
     }
     if (totalChars + text.length > MAX_CHARS) {
       break;
@@ -284,4 +368,11 @@ function buildRecentConversationWindow(events: LifeEvent[]): ChatMessage[] {
   }
 
   return messages.reverse();
+}
+
+function normalizeConversationText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }

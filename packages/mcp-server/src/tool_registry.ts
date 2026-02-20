@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { appendLifeEvent } from "@soulseed/core";
+import { listCapabilityDefinitions, resolveCapabilityIntent, evaluateCapabilityPolicy } from "@soulseed/core";
 import type { PersonaPackage } from "@soulseed/core";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { runPersonaContextTool } from "./tools/persona_context.js";
 import { runConversationSaveTool } from "./tools/conversation_save.js";
 import { runMemorySearchTool } from "./tools/memory_search.js";
+import { runMemorySearchHybridTool } from "./tools/memory_search_hybrid.js";
+import { runMemoryRecallTraceGetTool } from "./tools/memory_recall_trace_get.js";
 import { runMemoryInspectTool } from "./tools/memory_inspect.js";
 
 interface ToolBudget {
@@ -15,7 +19,11 @@ interface ToolBudget {
 const TOOL_BUDGET: Record<string, ToolBudget> = {
   "persona.get_context":    { cost: 2, sessionMax: 50 },
   "conversation.save_turn": { cost: 2, sessionMax: 50 },
+  "session.capability_list": { cost: 1, sessionMax: 200 },
+  "session.capability_call": { cost: 1, sessionMax: 200 },
   "memory.search":          { cost: 1, sessionMax: 50 },
+  "memory.search_hybrid":   { cost: 1, sessionMax: 50 },
+  "memory.recall_trace_get": { cost: 1, sessionMax: 100 },
   "memory.inspect":         { cost: 1, sessionMax: 100 }
 };
 
@@ -44,6 +52,17 @@ export class ToolRegistry {
   private readonly personaPath: string;
   private readonly personaPkg: PersonaPackage;
   private readonly callCounts = new Map<string, number>();
+  private readonly approvedReadPaths = new Set<string>();
+  private ownerAuthExpiresAtMs = 0;
+  private strictMemoryGrounding = true;
+  private adultSafety = {
+    adultMode: true,
+    ageVerified: true,
+    explicitConsent: true,
+    fictionalRoleplay: true
+  };
+  private curiosity = 0.22;
+  private annoyanceBias = 0;
   private readonly effectiveBudget: Record<string, ToolBudget>;
   private readonly auditLogger?: ToolRegistryOptions["auditLogger"];
 
@@ -138,12 +157,201 @@ export class ToolRegistry {
             personaPkg: this.personaPkg
           }
         );
+      } else if (toolName === "session.capability_list") {
+        result = {
+          items: listCapabilityDefinitions()
+        };
+      } else if (toolName === "session.capability_call") {
+        const requestedName = typeof args.capability === "string" ? args.capability.trim() : "";
+        const text = typeof args.text === "string" ? args.text.trim() : "";
+        const input = (typeof args.input === "object" && args.input !== null
+          ? (args.input as Record<string, unknown>)
+          : {}) as Record<string, unknown>;
+        const resolved = requestedName
+          ? {
+              matched: true,
+              confidence: 1,
+              reason: "explicit_capability",
+              request: {
+                name: requestedName as
+                  | "session.capability_discovery"
+                  | "session.show_modes"
+                  | "session.owner_auth"
+                  | "session.read_file"
+                  | "session.proactive_status"
+                  | "session.proactive_tune"
+                  | "session.set_mode"
+                  | "session.exit",
+                input,
+                source: "mcp" as const
+              }
+            }
+          : resolveCapabilityIntent(text);
+        if (!resolved.matched || !resolved.request) {
+          result = {
+            ok: false,
+            status: "clarify",
+            message: "no_capability_matched"
+          };
+        } else {
+          if (
+            resolved.request.name === "session.set_mode" &&
+            typeof resolved.request.input?.ownerToken !== "string" &&
+            this.ownerAuthExpiresAtMs > Date.now() &&
+            process.env.SOULSEED_OWNER_KEY
+          ) {
+            resolved.request.input = {
+              ...(resolved.request.input ?? {}),
+              ownerToken: process.env.SOULSEED_OWNER_KEY
+            };
+          }
+          const guard = evaluateCapabilityPolicy(
+            {
+              ...resolved.request,
+              source: "mcp"
+            },
+            {
+              cwd: process.cwd(),
+              ownerKey: process.env.SOULSEED_OWNER_KEY,
+              ownerSessionAuthorized: this.ownerAuthExpiresAtMs > Date.now(),
+              approvedReadPaths: this.approvedReadPaths
+            }
+          );
+          if (guard.status === "confirm_required") {
+            result = {
+              ok: false,
+              status: "confirm_required",
+              capability: guard.capability,
+              reason: guard.reason,
+              input: guard.normalizedInput
+            };
+          } else if (guard.status === "rejected") {
+            result = {
+              ok: false,
+              status: "rejected",
+              capability: guard.capability,
+              reason: guard.reason
+            };
+          } else if (guard.capability === "session.capability_discovery") {
+            result = {
+              ok: true,
+              status: "executed",
+              capability: guard.capability,
+              items: listCapabilityDefinitions()
+            };
+          } else if (guard.capability === "session.show_modes") {
+            result = {
+              ok: true,
+              status: "executed",
+              capability: guard.capability,
+              output: {
+                strict_memory_grounding: this.strictMemoryGrounding,
+                adult_mode: this.adultSafety.adultMode,
+                age_verified: this.adultSafety.ageVerified,
+                explicit_consent: this.adultSafety.explicitConsent,
+                fictional_roleplay: this.adultSafety.fictionalRoleplay
+              }
+            };
+          } else if (guard.capability === "session.owner_auth") {
+            this.ownerAuthExpiresAtMs = Date.now() + 15 * 60_000;
+            result = {
+              ok: true,
+              status: "executed",
+              capability: guard.capability,
+              output: {
+                expiresAt: new Date(this.ownerAuthExpiresAtMs).toISOString()
+              }
+            };
+          } else if (guard.capability === "session.read_file") {
+            const filePath = String(guard.normalizedInput.path ?? "");
+            const content = await readFile(filePath, "utf8");
+            this.approvedReadPaths.add(filePath);
+            result = {
+              ok: true,
+              status: "executed",
+              capability: guard.capability,
+              path: filePath,
+              size: Buffer.byteLength(content, "utf8"),
+              content
+            };
+          } else if (guard.capability === "session.set_mode") {
+            const modeKey = String(guard.normalizedInput.modeKey ?? "");
+            const modeValue = Boolean(guard.normalizedInput.modeValue);
+            this.ownerAuthExpiresAtMs = Date.now() + 15 * 60_000;
+            if (modeKey === "strict_memory_grounding") {
+              this.strictMemoryGrounding = modeValue;
+            } else if (modeKey === "adult_mode") {
+              this.adultSafety.adultMode = modeValue;
+            } else if (modeKey === "age_verified") {
+              this.adultSafety.ageVerified = modeValue;
+            } else if (modeKey === "explicit_consent") {
+              this.adultSafety.explicitConsent = modeValue;
+            } else if (modeKey === "fictional_roleplay") {
+              this.adultSafety.fictionalRoleplay = modeValue;
+            }
+            result = {
+              ok: true,
+              status: "executed",
+              capability: guard.capability,
+              applied: true,
+              output: {
+                modeKey,
+                modeValue,
+                strict_memory_grounding: this.strictMemoryGrounding,
+                adult_mode: this.adultSafety.adultMode
+              }
+            };
+          } else if (guard.capability === "session.proactive_status") {
+            result = {
+              ok: true,
+              status: "executed",
+              capability: guard.capability,
+              output: {
+                curiosity: this.curiosity,
+                annoyanceBias: this.annoyanceBias
+              }
+            };
+          } else if (guard.capability === "session.proactive_tune") {
+            const action = String(guard.normalizedInput.action ?? "").toLowerCase();
+            result = {
+              ok: true,
+              status: "executed",
+              capability: guard.capability,
+              output: {
+                action,
+                selfDetermined: true,
+                curiosity: this.curiosity,
+                annoyanceBias: this.annoyanceBias
+              }
+            };
+          } else if (guard.capability === "session.exit") {
+            result = {
+              ok: true,
+              status: "executed",
+              capability: guard.capability,
+              message: "exit acknowledged"
+            };
+          }
+        }
       } else if (toolName === "memory.search") {
         const maxResults = typeof args.maxResults === "number" ? args.maxResults : 8;
         result = await runMemorySearchTool(
           this.personaPath,
           String(args.query ?? ""),
           maxResults
+        );
+      } else if (toolName === "memory.search_hybrid") {
+        const maxResults = typeof args.maxResults === "number" ? args.maxResults : 12;
+        result = await runMemorySearchHybridTool(
+          this.personaPath,
+          String(args.query ?? ""),
+          maxResults,
+          args.debugTrace === true
+        );
+      } else if (toolName === "memory.recall_trace_get") {
+        result = await runMemoryRecallTraceGetTool(
+          this.personaPath,
+          String(args.traceId ?? "")
         );
       } else if (toolName === "memory.inspect") {
         result = await runMemoryInspectTool(

@@ -36,13 +36,18 @@ const SEMANTIC_PATTERNS = [
 
 const RELATIONAL_EVENTS = new Set([
   "relationship_state_updated",
+  "libido_state_updated",
   "voice_intent_selected",
   "rename_requested",
   "rename_applied",
   "rename_rejected",
   "rename_suggested_by_soul",
   "rename_proposed_by_soul",
-  "rename_confirmed_via_chat"
+  "rename_confirmed_via_chat",
+  "reproduction_intent_detected",
+  "soul_reproduction_completed",
+  "soul_reproduction_rejected",
+  "soul_reproduction_forced"
 ]);
 
 const PROCEDURAL_EVENTS = new Set(["conflict_logged", "memory_weight_updated"]);
