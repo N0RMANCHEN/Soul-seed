@@ -172,6 +172,13 @@ export interface DecisionTrace {
   recallTraceId?: string;
   mcpCall?: McpCallRecord;
   metaTraceId?: string;
+  executionMode?: "soul" | "agent";
+  goalId?: string;
+  stepId?: string;
+  planVersion?: number;
+  consistencyVerdict?: "allow" | "rewrite" | "reject";
+  consistencyRuleHits?: string[];
+  consistencyTraceId?: string;
 }
 
 export type PersonaJudgmentLabel = "fiction" | "non_fiction" | "mixed" | "uncertain";
@@ -273,6 +280,96 @@ export interface ProactiveDecisionTrace {
   reason: string;
 }
 
+export type GoalStatus = "pending" | "active" | "blocked" | "completed" | "canceled";
+
+export interface GoalStep {
+  id: string;
+  title: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "skipped";
+  toolName?: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Goal {
+  id: string;
+  title: string;
+  status: GoalStatus;
+  createdAt: string;
+  updatedAt: string;
+  source: "user" | "system" | "mcp";
+  summary?: string;
+  steps: GoalStep[];
+}
+
+export interface GoalEvent {
+  id: string;
+  goalId: string;
+  ts: string;
+  type:
+    | "goal_created"
+    | "goal_updated"
+    | "goal_completed"
+    | "goal_blocked"
+    | "goal_canceled"
+    | "goal_step_started"
+    | "goal_step_succeeded"
+    | "goal_step_failed";
+  payload: Record<string, unknown>;
+}
+
+export interface ConsistencyRuleHit {
+  ruleId: string;
+  severity: "hard" | "soft";
+  reason: string;
+}
+
+export interface ConsistencyCheckInput {
+  personaName: string;
+  constitution: PersonaConstitution;
+  selectedMemories?: string[];
+  selectedMemoryBlocks?: MemoryEvidenceBlock[];
+  lifeEvents?: LifeEvent[];
+  userInput?: string;
+  candidateText: string;
+  strictMemoryGrounding?: boolean;
+}
+
+export interface ConsistencyCheckResult {
+  verdict: "allow" | "rewrite" | "reject";
+  text: string;
+  ruleHits: ConsistencyRuleHit[];
+  traceId: string;
+}
+
+export interface ExecutionAction {
+  kind: "tool_call" | "reply" | "clarify" | "complete";
+  reason: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  replyDraft?: string;
+}
+
+export interface ExecutionObservation {
+  ok: boolean;
+  summary: string;
+  output?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface ExecutionResult {
+  goalId: string;
+  status: GoalStatus;
+  reply: string;
+  steps: GoalStep[];
+  consistencyVerdict: "allow" | "rewrite" | "reject";
+  consistencyTraceId: string;
+  traceIds: string[];
+}
+
 export type MemoryTier = "highlight" | "pattern" | "error";
 export type MemoryMetaSource = "chat" | "system" | "acceptance";
 export type MemoryDecayClass = "fast" | "standard" | "slow" | "sticky";
@@ -347,7 +444,16 @@ export type LifeEventType =
   | "meta_action_arbitrated"
   | "thinking_preview_emitted"
   | "persona_judgment_updated"
-  | "persona_judgment_superseded";
+  | "persona_judgment_superseded"
+  | "goal_created"
+  | "goal_updated"
+  | "goal_completed"
+  | "goal_blocked"
+  | "goal_canceled"
+  | "goal_step_started"
+  | "goal_step_succeeded"
+  | "goal_step_failed"
+  | "consistency_checked";
 
 export type SelfRevisionDomain =
   | "habits"

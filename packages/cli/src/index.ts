@@ -5,6 +5,7 @@ import readline from "node:readline";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFileSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {
   createToolSessionState,
@@ -23,7 +24,6 @@ import {
   createChildPersonaFromParent,
   compileContext,
   composeMetaAction,
-  decide,
   judgePersonaContentLabel,
   doctorPersona,
   evaluateNarrativeDrift,
@@ -78,6 +78,14 @@ import {
   reviewExternalKnowledgeCandidate,
   searchExternalKnowledgeEntries,
   stageExternalKnowledgeCandidate,
+  createGoal,
+  listGoals,
+  getGoal,
+  cancelGoal,
+  runAgentExecution,
+  executeTurnProtocol,
+  getExecutionTrace,
+  listExecutionTraces,
   writeRelationshipState,
   writeWorkingSet,
   updateUserProfile,
@@ -126,7 +134,7 @@ interface PersonaTemplate {
 }
 
 const DEFAULT_CHAT_MODEL = "deepseek-chat";
-const DEFAULT_PERSONA_NAME = "Roxy";
+const DEFAULT_PERSONA_NAME = "Soulseed";
 const RESERVED_ROOT_COMMANDS = new Set([
   "help",
   "--help",
@@ -274,7 +282,13 @@ function printHelp(): void {
       "常用命令:",
       "  new <name> [--out ./personas/<name>.soulseedpersona] [--template friend|peer|intimate|neutral] [--model deepseek-chat] [--quick]",
       "  <name> [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
-      "  doctor [--persona ./personas/Roxy.soulseedpersona]",
+      "  doctor [--persona ./personas/<name>.soulseedpersona]",
+      "  goal create --title <text> [--persona <path>]",
+      "  goal list [--persona <path>] [--status pending|active|blocked|completed|canceled] [--limit 20]",
+      "  goal get --id <goal_id> [--persona <path>]",
+      "  goal cancel --id <goal_id> [--persona <path>]",
+      "  agent run --input <task_text> [--goal-id <goal_id>] [--max-steps 4] [--persona <path>]",
+      "  trace get --id <trace_id> [--persona <path>]",
       "  memory status [--persona <path>]",
       "  memory budget [--persona <path>] [--target-mb 300]",
       "  memory list [--persona <path>] [--limit 20] [--state hot|warm|cold|archive|scar] [--deleted]",
@@ -283,7 +297,7 @@ function printHelp(): void {
       "  memory recover --id <memory_id> [--persona <path>]",
       "  memory fiction repair [--persona <path>] [--dry-run]",
       "  memory unstick [--persona <path>] [--phrase <text>] [--min-occurrences 3] [--max-content-length 1200] [--dry-run]",
-      "  memory compact [--persona ./personas/Roxy.soulseedpersona]",
+      "  memory compact [--persona ./personas/<name>.soulseedpersona]",
       "  memory archive [--persona <path>] [--min-items 50] [--min-cold-ratio 0.35] [--idle-days 14] [--max-items 500] [--dry-run]",
       "  memory index build [--persona <path>] [--provider deepseek|local] [--batch-size 16]",
       "  memory index rebuild [--persona <path>] [--provider deepseek|local] [--batch-size 16]",
@@ -304,14 +318,14 @@ function printHelp(): void {
       "  memory pin list [--persona <path>]",
       "  memory pin remove --text <memory> [--persona <path>]",
       "  memory unpin --text <memory> [--persona <path>]  # alias of memory pin remove",
-      "  memory reconcile [--persona ./personas/Roxy.soulseedpersona]",
+      "  memory reconcile [--persona ./personas/<name>.soulseedpersona]",
       "  rename --to <new_name> [--persona <path>] [--confirm]",
       "  persona reproduce --name <child_name> [--persona <path>] [--out <path>] [--force-all]",
       "  mcp [--persona <path>] [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--auth-token <token>]",
       "",
       "兼容命令:",
-      "  init [--name Roxy] [--out ./personas/Roxy.soulseedpersona]",
-      "  chat [--persona ./personas/Roxy.soulseedpersona] [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
+      "  init [--name Soulseed] [--out ./personas/<name>.soulseedpersona]",
+      "  chat [--persona ./personas/<name>.soulseedpersona] [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
       "  persona init --name <name> --out <path>",
       "  persona rename --to <new_name> [--persona <path>] [--confirm]",
       "",
@@ -333,9 +347,25 @@ function printHelp(): void {
 
 function resolvePersonaPath(options: Record<string, string | boolean>): string {
   const personaArg = options.persona;
-  const personaInput =
-    typeof personaArg === "string" ? personaArg : `./personas/${DEFAULT_PERSONA_NAME}.soulseedpersona`;
-  return path.resolve(process.cwd(), personaInput);
+  if (typeof personaArg === "string" && personaArg.trim().length > 0) {
+    return path.resolve(process.cwd(), personaArg);
+  }
+  const defaultPathFromEnv = (process.env.SOULSEED_DEFAULT_PERSONA ?? "").trim();
+  if (defaultPathFromEnv.length > 0) {
+    return path.resolve(process.cwd(), defaultPathFromEnv);
+  }
+
+  const personasDir = path.resolve(process.cwd(), "./personas");
+  if (existsSync(personasDir)) {
+    const candidates = readdirSync(personasDir)
+      .filter((entry) => entry.endsWith(".soulseedpersona"))
+      .sort();
+    if (candidates.length > 0) {
+      return path.join(personasDir, candidates[0]);
+    }
+  }
+
+  throw new Error("未找到可用 persona。请先运行：./ss new <name>");
 }
 
 function resolvePersonaPathByName(name: string): string {
@@ -371,6 +401,22 @@ function resolveMetaCognitionMode(options: Record<string, string | boolean>): Me
     return raw;
   }
   return "shadow";
+}
+
+function resolveExecutionMode(options: Record<string, string | boolean>): "auto" | "soul" | "agent" {
+  const devMode = String(process.env.SOULSEED_DEV_MODE ?? "").trim().toLowerCase();
+  const allowCliOverride = devMode === "1" || devMode === "true" || devMode === "on";
+  const raw = (
+    (allowCliOverride ? optionString(options, "execution-mode") : undefined) ??
+    process.env.SOULSEED_EXECUTION_MODE ??
+    "auto"
+  )
+    .trim()
+    .toLowerCase();
+  if (raw === "soul" || raw === "agent" || raw === "auto") {
+    return raw;
+  }
+  return "auto";
 }
 
 function resolveHumanPacedMode(options: Record<string, string | boolean>): boolean {
@@ -537,7 +583,14 @@ function compactDecisionTrace(trace: DecisionTrace): Record<string, unknown> {
     retrievalBreakdown: trace.retrievalBreakdown,
     memoryWeights: trace.memoryWeights,
     voiceIntent: trace.voiceIntent ?? null,
-    recallTraceId: trace.recallTraceId ?? null
+    recallTraceId: trace.recallTraceId ?? null,
+    executionMode: trace.executionMode ?? "soul",
+    goalId: trace.goalId ?? null,
+    stepId: trace.stepId ?? null,
+    planVersion: trace.planVersion ?? null,
+    consistencyVerdict: trace.consistencyVerdict ?? null,
+    consistencyRuleHits: trace.consistencyRuleHits ?? null,
+    consistencyTraceId: trace.consistencyTraceId ?? null
   };
 }
 
@@ -817,6 +870,103 @@ async function runRename(options: Record<string, string | boolean>): Promise<voi
   console.log(`改名成功：${personaPkg.persona.displayName} -> ${newDisplayName}`);
 }
 
+async function runGoal(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  if (action === "create") {
+    const title = optionString(options, "title")?.trim() ?? "";
+    if (!title) {
+      throw new Error("goal create 需要 --title <text>");
+    }
+    const goal = await createGoal({
+      rootPath: personaPath,
+      title,
+      source: "user"
+    });
+    console.log(JSON.stringify(goal, null, 2));
+    return;
+  }
+  if (action === "list") {
+    const statusRaw = optionString(options, "status")?.trim();
+    const status =
+      statusRaw === "pending" ||
+      statusRaw === "active" ||
+      statusRaw === "blocked" ||
+      statusRaw === "completed" ||
+      statusRaw === "canceled"
+        ? statusRaw
+        : undefined;
+    const limit = parseLimit(optionString(options, "limit"), 20, 1, 200);
+    const items = await listGoals(personaPath, { status, limit });
+    console.log(JSON.stringify(items, null, 2));
+    return;
+  }
+  if (action === "get") {
+    const goalId = optionString(options, "id")?.trim() ?? "";
+    if (!goalId) {
+      throw new Error("goal get 需要 --id <goal_id>");
+    }
+    const goal = await getGoal(personaPath, goalId);
+    console.log(JSON.stringify({ found: Boolean(goal), goal }, null, 2));
+    return;
+  }
+  if (action === "cancel") {
+    const goalId = optionString(options, "id")?.trim() ?? "";
+    if (!goalId) {
+      throw new Error("goal cancel 需要 --id <goal_id>");
+    }
+    const goal = await cancelGoal(personaPath, goalId);
+    console.log(JSON.stringify({ found: Boolean(goal), goal }, null, 2));
+    return;
+  }
+  throw new Error("goal 用法: goal <create|list|get|cancel> ...");
+}
+
+async function runAgentCommand(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
+  if (action !== "run") {
+    throw new Error("agent 用法: agent run --input <task_text> [--goal-id <goal_id>] [--max-steps 4]");
+  }
+  const personaPath = resolvePersonaPath(options);
+  const userInput = optionString(options, "input")?.trim() ?? "";
+  if (!userInput) {
+    throw new Error("agent run 需要 --input <task_text>");
+  }
+  const goalId = optionString(options, "goal-id")?.trim();
+  const maxSteps = parseLimit(optionString(options, "max-steps"), 4, 1, 12);
+  const personaPkg = await loadPersonaPackage(personaPath);
+  const execution = await runAgentExecution({
+    rootPath: personaPath,
+    personaPkg,
+    userInput,
+    goalId: goalId && goalId.length > 0 ? goalId : undefined,
+    maxSteps
+  });
+  console.log(JSON.stringify(execution, null, 2));
+}
+
+async function runTrace(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  if (action === "get") {
+    const traceId = optionString(options, "id")?.trim() ?? "";
+    if (!traceId) {
+      throw new Error("trace get 需要 --id <trace_id>");
+    }
+    const trace = await getExecutionTrace(personaPath, traceId);
+    console.log(JSON.stringify({ found: Boolean(trace), trace }, null, 2));
+    return;
+  }
+  if (action === "list") {
+    const goalId = optionString(options, "goal-id")?.trim();
+    const limit = parseLimit(optionString(options, "limit"), 20, 1, 200);
+    const items = await listExecutionTraces(personaPath, {
+      goalId: goalId && goalId.length > 0 ? goalId : undefined,
+      limit
+    });
+    console.log(JSON.stringify(items, null, 2));
+    return;
+  }
+  throw new Error("trace 用法: trace <get|list> ...");
+}
+
 async function runPersonaReproduce(options: Record<string, string | boolean>): Promise<void> {
   const personaPath = resolvePersonaPath(options);
   const nameOpt = options.name;
@@ -866,6 +1016,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   const personaPath = resolvePersonaPath(options);
   const personaPkg = await loadPersonaPackage(personaPath);
   let strictMemoryGrounding = resolveStrictMemoryGrounding(options);
+  const executionMode = resolveExecutionMode(options);
   const metaCognitionMode = resolveMetaCognitionMode(options);
   const humanPacedMode = resolveHumanPacedMode(options);
   const thinkingPreviewEnabled = resolveThinkingPreviewEnabled(options, personaPkg.voiceProfile);
@@ -2661,20 +2812,48 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           memoryWeights,
           nextRelationship
         );
-        const trace = decide(personaPkg, input, model, {
+        const fictionReadingTurn = shouldTreatTurnAsFictionReading(input, activeReadingSource, readingSourceScope);
+        const effectiveInput = injectAttachments(input, attachedFiles, fetchedUrls, activeReadingSource);
+        const turnExecution = await executeTurnProtocol({
+          rootPath: personaPath,
+          personaPkg,
+          userInput: effectiveInput,
+          model,
           lifeEvents: pastEvents,
           memoryWeights: effectiveWeights,
           recalledMemories: [...recallResult.memories, ...externalKnowledgeMemories],
           recalledMemoryBlocks: [...recallResult.memoryBlocks, ...externalKnowledgeBlocks],
           recallTraceId: recallResult.traceId,
-          safetyContext: adultSafetyContext
+          safetyContext: adultSafetyContext,
+          mode: executionMode
         });
-        const fictionReadingTurn = shouldTreatTurnAsFictionReading(input, activeReadingSource, readingSourceScope);
-        const effectiveInput = injectAttachments(input, attachedFiles, fetchedUrls, activeReadingSource);
-        const messages = compileContext(personaPkg, effectiveInput, trace, {
+        const trace: DecisionTrace = turnExecution.trace ?? {
+          version: "1.0",
+          timestamp: new Date().toISOString(),
+          selectedMemories: [],
+          askClarifyingQuestion: false,
+          refuse: false,
+          riskLevel: "low",
+          reason: "fallback trace",
+          model,
+          executionMode: executionMode === "agent" ? "agent" : "soul"
+        };
+        const messages = turnExecution.mode === "soul"
+          ? compileContext(personaPkg, effectiveInput, trace, {
           lifeEvents: pastEvents,
           safetyContext: adultSafetyContext
-        });
+          })
+          : [];
+        if (turnExecution.mode === "agent" && turnExecution.execution) {
+          await appendLifeEvent(personaPath, {
+            type: "goal_updated",
+            payload: {
+              goalId: turnExecution.execution.goalId,
+              status: turnExecution.execution.status,
+              traceIds: turnExecution.execution.traceIds
+            }
+          });
+        }
         const judgmentAdvice = resolveJudgmentAdvice(activeReadingSource, fictionReadingTurn);
         const personaJudgment = judgePersonaContentLabel({
           userInput: effectiveInput,
@@ -2829,33 +3008,37 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         let streamed = false;
 
         try {
-      const result = await adapter.streamChat(
-        messages,
-        {
-          onToken: (chunk: string) => {
-            assistantContent += chunk;
-            if (!streamRawAssistant) {
-              return;
+      if (turnExecution.mode === "agent") {
+        assistantContent = turnExecution.reply;
+      } else {
+        const result = await adapter.streamChat(
+          messages,
+          {
+            onToken: (chunk: string) => {
+              assistantContent += chunk;
+              if (!streamRawAssistant) {
+                return;
+              }
+              if (!streamed) {
+                process.stdout.write(`${assistantLabel()} `);
+                streamed = true;
+              }
+              process.stdout.write(chunk);
+            },
+            onDone: () => {
+              if (!streamRawAssistant) {
+                return;
+              }
+              if (streamed) {
+                process.stdout.write("\n");
+              }
             }
-            if (!streamed) {
-              process.stdout.write(`${assistantLabel()} `);
-              streamed = true;
-            }
-            process.stdout.write(chunk);
           },
-          onDone: () => {
-            if (!streamRawAssistant) {
-              return;
-            }
-            if (streamed) {
-              process.stdout.write("\n");
-            }
-          }
-        },
-        currentAbort.signal
-      );
+          currentAbort.signal
+        );
 
-      assistantContent = result.content;
+        assistantContent = result.content;
+      }
         } catch (error: unknown) {
       if (error instanceof Error && error.name === "AbortError") {
         aborted = true;
@@ -5211,6 +5394,21 @@ async function main(): Promise<void> {
 
   if (resource === "doctor") {
     await runDoctor(args.options);
+    return;
+  }
+
+  if (resource === "goal") {
+    await runGoal(action, args.options);
+    return;
+  }
+
+  if (resource === "agent") {
+    await runAgentCommand(action, args.options);
+    return;
+  }
+
+  if (resource === "trace") {
+    await runTrace(action, args.options);
     return;
   }
 

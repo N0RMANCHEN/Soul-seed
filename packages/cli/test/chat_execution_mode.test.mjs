@@ -1,0 +1,72 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+import { mkdtemp, readFile } from "node:fs/promises";
+
+const cliPath = path.resolve("dist/index.js");
+
+test("chat supports execution-mode=agent and records goal lifecycle trace", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-chat-agent-mode-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+  const initResult = spawnSync(process.execPath, [cliPath, "init", "--name", "Roxy", "--out", personaPath], {
+    encoding: "utf8"
+  });
+  assert.equal(initResult.status, 0);
+
+  const chatResult = await runInteractive(
+    [cliPath, "chat", "--persona", personaPath, "--execution-mode", "agent"],
+    ["请帮我制定一个可执行计划", "/exit", "确认退出"]
+  );
+  assert.equal(chatResult.status, 0);
+  assert.match(chatResult.stdout, /我会先给出可执行方案并保持人格一致性。|任务执行完成。/);
+
+  const lifeLog = await readFile(path.join(personaPath, "life.log.jsonl"), "utf8");
+  assert.match(lifeLog, /"type":"goal_updated"/);
+});
+
+function runInteractive(args, lines, options = {}) {
+  const intervalMs = Number.isFinite(options.intervalMs) ? Math.max(20, Math.floor(options.intervalMs)) : 80;
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, {
+      env: {
+        ...process.env,
+        DEEPSEEK_API_KEY: "test-key",
+        ...(options.env ?? {})
+      }
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+
+    let index = 0;
+    const timer = setInterval(() => {
+      if (index >= lines.length) {
+        clearInterval(timer);
+        return;
+      }
+      if (!child.killed) {
+        child.stdin.write(`${lines[index]}\n`);
+      }
+      index += 1;
+    }, intervalMs);
+
+    child.on("error", (error) => {
+      clearInterval(timer);
+      reject(error);
+    });
+    child.on("close", (status) => {
+      clearInterval(timer);
+      resolve({ status, stdout, stderr });
+    });
+  });
+}

@@ -87,7 +87,7 @@ npm run build
 ./ss rename --to Nova
 ./ss rename --to Nova --confirm
 ./ss Teddy       # 直接进入 Teddy 会话
-./ss doctor      # 默认体检 Roxy
+./ss doctor      # 默认体检自动发现的 persona
 
 # 6) 退出会话
 # 输入 /exit，或在生成中按 Ctrl+C 中止本轮
@@ -95,7 +95,7 @@ npm run build
 # 7) 详细用法入口
 # 见 doc/CLI.md
 
-# 8) 一键验收（使用隔离 QA persona，不污染 Roxy）
+# 8) 一键验收（使用隔离 QA persona，不污染日常 persona）
 npm run acceptance
 # 验收报告输出到 reports/acceptance/
 
@@ -118,7 +118,7 @@ npm run acceptance
 
 ### Chat / Session
 - `<name>`：主入口，直接进入对应 persona 会话（支持 streaming；支持 Ctrl+C 中止）
-- `chat`：兼容入口（默认仍指向 Roxy）
+- `chat`：兼容入口
 - `session list` / `session open`：可选（P0 可先用单 session）
 
 ### Doctor

@@ -34,3 +34,31 @@ test("normalizeDecisionTrace rejects unsupported version", () => {
     /Unsupported DecisionTrace version/
   );
 });
+
+test("normalizeDecisionTrace keeps execution and consistency fields", () => {
+  const normalized = normalizeDecisionTrace({
+    version: DECISION_TRACE_SCHEMA_VERSION,
+    timestamp: "2026-02-20T00:00:00.000Z",
+    selectedMemories: [],
+    askClarifyingQuestion: false,
+    refuse: false,
+    riskLevel: "low",
+    reason: "agent run",
+    model: "deepseek-chat",
+    executionMode: "agent",
+    goalId: "goal_1",
+    stepId: "step_1",
+    planVersion: 2,
+    consistencyVerdict: "allow",
+    consistencyRuleHits: ["identity", "relational"],
+    consistencyTraceId: "trace_1"
+  });
+
+  assert.equal(normalized.executionMode, "agent");
+  assert.equal(normalized.goalId, "goal_1");
+  assert.equal(normalized.stepId, "step_1");
+  assert.equal(normalized.planVersion, 2);
+  assert.equal(normalized.consistencyVerdict, "allow");
+  assert.deepEqual(normalized.consistencyRuleHits, ["identity", "relational"]);
+  assert.equal(normalized.consistencyTraceId, "trace_1");
+});

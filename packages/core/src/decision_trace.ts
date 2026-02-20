@@ -162,6 +162,22 @@ function normalizeVoiceIntent(value: unknown): DecisionTrace["voiceIntent"] {
   };
 }
 
+function normalizeExecutionMode(value: unknown): DecisionTrace["executionMode"] {
+  return value === "agent" || value === "soul" ? value : undefined;
+}
+
+function normalizeConsistencyVerdict(value: unknown): DecisionTrace["consistencyVerdict"] {
+  return value === "allow" || value === "rewrite" || value === "reject" ? value : undefined;
+}
+
+function normalizePositiveInteger(value: unknown): number | undefined {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return Math.max(0, Math.floor(parsed));
+}
+
 export function isDecisionTraceVersionCompatible(version: unknown): boolean {
   return version === DECISION_TRACE_SCHEMA_VERSION || version === LEGACY_DECISION_TRACE_VERSION;
 }
@@ -203,7 +219,15 @@ export function normalizeDecisionTrace(input: unknown): DecisionTrace {
       ? (input.relationshipStateSnapshot as unknown as DecisionTrace["relationshipStateSnapshot"])
       : undefined,
     recallTraceId: typeof input.recallTraceId === "string" ? input.recallTraceId : undefined,
-    mcpCall: normalizeMcpCall(input.mcpCall)
+    mcpCall: normalizeMcpCall(input.mcpCall),
+    metaTraceId: typeof input.metaTraceId === "string" ? input.metaTraceId : undefined,
+    executionMode: normalizeExecutionMode(input.executionMode),
+    goalId: typeof input.goalId === "string" ? input.goalId : undefined,
+    stepId: typeof input.stepId === "string" ? input.stepId : undefined,
+    planVersion: normalizePositiveInteger(input.planVersion),
+    consistencyVerdict: normalizeConsistencyVerdict(input.consistencyVerdict),
+    consistencyRuleHits: normalizeStringArray(input.consistencyRuleHits, 24),
+    consistencyTraceId: typeof input.consistencyTraceId === "string" ? input.consistencyTraceId : undefined
   };
 
   return normalized;

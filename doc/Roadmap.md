@@ -16,6 +16,7 @@
   - 核心链路（记忆写入/召回/守卫/MCP）功能完整，处于“可用且可回归”状态
   - 当前主要缺口不是功能缺失，而是“质量门禁体系尚未工程化落地”
   - 存在中高优先工程风险（见下方 P3 与“立即执行清单”）
+  - 新增关键断层（2026-02-20 复审）：Constitution 仍主要依赖 prompt 注入，尚未形成“执行前后机械校验”的硬约束链路
 
 ## P0（必须优先完成，阻塞主线）
 
@@ -150,7 +151,65 @@
   - `./ss Teddy` 可直接进入对应人格会话
   - 旧入口 `init/chat` 仍兼容
 
+### P0-9 统一人格执行体验（单入口，不暴露双模式）
+- 状态：`in_progress`
+- 交付：
+  - 用户只感知 `./ss <name>` 统一体验：同一人格既能对话也能执行任务
+  - `--execution-mode` 从用户文档与帮助中移除，改为开发态内部开关
+  - 执行类回复保持 persona 语气，不出现“切换到 agent 模式”心智负担
+- DoD：
+  - 用户文档与 `ss --help` 不再暴露双模式参数
+  - 任务型请求默认由内部编排完成，用户无模式切换感
+  - 回归测试覆盖“统一入口 + 任务执行 + 人格语气保持”
+- 拆分任务：
+  - 从 CLI 帮助与公开文档移除 `--execution-mode`
+  - 将 `execution-mode` 降级为 dev-only（环境变量/调试参数）
+  - 在 `runChat` 主回路统一注入执行协议，保留兼容层但不对用户暴露
+  - 增加人格语气一致性回归用例（任务型输入）
+  - 增加迁移说明：兼容期内旧参数仅用于开发调试
+- 完成记录（2026-02-20）：
+  - `ss --help` 与 `doc/CLI.md` 已移除 `--execution-mode` 用户参数
+  - `--execution-mode` 仅在 `SOULSEED_DEV_MODE=1` 时生效，默认用户不可见
+
+### P0-10 Consistency Kernel v1（软门禁+降级）
+- 状态：`todo`
+- 交付：
+  - 四阶段一致性校验：`pre_plan`、`pre_action`、`post_action`、`pre_reply`
+  - 默认策略：`allow -> rewrite -> degrade -> reject`（软门禁优先）
+  - 降级策略库：禁高风险工具、缩小作用域、改澄清、改只读方案
+- DoD：
+  - 每轮任务链路至少有一次可审计 consistency verdict
+  - 边界冲突优先重写/降级，连续失败才阻断
+  - trace 与 life.log 可追溯规则命中、重写与降级原因
+- 拆分任务：
+  - 定义 `ConsistencyPolicy` 与 stage 级结果结构
+  - 将现有 guard（identity/relational/recall/factual）收敛到 Kernel 统一出口
+  - 接入执行前后校验与降级策略选择器
+  - 为拒绝/降级路径补齐审计事件字段
+  - 增加弱模型/越狱提示词下的回归集
+
 ## P1（高优先，形成可用闭环）
+
+### P1-0 Planner/Executor 闭环（同一人格的决策者+生成者）
+- 状态：`todo`
+- 交付：
+  - 动态 N 步执行循环：`plan -> act -> observe -> replan -> reply`
+  - Planner 由 LLM 推理生成计划步骤（非规则树静态分支）
+  - step 级重规划与停止条件，不再是单步默认完成
+  - 跨轮目标续做能力（同一人格上下文）
+- DoD：
+  - 复杂任务可多步完成且具可解释 trace
+  - `plan/replan` 输出可审计的 LLM 规划痕迹（含理由与约束命中）
+  - 观察结果不足时会自动补步而非提前结束
+  - 跨轮继续任务时人格语气与边界不退化
+- 拆分任务：
+  - 定义 `PlanState/StepPolicy/StopCondition`
+  - 设计 `PlannerPrompt + PlannerOutputSchema`，强制结构化输出（含工具意图、步序、停止条件）
+  - 明确规则树仅用于最小安全兜底，不承担主规划职责
+  - 引入 observation 质量判断器（是否达成目标/是否偏离人格边界）
+  - 在 `runtime.turn` 内接入重规划循环
+  - 接入 `GoalStore` 持久化计划版本与最近观察
+  - 新增跨轮续做与中断恢复测试
 
 ### P1-1 生命周期 v3（激活/情感/叙事/关系）
 - 状态：`done`
@@ -266,6 +325,57 @@
   - `npm test -w @soulseed/mcp-server` -> `16/16` pass
   - `npm test -w @soulseed/core` -> `98/98` pass
   - `npm test -w @soulseed/cli` -> `15/15` pass
+
+### P1-6 GoalStore v2（跨轮目标追踪与续做）
+- 状态：`todo`
+- 交付：
+  - 目标状态机扩展：`pending|active|blocked|completed|canceled|suspended`
+  - 增加跨轮恢复上下文（计划版本、最近观察、下一步建议）
+  - 支持“继续上次任务”自动恢复执行
+- DoD：
+  - 重启后可恢复未完成目标并续做
+  - 用户询问“做到哪一步”可返回可审计进展
+  - goal 事件与 life.log 可一致追溯
+- 拆分任务：
+  - 扩展 `goal_store` 数据结构与迁移路径
+  - 新增 `goal_context` 持久化与恢复接口
+  - 在 chat 主回路接入“自动续做”判定器
+  - 增加跨轮恢复与中断恢复测试
+  - 将 goal 进展写入标准 life events（含 trace refs）
+
+### P1-7 Constitution 执行语义化（去 prompt-only 依赖）
+- 状态：`todo`
+- 交付：
+  - 结构化宪法执行规则（最小 DSL）与命中解释器
+  - `compileContext()` 中宪法文本由“主约束”降级为“解释性上下文”
+  - 高风险边界改为代码门禁，不再仅依赖模型遵从
+- DoD：
+  - 弱模型场景下核心边界仍稳定生效
+  - 每次拒绝/降级都可追溯到规则命中
+  - 宪法版本更新触发规则编译与回归测试
+- 拆分任务：
+  - 定义规则 DSL（boundary/value/exception）与版本策略
+  - 将现有 regex 策略收敛到规则执行器
+  - 输出“命中规则 -> 用户解释”映射，保证可解释性
+  - 增加“越狱提示词/弱模型”回归集合
+  - 将规则编译结果接入 doctor 完整性检查
+
+### P1-8 MCP 与跨端统一运行时协议（Single Runtime Contract）
+- 状态：`todo`
+- 交付：
+  - 统一接口：`runtime.turn`、`runtime.goal.resume`、`runtime.trace.get`
+  - CLI/MCP/Web/iOS 共用同一 turn trace 语义（personaId/turnId/goalId/verdict）
+  - 兼容层：旧 `agent.run` 保留一个版本周期后下线
+- DoD：
+  - 同一任务从 CLI 与 MCP 触发时关键 trace 字段一致
+  - 前端不需要理解内部模式即可消费人格执行能力
+  - 协议版本升级具备兼容策略与回放测试
+- 拆分任务：
+  - 定义 runtime contract schema 与 versioning 策略
+  - mcp-server 增加 `runtime.turn` 并映射到 core 执行协议
+  - CLI 改为调用统一 runtime 接口而非直接拼装分支
+  - 增加跨端一致性回归（CLI vs MCP）
+  - 增加协议降级与兼容层退场计划
 
 ## P2（中高优先，规模化与成本控制）
 
@@ -544,28 +654,36 @@
   - 扩展 `MemoryMeta`
   - 扩展 `LifeEventType`
   - 新增 recall trace 类型
+  - 新增执行一致性字段（`executionMode`、`goalId`、`consistencyVerdict`、`consistencyTraceId`）
 - `packages/core/src/index.ts`
   - 导出 `memory_store`、`memory_recall`、`memory_embeddings`、`memory_consolidation`、`memory_eval`
+  - 导出 `goal_store`、`consistency_kernel`、`agent_engine`、`execution_protocol`
 - `packages/cli/src/index.ts`
   - 新增 `memory` 子命令路由
   - 新增 `memory index/search/recall-trace/eval recall`
   - 新增主动消息控制命令
+  - chat 主回路接入统一执行协议（用户层不暴露双模式）
+  - `--execution-mode` 仅开发态可用（`SOULSEED_DEV_MODE=1`）
 - `packages/mcp-server/src/*`
   - 新增 `memory.search_hybrid`、`memory.recall_trace_get`
+  - 新增 `goal.*`、`agent.run`、`consistency.inspect`、`trace.get`（后续将收敛到 `runtime.turn`）
 - persona 目录
   - 新增 `memory.db`
+  - 新增 `goals/`（goal 文件 + 执行 trace）
   - 新增/维护 `summaries/archive/`
 
 ## 下一阶段里程碑映射（4 周）
-- Week 1：`P3-2` 启动（CI workflow + verify 门禁）+ `P3-5` 指标与 scorecard 骨架
-- Week 2：`P3-5` L0-L2 接入 PR 门禁 + `P3-1` 补齐 orphan memory / embeddings 体检
-- Week 3：`P3-3` 迁移前后召回一致性审计脚本 + `P5-3` 冲突 key 细化
-- Week 4：Nightly L0-L5 跑通 + 发布前门禁演练（含 acceptance 工件）
+- Week 1：`P0-9`（统一体验入口）+ `P0-10`（Consistency Kernel 四阶段接线）+ `P3-2` 验收门禁
+- Week 2：`P1-0`（Planner/Executor 闭环）+ `P1-6`（GoalStore v2 跨轮续做）
+- Week 3：`P1-7`（Constitution 语义化执行）+ `P3-1`（doctor consistency 检查补齐）
+- Week 4：`P1-8`（MCP/跨端统一 runtime contract）+ Nightly L0-L5 门禁演练
 
 ## 验收总表
 - 功能：四类记忆、软遗忘/恢复（调试能力）、完整 CLI memory 命令可用
 - 功能：Hybrid RAG（FTS+向量）与记忆提纯增强命令可用
+- 体验：用户仅感知单人格入口，不感知内部双模式分裂
 - 一致性：life.log hash 链有效，迁移可回滚且对账通过
+- 一致性：任务执行链路具备 stage 级 consistency verdict 与降级记录
 - 可解释：recall trace 全链路可审计
 - 性能：Recall P95 `<=150ms`（不含模型推理）
 - 回归：现有 `chat/rename/doctor` 不退化

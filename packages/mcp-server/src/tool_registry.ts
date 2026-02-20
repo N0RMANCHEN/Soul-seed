@@ -10,6 +10,15 @@ import { runMemorySearchTool } from "./tools/memory_search.js";
 import { runMemorySearchHybridTool } from "./tools/memory_search_hybrid.js";
 import { runMemoryRecallTraceGetTool } from "./tools/memory_recall_trace_get.js";
 import { runMemoryInspectTool } from "./tools/memory_inspect.js";
+import {
+  runAgentRunTool,
+  runConsistencyInspectTool,
+  runGoalCancelTool,
+  runGoalCreateTool,
+  runGoalGetTool,
+  runGoalListTool,
+  runTraceGetTool
+} from "./tools/goal_tools.js";
 
 interface ToolBudget {
   cost: number;
@@ -24,7 +33,14 @@ const TOOL_BUDGET: Record<string, ToolBudget> = {
   "memory.search":          { cost: 1, sessionMax: 50 },
   "memory.search_hybrid":   { cost: 1, sessionMax: 50 },
   "memory.recall_trace_get": { cost: 1, sessionMax: 100 },
-  "memory.inspect":         { cost: 1, sessionMax: 100 }
+  "memory.inspect":         { cost: 1, sessionMax: 100 },
+  "goal.create":            { cost: 1, sessionMax: 100 },
+  "goal.list":              { cost: 1, sessionMax: 200 },
+  "goal.get":               { cost: 1, sessionMax: 200 },
+  "goal.cancel":            { cost: 1, sessionMax: 100 },
+  "agent.run":              { cost: 2, sessionMax: 100 },
+  "consistency.inspect":    { cost: 1, sessionMax: 200 },
+  "trace.get":              { cost: 1, sessionMax: 200 }
 };
 
 const ALLOWED_TOOLS = new Set(Object.keys(TOOL_BUDGET));
@@ -358,6 +374,43 @@ export class ToolRegistry {
           this.personaPath,
           String(args.id ?? "")
         );
+      } else if (toolName === "goal.create") {
+        result = await runGoalCreateTool(this.personaPath, {
+          title: String(args.title ?? ""),
+          summary: typeof args.summary === "string" ? args.summary : undefined,
+          source:
+            args.source === "user" || args.source === "system" || args.source === "mcp"
+              ? args.source
+              : "mcp"
+        });
+      } else if (toolName === "goal.list") {
+        result = await runGoalListTool(this.personaPath, {
+          status: typeof args.status === "string" ? args.status : undefined,
+          limit: typeof args.limit === "number" ? args.limit : undefined
+        });
+      } else if (toolName === "goal.get") {
+        result = await runGoalGetTool(this.personaPath, {
+          goalId: String(args.goalId ?? "")
+        });
+      } else if (toolName === "goal.cancel") {
+        result = await runGoalCancelTool(this.personaPath, {
+          goalId: String(args.goalId ?? "")
+        });
+      } else if (toolName === "agent.run") {
+        result = await runAgentRunTool(this.personaPath, {
+          userInput: String(args.userInput ?? ""),
+          goalId: typeof args.goalId === "string" ? args.goalId : undefined,
+          maxSteps: typeof args.maxSteps === "number" ? args.maxSteps : undefined
+        });
+      } else if (toolName === "consistency.inspect") {
+        result = await runConsistencyInspectTool(this.personaPath, {
+          goalId: typeof args.goalId === "string" ? args.goalId : undefined,
+          limit: typeof args.limit === "number" ? args.limit : undefined
+        });
+      } else if (toolName === "trace.get") {
+        result = await runTraceGetTool(this.personaPath, {
+          traceId: String(args.traceId ?? "")
+        });
       }
 
       await appendLifeEvent(this.personaPath, {

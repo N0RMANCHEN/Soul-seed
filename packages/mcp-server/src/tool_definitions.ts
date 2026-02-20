@@ -161,5 +161,89 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
       required: ["id"]
     }
+  },
+  {
+    name: "goal.create",
+    description: "Create a persistent goal in persona package goal store.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Goal title." },
+        summary: { type: "string", description: "Optional goal summary." },
+        source: { type: "string", description: "Goal source: user/system/mcp." }
+      },
+      required: ["title"]
+    }
+  },
+  {
+    name: "goal.list",
+    description: "List goals in goal store.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Optional goal status filter." },
+        limit: { type: "integer", description: "Max items." }
+      },
+      required: []
+    }
+  },
+  {
+    name: "goal.get",
+    description: "Get one goal by id.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        goalId: { type: "string", description: "Goal id." }
+      },
+      required: ["goalId"]
+    }
+  },
+  {
+    name: "goal.cancel",
+    description: "Cancel one goal by id.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        goalId: { type: "string", description: "Goal id." }
+      },
+      required: ["goalId"]
+    }
+  },
+  {
+    name: "agent.run",
+    description:
+      "Run identity-consistent goal execution loop (goal-planning/execution/consistency gate).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        userInput: { type: "string", description: "Task input for the agent engine." },
+        goalId: { type: "string", description: "Optional existing goal id." },
+        maxSteps: { type: "integer", description: "Max loop steps (default 4)." }
+      },
+      required: ["userInput"]
+    }
+  },
+  {
+    name: "consistency.inspect",
+    description: "Inspect recent consistency traces from goal trace log.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        goalId: { type: "string", description: "Optional goal id filter." },
+        limit: { type: "integer", description: "Max trace rows." }
+      },
+      required: []
+    }
+  },
+  {
+    name: "trace.get",
+    description: "Get one execution trace by trace id.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        traceId: { type: "string", description: "Execution trace id." }
+      },
+      required: ["traceId"]
+    }
   }
 ];

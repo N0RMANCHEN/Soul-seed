@@ -284,7 +284,14 @@ function compactDecisionTrace(trace: Record<string, unknown>): Record<string, un
     memoryBudget: trace.memoryBudget,
     retrievalBreakdown: trace.retrievalBreakdown,
     memoryWeights: trace.memoryWeights,
-    voiceIntent: trace.voiceIntent ?? null
+    voiceIntent: trace.voiceIntent ?? null,
+    executionMode: trace.executionMode ?? "soul",
+    goalId: trace.goalId ?? null,
+    stepId: trace.stepId ?? null,
+    planVersion: trace.planVersion ?? null,
+    consistencyVerdict: trace.consistencyVerdict ?? null,
+    consistencyRuleHits: trace.consistencyRuleHits ?? null,
+    consistencyTraceId: trace.consistencyTraceId ?? null
   };
 }
 

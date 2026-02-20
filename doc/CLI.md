@@ -27,7 +27,7 @@ cp .env.example .env
 ```
 
 说明：
-- 默认 persona 路径：`./personas/Roxy.soulseedpersona`（兼容模式）
+- 若未指定 `--persona`：会自动尝试发现 `./personas/*.soulseedpersona`；若不存在则提示先创建
 - 推荐主路径：`./ss new <name>` + `./ss <name>`
 - 验收请使用隔离 QA persona：`npm run acceptance`
 - 涉及在线链路变更时，提交前应附 `reports/acceptance/*` 报告
@@ -69,7 +69,9 @@ cp .env.example .env
 - `./ss <name>` 是主入口，会映射到 `./personas/<name>.soulseedpersona`
 - 如果人格不存在，会询问是否创建（确认后走 `new` 流程）
 - 模型优先级：`--model` > persona `defaultModel` > `deepseek-chat`
-- `chat` 保留为兼容入口（默认仍可指向 Roxy）
+- 对用户默认是统一人格执行体验：系统会自动在内部进行“对话/执行”编排
+- 开发调试可通过环境变量 `SOULSEED_EXECUTION_MODE` 控制内部执行策略（不作为普通用户参数）
+- `chat` 保留为兼容入口
 
 `chat` 内部命令：
 - 主路径：自然语言触发能力（读文件、查看能力、查看模式、退出）
@@ -144,6 +146,13 @@ npm run build -w @soulseed/mcp-server
 - `memory.search_hybrid`
 - `memory.recall_trace_get`
 - `memory.inspect`
+- `goal.create`
+- `goal.list`
+- `goal.get`
+- `goal.cancel`
+- `agent.run`
+- `consistency.inspect`
+- `trace.get`
 
 ### 3.5 Memory 控制面命令（含调试）
 
@@ -289,13 +298,13 @@ npm run build -w @soulseed/mcp-server
 ./ss new Teddy --quick --template peer --model deepseek-reasoner
 ./ss Teddy
 ./ss Teddy --model deepseek-chat
-./ss chat --persona ./personas/Roxy.soulseedpersona --model deepseek-chat  # 兼容入口
-./ss rename --persona ./personas/Roxy.soulseedpersona --to Nova
-./ss rename --persona ./personas/Roxy.soulseedpersona --to Nova --confirm
-./ss memory list --persona ./personas/Roxy.soulseedpersona --limit 50 --state warm
-./ss memory forget --persona ./personas/Roxy.soulseedpersona --id <memory_id> --mode soft
-./ss memory recover --persona ./personas/Roxy.soulseedpersona --id <memory_id>
-./ss mcp --persona ./personas/Roxy.soulseedpersona
+./ss chat --persona ./personas/Teddy.soulseedpersona --model deepseek-chat  # 兼容入口
+./ss rename --persona ./personas/Teddy.soulseedpersona --to Nova
+./ss rename --persona ./personas/Teddy.soulseedpersona --to Nova --confirm
+./ss memory list --persona ./personas/Teddy.soulseedpersona --limit 50 --state warm
+./ss memory forget --persona ./personas/Teddy.soulseedpersona --id <memory_id> --mode soft
+./ss memory recover --persona ./personas/Teddy.soulseedpersona --id <memory_id>
+./ss mcp --persona ./personas/Teddy.soulseedpersona
 ./ss mcp --transport http --host 127.0.0.1 --port 8787
 ./ss mcp --transport http --host 0.0.0.0 --port 8787 --auth-token your-secret-token
 ```
@@ -331,10 +340,10 @@ npm run build -w @soulseed/mcp-server
 
 ```bash
 # 本机调试（仅本机访问）
-./ss mcp --persona ./personas/Roxy.soulseedpersona --transport http --host 127.0.0.1 --port 8787
+./ss mcp --persona ./personas/Teddy.soulseedpersona --transport http --host 127.0.0.1 --port 8787
 
 # 需要 token 时
-./ss mcp --persona ./personas/Roxy.soulseedpersona --transport http --host 127.0.0.1 --port 8787 --auth-token your-secret-token
+./ss mcp --persona ./personas/Teddy.soulseedpersona --transport http --host 127.0.0.1 --port 8787 --auth-token your-secret-token
 ```
 
 步骤 2：确认服务可用

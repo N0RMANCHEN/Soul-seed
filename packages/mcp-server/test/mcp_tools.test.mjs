@@ -219,3 +219,52 @@ test("session capability owner auth enables set_mode in current session", async 
     process.env.SOULSEED_OWNER_KEY = prevOwnerKey;
   }
 });
+
+test("goal tools and agent run are callable via registry", async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "ss-mcp-goal-tools-"));
+  const { personaPath, personaPkg } = await makeTestPersona(tmp);
+  const registry = createTestRegistry({ personaPath, personaPkg });
+
+  const created = await registry.dispatch("goal.create", { title: "整理这次任务并输出结果" });
+  assert.ok(!created.isError);
+  const createdParsed = JSON.parse(created.content[0].text);
+  assert.equal(createdParsed.status, "ok");
+  assert.equal(typeof createdParsed.goal.id, "string");
+
+  const listed = await registry.dispatch("goal.list", {});
+  const listedParsed = JSON.parse(listed.content[0].text);
+  assert.equal(Array.isArray(listedParsed.items), true);
+  assert.equal(listedParsed.items.length >= 1, true);
+
+  const goalId = createdParsed.goal.id;
+  const got = await registry.dispatch("goal.get", { goalId });
+  const gotParsed = JSON.parse(got.content[0].text);
+  assert.equal(gotParsed.found, true);
+  assert.equal(gotParsed.goal.id, goalId);
+
+  const ran = await registry.dispatch("agent.run", {
+    userInput: "请读取一个文件并总结",
+    goalId,
+    maxSteps: 2
+  });
+  const ranParsed = JSON.parse(ran.content[0].text);
+  assert.equal(ranParsed.status, "ok");
+  assert.equal(typeof ranParsed.execution.goalId, "string");
+  assert.equal(Array.isArray(ranParsed.execution.traceIds), true);
+
+  const traces = await registry.dispatch("consistency.inspect", { goalId, limit: 10 });
+  const tracesParsed = JSON.parse(traces.content[0].text);
+  assert.equal(Array.isArray(tracesParsed.items), true);
+
+  if (ranParsed.execution.traceIds.length > 0) {
+    const traceId = ranParsed.execution.traceIds[0];
+    const oneTrace = await registry.dispatch("trace.get", { traceId });
+    const oneTraceParsed = JSON.parse(oneTrace.content[0].text);
+    assert.equal(oneTraceParsed.found === true || oneTraceParsed.found === false, true);
+  }
+
+  const canceled = await registry.dispatch("goal.cancel", { goalId });
+  const canceledParsed = JSON.parse(canceled.content[0].text);
+  assert.equal(canceledParsed.found, true);
+  assert.equal(canceledParsed.goal.status, "canceled");
+});
