@@ -3,7 +3,7 @@ import { runAgentExecution, type AgentToolExecutor } from "./agent_engine.js";
 import { DECISION_TRACE_SCHEMA_VERSION, normalizeDecisionTrace } from "./decision_trace.js";
 import { decideDualProcessRoute } from "./dual_process_router.js";
 import { runRuntimePipeline, type RuntimeStageTrace } from "./runtime_pipeline.js";
-import type { AdultSafetyContext, ExecutionResult, ModelAdapter, PersonaPackage } from "./types.js";
+import type { AdultSafetyContext, DecisionTrace, ExecutionResult, ModelAdapter, PersonaPackage } from "./types.js";
 
 export interface ExecuteTurnResult {
   mode: "soul" | "agent";
@@ -53,23 +53,12 @@ export async function executeTurnProtocol(params: {
   const taskLike = /(帮我|请你|完成|实现|整理|执行|读取|分析|写|修复|任务|todo|implement|build|plan)/iu.test(params.userInput);
   const shouldUseAgent =
     desiredMode === "agent" || (desiredMode === "auto" && routeDecision.route === "deliberative" && taskLike);
+
   const pipeline = await runRuntimePipeline({
     userInput: params.userInput,
     route: routeDecision.route,
     routeReasonCodes: routeDecision.reasonCodes,
-    decideMode: () => (shouldUseAgent ? "agent" : "soul"),
-    runAgent: async () => {
-      const execution = await runAgentExecution({
-        rootPath: params.rootPath,
-        personaPkg: params.personaPkg,
-        userInput: params.userInput,
-        goalId: params.goalId,
-        maxSteps: params.maxSteps,
-        toolExecutor: params.toolExecutor,
-        plannerAdapter: params.plannerAdapter
-      });
-      return { execution };
-    },
+    // EA-0: Soul always runs first; agentRequest is set on the trace to signal whether agent is needed
     runSoul: async () => {
       const trace = decide(params.personaPkg, params.userInput, params.model, {
         lifeEvents: params.lifeEvents,
@@ -79,22 +68,49 @@ export async function executeTurnProtocol(params: {
         recallTraceId: params.recallTraceId,
         safetyContext: params.safetyContext
       });
-      trace.executionMode = "soul";
+      trace.executionMode = shouldUseAgent ? "agent" : "soul";
+      // EA-0: Populate agentRequest so pipeline knows whether to invoke agent
+      trace.agentRequest = {
+        needed: shouldUseAgent,
+        agentType: "retrieval",  // default; EA-3 will specialize based on task semantics
+        riskLevel: desiredMode === "agent" ? "medium" : "low",
+        requiresConfirmation: false
+      };
       return { trace };
+    },
+    // EA-0: Agent receives soul trace as context; links back via soulTraceId
+    runAgent: async (soulTrace: DecisionTrace) => {
+      const execution = await runAgentExecution({
+        rootPath: params.rootPath,
+        personaPkg: params.personaPkg,
+        userInput: params.userInput,
+        goalId: params.goalId,
+        maxSteps: params.maxSteps,
+        toolExecutor: params.toolExecutor,
+        plannerAdapter: params.plannerAdapter,
+        // EA-3: pass agentType from soul trace for tool whitelist enforcement
+        agentType: soulTrace.agentRequest?.agentType ?? "action"
+      });
+      // Link agent execution back to soul trace
+      execution.soulTraceId = soulTrace.recallTraceId;
+      return { execution };
     }
   });
 
   if (pipeline.mode === "agent" && pipeline.execution) {
+    // EA-0: soul trace is now always present in agent mode (pipeline.trace != null)
+    const soulTrace = pipeline.trace;
     return {
       mode: "agent",
       reply: pipeline.reply,
       trace: normalizeDecisionTrace({
+        ...(soulTrace ?? {}),
         version: DECISION_TRACE_SCHEMA_VERSION,
-        timestamp: new Date().toISOString(),
-        selectedMemories: [],
-        askClarifyingQuestion: false,
+        timestamp: soulTrace?.timestamp ?? new Date().toISOString(),
+        selectedMemories: soulTrace?.selectedMemories ?? [],
+        askClarifyingQuestion: soulTrace?.askClarifyingQuestion ?? false,
         refuse: pipeline.execution.consistencyVerdict === "reject",
-        riskLevel: pipeline.execution.status === "blocked" ? "medium" : "low",
+        riskLevel: pipeline.execution.status === "blocked" ? "medium" : (soulTrace?.riskLevel ?? "low"),
         reason: pipeline.execution.status === "blocked" ? "agent execution blocked" : "agent execution completed",
         model: params.model,
         executionMode: "agent",
@@ -104,7 +120,8 @@ export async function executeTurnProtocol(params: {
         planVersion: pipeline.execution.planState?.version ?? 1,
         consistencyVerdict: pipeline.execution.consistencyVerdict,
         consistencyRuleHits: pipeline.execution.consistencyRuleHits,
-        consistencyTraceId: pipeline.execution.consistencyTraceId
+        consistencyTraceId: pipeline.execution.consistencyTraceId,
+        agentRequest: soulTrace?.agentRequest
       }),
       execution: pipeline.execution,
       pipelineStages: pipeline.stages

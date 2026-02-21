@@ -287,5 +287,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
       required: ["traceId"]
     }
+  },
+  {
+    name: "identity.update_voice_on_evolution",
+    description:
+      "P4-1: Update the persona's own stance on their evolution direction (personaVoiceOnEvolution ≤100 chars). Call this when the persona (through conversation) expresses a position about how they want to grow or change. Records triggeredBy=persona in life.log.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        voice: {
+          type: "string",
+          description: "The persona's stance on their evolution direction (≤100 chars)."
+        }
+      },
+      required: ["voice"]
+    }
   }
 ];

@@ -2,13 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 import { appendLifeEvent, readLifeEvents } from "./persona.js";
 import { ensureMemoryStore, runMemoryStoreSql } from "./memory_store.js";
 import { normalizePreferredNameCandidate } from "./profile.js";
-import type { LifeEvent } from "./types.js";
+import type { LifeEvent, ModelAdapter } from "./types.js";
 
 export interface MemoryConsolidationOptions {
   trigger?: string;
   mode?: "light" | "full";
   budgetMs?: number;
   conflictPolicy?: "newest" | "trusted";
+  /** EB-3: LLM adapter for semantic extraction (full mode only) */
+  llmAdapter?: ModelAdapter;
 }
 
 export interface MemoryConsolidationReport {
@@ -26,6 +28,8 @@ export interface MemoryConsolidationReport {
   conflictRecordsWritten: number;
   pinCandidates: string[];
   consolidationRunId: string;
+  /** EB-3: extraction path used */
+  consolidationAssessmentPath?: "semantic" | "regex_fallback";
 }
 
 interface ConsolidationCandidate {
@@ -34,6 +38,8 @@ interface ConsolidationCandidate {
   evidenceLevel: "verified" | "derived";
   sourceEventHash: string;
   credibilityScore: number;
+  /** EB-3: [distinctiveness, emotional_salience, actionability] */
+  salience_latent?: number[];
 }
 
 const PREFERENCE_PATTERNS = [
@@ -70,7 +76,19 @@ export async function runMemoryConsolidation(
       .filter((event) => event.type === "user_message")
       .slice(mode === "full" ? -800 : -120);
 
-    const candidates = extractCandidatesFromEvents(sourceEvents, startMs, budgetMs);
+    // EB-3: Use semantic extraction in full mode when llmAdapter is provided
+    let candidates: ConsolidationCandidate[];
+    let consolidationAssessmentPath: "semantic" | "regex_fallback" = "regex_fallback";
+    if (mode === "full" && options?.llmAdapter) {
+      try {
+        candidates = await extractCandidatesFromEventsSemantic(sourceEvents, options.llmAdapter);
+        consolidationAssessmentPath = "semantic";
+      } catch {
+        candidates = extractCandidatesFromEvents(sourceEvents, startMs, budgetMs);
+      }
+    } else {
+      candidates = extractCandidatesFromEvents(sourceEvents, startMs, budgetMs);
+    }
     const existing = await fetchExistingSemanticSet(rootPath);
     const activeSemantics = await fetchActiveSemanticMemories(rootPath);
     const deduped = new Map<string, ConsolidationCandidate>();
@@ -170,7 +188,8 @@ export async function runMemoryConsolidation(
       conflictsDetected,
       conflictRecordsWritten: conflictStatements.length,
       pinCandidates: [...pinCandidates].slice(0, 8),
-      consolidationRunId
+      consolidationRunId,
+      consolidationAssessmentPath
     };
 
     await appendLifeEvent(rootPath, {
@@ -211,6 +230,103 @@ export async function runMemoryConsolidation(
       pinCandidates: [],
       consolidationRunId
     };
+  }
+}
+
+/** EB-3: Semantic extraction using LLM (full mode only) */
+async function extractCandidatesFromEventsSemantic(
+  events: LifeEvent[],
+  llmAdapter: ModelAdapter
+): Promise<ConsolidationCandidate[]> {
+  const texts = events
+    .slice(-40)
+    .map((e) => (typeof e.payload.text === "string" ? e.payload.text.trim() : ""))
+    .filter((t) => t.length > 0);
+
+  if (texts.length === 0) {
+    return [];
+  }
+
+  const prefixes = [
+    "用户偏好：",
+    "用户称呼：",
+    "交互偏好流程：",
+    "用户特征：",
+    "用户背景："
+  ].join("、");
+  const prompt = [
+    "请从以下用户消息中提炼记忆片段。输出 JSON 数组，每项包含字段：",
+    `- content: 记忆内容（以${prefixes}之一开头）`,
+    "- salience: 显著度 0.0~1.0",
+    "- salience_latent: [独特性, 情感显著度, 可操作性] 各 0.0~1.0",
+    '- evidenceLevel: "verified" 或 "derived"',
+    "- credibilityScore: 0.0~1.0",
+    "只输出 JSON 数组，不要其他内容。若无可提炼内容则输出 []。",
+    "",
+    "用户消息：",
+    texts.map((t, i) => `[${i + 1}] ${t}`).join("\n")
+  ].join("\n");
+
+  let raw = "";
+  await llmAdapter.streamChat(
+    [{ role: "user", content: prompt }],
+    {
+      onToken: (token: string) => {
+        raw += token;
+      },
+      onDone: () => {}
+    },
+    undefined
+  );
+
+  try {
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      return [];
+    }
+    const parsed = JSON.parse(jsonMatch[0]) as unknown[];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const out: ConsolidationCandidate[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const rec = item as Record<string, unknown>;
+      const content = typeof rec.content === "string" ? rec.content.trim() : "";
+      if (!content || content.length < 4) {
+        continue;
+      }
+      const salience =
+        typeof rec.salience === "number" ? Math.max(0, Math.min(1, rec.salience)) : 0.6;
+      const credibilityScore =
+        typeof rec.credibilityScore === "number"
+          ? Math.max(0, Math.min(1, rec.credibilityScore))
+          : 0.85;
+      const evidenceLevel: "verified" | "derived" =
+        rec.evidenceLevel === "verified" ? "verified" : "derived";
+
+      let salience_latent: number[] | undefined;
+      if (Array.isArray(rec.salience_latent) && rec.salience_latent.length === 3) {
+        salience_latent = (rec.salience_latent as unknown[]).map((v) =>
+          typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5
+        );
+      }
+
+      out.push({
+        content: content.slice(0, 240),
+        salience,
+        evidenceLevel,
+        sourceEventHash: events[0]?.hash ?? "semantic",
+        credibilityScore,
+        salience_latent
+      });
+    }
+    return out;
+  } catch {
+    return [];
   }
 }
 

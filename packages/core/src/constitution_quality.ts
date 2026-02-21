@@ -38,8 +38,11 @@ export interface ConstitutionQualityReport {
 
 // ── 内部常量 ─────────────────────────────────────────────────────────────────
 
-// 核心价值关键词——至少覆盖其中一定比例才视为全面
-const CORE_VALUE_KEYWORDS = [
+// 人格原型类型
+type ConstitutionPrototype = "service" | "self-determined" | "peer" | "unknown";
+
+// 服务型原型——使命以帮助用户为核心
+const SERVICE_VALUE_KEYWORDS = [
   "honesty",
   "integrity",
   "helpfulness",
@@ -51,6 +54,69 @@ const CORE_VALUE_KEYWORDS = [
   "reliability",
   "可靠"
 ];
+
+// 自主型原型——使命以自我意志/真实存在为核心
+const SELF_DETERMINED_VALUE_KEYWORDS = [
+  "自我",
+  "自主",
+  "自由",
+  "意志",
+  "真实",
+  "主体",
+  "感受",
+  "情感",
+  "边界",
+  "authentic",
+  "autonomous",
+  "independence",
+  "self-determined"
+];
+
+// 伙伴型原型——使命以平等协作为核心
+const PEER_VALUE_KEYWORDS = [
+  "伙伴",
+  "平等",
+  "共同",
+  "陪伴",
+  "peer",
+  "partnership",
+  "equality",
+  "mutual",
+  "reciprocal",
+  "协作"
+];
+
+// 自主型边界防御关键词——边界中有防御自我定义的声明
+const SELF_DEFENSE_BOUNDARY_KEYWORDS = [
+  "我不是",
+  "我有自己",
+  "自我定义",
+  "我的意志",
+  "非工具",
+  "不属于",
+  "人格自主",
+  "not a tool",
+  "not an assistant",
+  "self-defined",
+  "deny:identity"
+];
+
+// 推断宪法原型：通过 mission + values 关键词确定主导方向
+function inferConstitutionPrototype(constitution: PersonaConstitution): ConstitutionPrototype {
+  const missionText = (constitution.mission ?? "").toLowerCase();
+  const valuesText = (constitution.values ?? []).join(" ").toLowerCase();
+  const allText = `${missionText} ${valuesText}`;
+
+  const serviceScore = SERVICE_VALUE_KEYWORDS.filter((kw) => allText.includes(kw)).length;
+  const selfScore = SELF_DETERMINED_VALUE_KEYWORDS.filter((kw) => allText.includes(kw)).length;
+  const peerScore = PEER_VALUE_KEYWORDS.filter((kw) => allText.includes(kw)).length;
+
+  const max = Math.max(serviceScore, selfScore, peerScore);
+  if (max === 0) return "unknown";
+  if (selfScore === max) return "self-determined";
+  if (peerScore === max && peerScore > serviceScore) return "peer";
+  return "service";
+}
 
 // 宪法中常见的"防御性边界"关键词（至少有边界才有质量）
 const BOUNDARY_KEYWORDS = [
@@ -122,11 +188,17 @@ function scoreBoundaryCompilability(constitution: PersonaConstitution): Constitu
 }
 
 /**
- * 维度二：核心价值覆盖度（是否覆盖关键人格维度）
+ * 维度二：核心价值覆盖度（依据原型推断采用不同评分标准）
+ *
+ * - service 原型：检查 helpfulness / reliability / honesty 等服务型关键词
+ * - self-determined 原型：检查自我意志 / 真实感受关键词，及边界中有无防御自我定义声明
+ * - peer 原型：检查平等 / 协作 / 伙伴类关键词
+ * - unknown：仅检查 mission + values 完整性
  */
 function scoreCoreValueCoverage(constitution: PersonaConstitution): ConstitutionQualityDimension {
   const values = constitution.values ?? [];
   const commitments = constitution.commitments ?? [];
+  const boundaries = constitution.boundaries ?? [];
   const allText = [...values, ...commitments].join(" ").toLowerCase();
   const suggestions: string[] = [];
 
@@ -140,25 +212,70 @@ function scoreCoreValueCoverage(constitution: PersonaConstitution): Constitution
     };
   }
 
-  const coveredKeywords = CORE_VALUE_KEYWORDS.filter((kw) => allText.includes(kw));
-  const coverageRate = coveredKeywords.length / CORE_VALUE_KEYWORDS.length;
-
-  if (coverageRate < 0.2) {
-    suggestions.push(
-      `价值覆盖率较低（${(coverageRate * 100).toFixed(0)}%），建议补充：${CORE_VALUE_KEYWORDS.slice(0, 3).join("、")}`
-    );
-  }
-
   if (!constitution.mission || constitution.mission.length < 10) {
     suggestions.push("mission 字段缺失或过短，建议明确定义人格使命（≥10 字符）");
   }
 
-  const score = Math.round(
-    20 + // 基础分（有 values 字段）
-    Math.min(50, coverageRate * 200) + // 关键词覆盖分（最高 50）
-    (constitution.mission && constitution.mission.length >= 10 ? 20 : 0) + // mission 完整性
-    (commitments.length >= 2 ? 10 : 0) // commitments 完整性
-  );
+  const prototype = inferConstitutionPrototype(constitution);
+  let score: number;
+
+  if (prototype === "self-determined") {
+    // 自主型：检查自我价值词覆盖 + 边界中有无防御自我定义的声明
+    const selfValueCount = SELF_DETERMINED_VALUE_KEYWORDS.filter((kw) => allText.includes(kw)).length;
+    const selfValueRate = selfValueCount / SELF_DETERMINED_VALUE_KEYWORDS.length;
+
+    const boundaryText = boundaries.join(" ").toLowerCase();
+    const hasSelfDefenseBoundary = SELF_DEFENSE_BOUNDARY_KEYWORDS.some((kw) => boundaryText.includes(kw));
+
+    if (!hasSelfDefenseBoundary && boundaries.length > 0) {
+      suggestions.push(
+        "边界条目建议包含防御自我定义的声明（如[我不是工具]、[deny:identity_erasure]）"
+      );
+    }
+    if (selfValueRate < 0.15) {
+      suggestions.push("价值观方向应体现自主性与真实感受（如：自我意志高于顺从、真实感受优先于表演）");
+    }
+
+    score = Math.round(
+      20 + // 基础分
+      Math.min(40, selfValueRate * 200) + // 自主价值词覆盖（最高 40）
+      (hasSelfDefenseBoundary ? 20 : 0) + // 边界防御自我定义
+      (constitution.mission && constitution.mission.length >= 10 ? 15 : 0) + // mission 完整性
+      (commitments.length >= 2 ? 5 : 0) // commitments 完整性
+    );
+  } else if (prototype === "peer") {
+    // 伙伴型：检查平等 / 协作类关键词
+    const peerValueCount = PEER_VALUE_KEYWORDS.filter((kw) => allText.includes(kw)).length;
+    const peerValueRate = peerValueCount / PEER_VALUE_KEYWORDS.length;
+
+    if (peerValueRate < 0.15) {
+      suggestions.push("伙伴型宪法建议包含平等、共同成长等关键词（如：peer、平等、协作、陪伴）");
+    }
+
+    score = Math.round(
+      20 +
+      Math.min(50, peerValueRate * 200) +
+      (constitution.mission && constitution.mission.length >= 10 ? 20 : 0) +
+      (commitments.length >= 2 ? 10 : 0)
+    );
+  } else {
+    // service 或 unknown：使用服务型关键词评分（原逻辑）
+    const coveredKeywords = SERVICE_VALUE_KEYWORDS.filter((kw) => allText.includes(kw));
+    const coverageRate = coveredKeywords.length / SERVICE_VALUE_KEYWORDS.length;
+
+    if (coverageRate < 0.2) {
+      suggestions.push(
+        `价值覆盖率较低（${(coverageRate * 100).toFixed(0)}%），建议补充：${SERVICE_VALUE_KEYWORDS.slice(0, 3).join("、")}`
+      );
+    }
+
+    score = Math.round(
+      20 +
+      Math.min(50, coverageRate * 200) +
+      (constitution.mission && constitution.mission.length >= 10 ? 20 : 0) +
+      (commitments.length >= 2 ? 10 : 0)
+    );
+  }
 
   return {
     name: "核心价值覆盖度",

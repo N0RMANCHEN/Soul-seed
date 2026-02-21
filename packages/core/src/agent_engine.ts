@@ -35,6 +35,29 @@ export interface AgentToolExecutor {
   }) => Promise<ExecutionObservation>;
 }
 
+/**
+ * EA-3: Agent 类型白名单工具集
+ * - retrieval: 只读，低风险，自动执行
+ * - transform: 只读变换，低风险，自动执行
+ * - capture: 只写 event log，中等风险，自动执行
+ * - action: 全工具集，高风险，默认要求确认
+ */
+export const AGENT_TOOL_WHITELIST: Record<string, readonly string[]> = {
+  retrieval: ["memory.search", "session.read_file", "session.fetch_url", "http.fetch", "workspace.read"],
+  transform: ["memory.search", "session.read_file", "workspace.read"],
+  capture: ["session.log_event"],
+  action: [] // empty = no restriction (full toolset)
+};
+
+export function isToolAllowedForAgentType(
+  toolName: string,
+  agentType: "retrieval" | "transform" | "capture" | "action"
+): boolean {
+  if (agentType === "action") return true; // full toolset
+  const allowed = AGENT_TOOL_WHITELIST[agentType] ?? [];
+  return allowed.includes(toolName);
+}
+
 export async function runAgentExecution(params: {
   rootPath: string;
   personaPkg: PersonaPackage;
@@ -44,6 +67,8 @@ export async function runAgentExecution(params: {
   toolExecutor?: AgentToolExecutor;
   plannerAdapter?: ModelAdapter;
   signal?: AbortSignal;
+  /** EA-3: Agent 类型，用于限制可用工具集 */
+  agentType?: "retrieval" | "transform" | "capture" | "action";
 }): Promise<ExecutionResult> {
   const maxSteps = Number.isFinite(params.maxSteps) ? Math.max(1, Math.min(12, Math.floor(params.maxSteps as number))) : 4;
   let goal: Goal;
@@ -269,9 +294,23 @@ export async function runAgentExecution(params: {
       }
     }
 
+    // EA-3: whitelist check before tool execution
+    const toolNameForCheck = action.toolName ?? "unknown";
+    const agentType = params.agentType ?? "action";
+    if (!isToolAllowedForAgentType(toolNameForCheck, agentType)) {
+      finalStatus = "blocked";
+      finalVerdict = "reject";
+      finalReply = `工具 "${toolNameForCheck}" 不在 ${agentType} 类型 Agent 的允许工具集内，执行被阻断。`;
+      stopCondition = {
+        kind: "blocked_by_consistency",
+        reason: `tool_not_allowed_for_agent_type:${agentType}`
+      };
+      break;
+    }
+
     const observation = params.toolExecutor
       ? await params.toolExecutor.run({
-          toolName: action.toolName ?? "unknown",
+          toolName: toolNameForCheck,
           input: action.toolInput ?? {},
           signal: params.signal
         })

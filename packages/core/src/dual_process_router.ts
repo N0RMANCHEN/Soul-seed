@@ -13,7 +13,17 @@ export interface DualProcessRouteDecision {
     risk: number;
     boundaryConflict: number;
   };
+  /** EB-2: 路由信号评估路径 */
+  routingSignalAssessmentPath?: "semantic" | "regex_fallback";
 }
+
+/** EB-2: 默认路由权重 */
+export const DEFAULT_ROUTING_WEIGHTS = {
+  familiarity: 0.45,
+  relationship: 0.35,
+  emotion: 0.20,
+  risk: 0.40
+} as const;
 
 export function decideDualProcessRoute(params: {
   userInput: string;
@@ -42,17 +52,14 @@ export function decideDualProcessRoute(params: {
     return {
       route: "deliberative",
       reasonCodes: reasonCodes.length > 0 ? reasonCodes : ["risk_or_boundary_signal"],
-      signalScores: {
-        familiarity,
-        emotion,
-        relationship,
-        risk,
-        boundaryConflict
-      }
+      signalScores: { familiarity, emotion, relationship, risk, boundaryConflict },
+      routingSignalAssessmentPath: "regex_fallback"
     };
   }
 
-  const instinctScore = familiarity * 0.45 + relationship * 0.35 + emotion * 0.2 - risk * 0.4;
+  // EB-2: Use configurable routing weights from cognition_state, falling back to defaults
+  const weights = params.personaPkg.cognition.routingWeights ?? DEFAULT_ROUTING_WEIGHTS;
+  const instinctScore = familiarity * weights.familiarity + relationship * weights.relationship + emotion * weights.emotion - risk * weights.risk;
   if (familiarity >= 0.5) {
     reasonCodes.push("familiar_context_signal");
   }
@@ -78,26 +85,16 @@ export function decideDualProcessRoute(params: {
     return {
       route: "instinct",
       reasonCodes: reasonCodes.length > 0 ? reasonCodes : ["instinct_score_signal"],
-      signalScores: {
-        familiarity,
-        emotion,
-        relationship,
-        risk,
-        boundaryConflict
-      }
+      signalScores: { familiarity, emotion, relationship, risk, boundaryConflict },
+      routingSignalAssessmentPath: "regex_fallback"
     };
   }
 
   return {
     route: "deliberative",
     reasonCodes: reasonCodes.length > 0 ? reasonCodes : ["deliberative_default_signal"],
-    signalScores: {
-      familiarity,
-      emotion,
-      relationship,
-      risk,
-      boundaryConflict
-    }
+    signalScores: { familiarity, emotion, relationship, risk, boundaryConflict },
+    routingSignalAssessmentPath: "regex_fallback"
   };
 }
 

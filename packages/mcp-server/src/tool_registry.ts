@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { appendLifeEvent } from "@soulseed/core";
+import { appendLifeEvent, updatePersonaVoiceOnEvolution } from "@soulseed/core";
 import { listCapabilityDefinitions, resolveCapabilityIntent, evaluateCapabilityPolicy } from "@soulseed/core";
 import type { PersonaPackage } from "@soulseed/core";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -46,7 +46,8 @@ const TOOL_BUDGET: Record<string, ToolBudget> = {
   "trace.get":              { cost: 1, sessionMax: 200 },
   "runtime.turn":           { cost: 2, sessionMax: 200 },
   "runtime.goal.resume":    { cost: 2, sessionMax: 200 },
-  "runtime.trace.get":      { cost: 1, sessionMax: 200 }
+  "runtime.trace.get":      { cost: 1, sessionMax: 200 },
+  "identity.update_voice_on_evolution": { cost: 1, sessionMax: 20 }
 };
 
 const ALLOWED_TOOLS = new Set(Object.keys(TOOL_BUDGET));
@@ -435,6 +436,14 @@ export class ToolRegistry {
         result = await runRuntimeTraceGetTool(this.personaPath, {
           traceId: String(args.traceId ?? "")
         });
+      } else if (toolName === "identity.update_voice_on_evolution") {
+        const voice = typeof args.voice === "string" ? args.voice : "";
+        if (!voice.trim()) {
+          result = { ok: false, error: "voice is required" };
+        } else {
+          const updated = await updatePersonaVoiceOnEvolution(this.personaPath, voice, "persona");
+          result = { ok: true, personaVoiceOnEvolution: updated.personaVoiceOnEvolution };
+        }
       }
 
       await appendLifeEvent(this.personaPath, {

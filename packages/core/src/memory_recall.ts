@@ -116,6 +116,25 @@ const DEFAULT_BUDGET: RecallBudget = {
   injectCharMax: 2200
 };
 
+/**
+ * P4-0: 记忆不确定性分级
+ * credibility < 0.6 or age > 60 days → "uncertain"
+ */
+export function computeMemoryUncertainty(row: {
+  credibilityScore?: number;
+  reconsolidationCount?: number;
+  updatedAt?: string;
+}): "certain" | "uncertain" {
+  const credibility = row.credibilityScore ?? 1.0;
+  if (credibility < 0.6) return "uncertain";
+  if (row.updatedAt) {
+    const ageMs = Date.now() - Date.parse(row.updatedAt);
+    const ageDays = ageMs / 86_400_000;
+    if (ageDays > 60) return "uncertain";
+  }
+  return "certain";
+}
+
 const WORD_PATTERN = /[\p{L}\p{N}_]+/gu;
 const SIMILARITY_THRESHOLD = 0.85;
 const INTERFERENCE_PENALTY = 0.08;
@@ -415,7 +434,8 @@ export async function recallMemoriesWithTrace(
     memoryBlocks: injectedRows.map((item) => ({
       id: item.row.id,
       source: item.row.originRole,
-      content: item.row.content
+      content: item.row.content,
+      uncertaintyLevel: computeMemoryUncertainty(item.row)
     })),
     selectedIds: injectedRows.map((item) => item.row.id),
     traceId,

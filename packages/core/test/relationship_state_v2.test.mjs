@@ -145,6 +145,7 @@ test("high libido shifts memory weights toward emotion and away from rational ch
 // P0-1 regression: high-intimacy state should be classified as "intimate"
 test("computeOverall weights (P0-1): intimacy=0.82 gives state=intimate", () => {
   // Roxy's actual dimensions as of 2026-02-21
+  // updatedAt must be recent to avoid idle-decay collapsing all dimensions to baseline
   const base = createInitialRelationshipState();
   const state = {
     ...base,
@@ -155,7 +156,8 @@ test("computeOverall weights (P0-1): intimacy=0.82 gives state=intimate", () => 
       reciprocity: 0.74,
       stability: 0.692,
       libido: 0.62
-    }
+    },
+    updatedAt: new Date().toISOString()
   };
   // evolveRelationshipState recomputes overall/state each turn
   const next = evolveRelationshipState(state, "嗯", []);

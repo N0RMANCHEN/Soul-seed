@@ -4,11 +4,15 @@ import path from "node:path";
 import { runMemoryStoreSql } from "./memory_store.js";
 import type {
   LifeEvent,
+  ModelAdapter,
   RelationshipDimensions,
   RelationshipDriver,
   RelationshipState,
   VoiceProfile
 } from "./types.js";
+
+/** EB-5: Relationship latent vector dimensionality */
+export const RELATIONSHIP_LATENT_DIM = 64;
 
 const RELATIONSHIP_IDLE_GRACE_MS = 20 * 60 * 1000;
 const RELATIONSHIP_DECAY_INTERVAL_MS = 60 * 60 * 1000;
@@ -25,6 +29,78 @@ const LIBIDO_AROUSAL_MIN_START = 0.22;
 const AROUSAL_IMPRINT_GAIN_ON_CLIMAX = 0.04;
 const AROUSAL_IMPRINT_MAX = 0.36;
 const LIBIDO_EXTREME_PROACTIVE_START = 0.86;
+
+/**
+ * EB-5: Create the baseline 64-dim relationship latent vector.
+ * Dims 0-5 correspond to named relationship dimensions; rest are 0.
+ */
+export function createRelationshipLatentBaseline(): number[] {
+  const z = new Array<number>(RELATIONSHIP_LATENT_DIM).fill(0.0);
+  // Seed from dimension baselines so latent is not cold-start zero
+  z[0] = 0.45; // trust
+  z[1] = 0.48; // safety
+  z[2] = 0.25; // intimacy
+  z[3] = 0.35; // reciprocity
+  z[4] = 0.45; // stability
+  z[5] = 0.35; // libido
+  return z;
+}
+
+/**
+ * EB-5: Project latent vector to named RelationshipDimensions (dims 0-5).
+ * Backward compatible — named dimensions are still the projection interface.
+ */
+export function projectRelationshipLatent(z: number[]): RelationshipDimensions {
+  if (z.length < 6) {
+    return {
+      trust: 0.45, safety: 0.48, intimacy: 0.25,
+      reciprocity: 0.35, stability: 0.45, libido: 0.35
+    };
+  }
+  return {
+    trust: clamp01(z[0]),
+    safety: clamp01(z[1]),
+    intimacy: clamp01(z[2]),
+    reciprocity: clamp01(z[3]),
+    stability: clamp01(z[4]),
+    libido: clamp01(z[5])
+  };
+}
+
+/**
+ * EB-5: Apply a delta update to the latent vector (small-step lerp, dims 0-5 only).
+ * Uses alpha to prevent large jumps.
+ */
+export function updateRelationshipLatent(
+  z: number[],
+  delta: Partial<RelationshipDimensions>,
+  alpha = 0.15
+): number[] {
+  if (z.length < RELATIONSHIP_LATENT_DIM) {
+    return z;
+  }
+  const next = [...z];
+  const keys: (keyof RelationshipDimensions)[] = ["trust", "safety", "intimacy", "reciprocity", "stability", "libido"];
+  const dimIdx = [0, 1, 2, 3, 4, 5];
+  for (let i = 0; i < keys.length; i++) {
+    const d = delta[keys[i]];
+    if (typeof d === "number" && Number.isFinite(d)) {
+      next[dimIdx[i]] = clamp01(next[dimIdx[i]] + alpha * d);
+    }
+  }
+  return next;
+}
+
+/**
+ * EB-5: Validate a relationship latent vector.
+ */
+export function isRelationshipLatentValid(z: unknown): z is number[] {
+  return (
+    Array.isArray(z) &&
+    z.length === RELATIONSHIP_LATENT_DIM &&
+    (z as unknown[]).every((v) => typeof v === "number" && Number.isFinite(v))
+  );
+}
 
 const RELATIONSHIP_DIMENSION_BASELINE: RelationshipDimensions = {
   trust: 0.45,
@@ -362,6 +438,74 @@ export function evolveRelationshipStateFromAssistant(
   return evolveWithSignal(normalizedCurrent, "assistant", signals, deltas);
 }
 
+export interface RelationshipSemanticEvolutionResult {
+  state: RelationshipState;
+  signalAssessmentPath: "semantic" | "regex_fallback";
+}
+
+/**
+ * EC-4: 关系状态语义演化
+ * 使用 LLM 评估对话对中的关系信号强度，输出各维度 delta[-0.03, +0.03]。
+ * LLM 不可用时 fallback 到现有正则路径。
+ */
+export async function evolveRelationshipStateSemantic(
+  state: RelationshipState,
+  userInput: string,
+  assistantOutput: string,
+  llmAdapter?: ModelAdapter
+): Promise<RelationshipSemanticEvolutionResult> {
+  if (!llmAdapter) {
+    // Fallback: run both regex functions and return
+    const afterUser = evolveRelationshipState(state, userInput, []);
+    const afterBoth = evolveRelationshipStateFromAssistant(afterUser, assistantOutput, []);
+    return { state: afterBoth, signalAssessmentPath: "regex_fallback" };
+  }
+
+  try {
+    const prompt = `Analyze this conversation exchange and evaluate how it affects the relationship between the user and persona. Output a JSON object with delta values for each relationship dimension. Each delta must be in the range [-0.03, +0.03] where positive = strengthened, negative = weakened, 0 = no change.
+
+Dimensions:
+- trust: reliability, honesty, following through
+- safety: emotional safety, non-judgment, comfort
+- intimacy: closeness, personal sharing, warmth
+- reciprocity: mutual engagement, balance, giving/receiving
+- stability: consistency, predictability
+- libido: romantic/sexual tension (0 if not applicable)
+
+User message: "${userInput.slice(0, 300)}"
+Assistant response: "${assistantOutput.slice(0, 300)}"
+
+Respond with ONLY valid JSON. Example: {"trust":0.01,"safety":0.008,"intimacy":0.015,"reciprocity":0.005,"stability":0.003,"libido":0}`;
+
+    let collectedText = "";
+    await llmAdapter.streamChat(
+      [{ role: "user", content: prompt }],
+      { onToken: (tok: string) => { collectedText += tok; }, onDone: () => {} }
+    );
+
+    const parsed = JSON.parse(collectedText.trim()) as Record<string, unknown>;
+    const clampDelta = (v: unknown): number => Math.max(-0.03, Math.min(0.03, Number(v ?? 0)));
+
+    const deltas: Partial<RelationshipDimensions> = {
+      trust:       clampDelta(parsed.trust),
+      safety:      clampDelta(parsed.safety),
+      intimacy:    clampDelta(parsed.intimacy),
+      reciprocity: clampDelta(parsed.reciprocity),
+      stability:   clampDelta(parsed.stability),
+      libido:      clampDelta(parsed.libido)
+    };
+    const signals = ["semantic_assessment"];
+    const normalizedCurrent = normalizeRelationshipState(state as unknown as Record<string, unknown>);
+    const evolved = evolveWithSignal(normalizedCurrent, "user", signals, deltas);
+    return { state: evolved, signalAssessmentPath: "semantic" };
+  } catch {
+    // LLM call failed → fallback to regex
+    const afterUser = evolveRelationshipState(state, userInput, []);
+    const afterBoth = evolveRelationshipStateFromAssistant(afterUser, assistantOutput, []);
+    return { state: afterBoth, signalAssessmentPath: "regex_fallback" };
+  }
+}
+
 function evolveWithSignal(
   current: RelationshipState,
   source: RelationshipDriver["source"],
@@ -431,11 +575,20 @@ function evolveWithSignal(
       })
     : current.drivers;
 
+  // EB-5: Update latent vector with applied deltas (small-step)
+  const currentLatent = isRelationshipLatentValid(current.relationshipLatent)
+    ? current.relationshipLatent
+    : undefined;
+  const nextLatent = currentLatent !== undefined
+    ? updateRelationshipLatent(currentLatent, bounded)
+    : undefined;
+
   return buildRelationshipState({
     dimensions: nextDimensions,
     arousalImprint: nextArousalImprint,
     drivers,
-    updatedAt: now.toISOString()
+    updatedAt: now.toISOString(),
+    relationshipLatent: nextLatent
   });
 }
 
@@ -444,9 +597,36 @@ function buildRelationshipState(params: {
   arousalImprint?: number;
   drivers: RelationshipDriver[];
   updatedAt: string;
+  relationshipLatent?: number[];
 }): RelationshipState {
   const normalizedDimensions = normalizeDimensions(params.dimensions);
   const overall = computeOverall(normalizedDimensions);
+
+  // EB-5: Initialize or sync latent from named dimensions
+  let relationshipLatent = params.relationshipLatent;
+  if (!isRelationshipLatentValid(relationshipLatent)) {
+    // Cold start: initialize from named dimension values
+    const z = createRelationshipLatentBaseline();
+    z[0] = normalizedDimensions.trust;
+    z[1] = normalizedDimensions.safety;
+    z[2] = normalizedDimensions.intimacy;
+    z[3] = normalizedDimensions.reciprocity;
+    z[4] = normalizedDimensions.stability;
+    z[5] = normalizedDimensions.libido;
+    relationshipLatent = z;
+  } else {
+    // Keep latent dims 0-5 in sync with named dimensions (latent is authoritative,
+    // but on build we sync to ensure consistency)
+    const synced = [...relationshipLatent];
+    synced[0] = normalizedDimensions.trust;
+    synced[1] = normalizedDimensions.safety;
+    synced[2] = normalizedDimensions.intimacy;
+    synced[3] = normalizedDimensions.reciprocity;
+    synced[4] = normalizedDimensions.stability;
+    synced[5] = normalizedDimensions.libido;
+    relationshipLatent = synced;
+  }
+
   return {
     state: mapOverallToState(overall),
     confidence: roundTo2(overall),
@@ -455,7 +635,8 @@ function buildRelationshipState(params: {
     arousalImprint: roundTo4(clamp01(params.arousalImprint ?? 0)),
     drivers: params.drivers.slice(-MAX_DRIVERS),
     version: "3",
-    updatedAt: params.updatedAt
+    updatedAt: params.updatedAt,
+    relationshipLatent
   };
 }
 
@@ -475,11 +656,18 @@ function normalizeRelationshipState(raw: Record<string, unknown>): RelationshipS
   const dimensions = normalizeDimensionsFromRaw(raw.dimensions, legacyState, resolvedOverall);
   const arousalImprint = normalizeArousalImprint(raw.arousalImprint);
   const drivers = normalizeDrivers(raw.drivers);
+  // EB-5: Preserve existing latent if valid
+  const rawLatent = Array.isArray(raw.relationshipLatent) ? raw.relationshipLatent as unknown[] : undefined;
+  const relationshipLatent = rawLatent !== undefined && rawLatent.length === RELATIONSHIP_LATENT_DIM &&
+    rawLatent.every((v) => typeof v === "number" && Number.isFinite(v))
+    ? rawLatent as number[]
+    : undefined;
   return buildRelationshipState({
     dimensions,
     arousalImprint,
     drivers,
-    updatedAt
+    updatedAt,
+    relationshipLatent
   });
 }
 
@@ -892,7 +1080,8 @@ export async function reconcileRelationshipWithMemory(
         trust: roundTo4(nextDimensions.trust - current.trust)
       }
     }),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    relationshipLatent: relationshipState.relationshipLatent
   });
 
   await writeRelationshipState(rootPath, nextState);

@@ -239,8 +239,36 @@ export function normalizeDecisionTrace(input: unknown): DecisionTrace {
     routeDecision: normalizeRouteDecision(input.routeDecision),
     routeReasonCodes: normalizeStringArray(input.routeReasonCodes, 16),
     routeTag: normalizeRouteTag(input.routeTag),
-    modelUsed: typeof input.modelUsed === "string" && input.modelUsed.trim() ? input.modelUsed.trim() : undefined
+    modelUsed: typeof input.modelUsed === "string" && input.modelUsed.trim() ? input.modelUsed.trim() : undefined,
+    agentRequest: normalizeAgentRequest(input.agentRequest),
+    soulTraceId: typeof input.soulTraceId === "string" && input.soulTraceId ? input.soulTraceId : undefined,
+    riskLatent: normalizeRiskLatent(input.riskLatent),
+    riskAssessmentPath: (input.riskAssessmentPath === "semantic" || input.riskAssessmentPath === "regex_fallback")
+      ? input.riskAssessmentPath
+      : undefined
   };
 
   return normalized;
+}
+
+function normalizeRiskLatent(raw: unknown): [number, number, number] | undefined {
+  if (!Array.isArray(raw) || raw.length < 3) return undefined;
+  const clamp = (v: unknown) => Math.max(0, Math.min(1, Number(v) || 0));
+  return [clamp(raw[0]), clamp(raw[1]), clamp(raw[2])];
+}
+
+function normalizeAgentRequest(raw: unknown): DecisionTrace["agentRequest"] {
+  if (!isRecord(raw)) return undefined;
+  const agentTypes = ["retrieval", "transform", "capture", "action"] as const;
+  const riskLevels = ["low", "medium", "high"] as const;
+  return {
+    needed: raw.needed === true,
+    agentType: (agentTypes as readonly unknown[]).includes(raw.agentType)
+      ? (raw.agentType as "retrieval" | "transform" | "capture" | "action")
+      : "retrieval",
+    riskLevel: (riskLevels as readonly unknown[]).includes(raw.riskLevel)
+      ? (raw.riskLevel as "low" | "medium" | "high")
+      : "low",
+    requiresConfirmation: raw.requiresConfirmation === true
+  };
 }

@@ -11,7 +11,8 @@ import {
   patchRelationshipState,
   patchWorldview,
   patchVoiceProfile,
-  loadPersonaPackage
+  loadPersonaPackage,
+  crystallizeTopicsOfInterest
 } from "../dist/index.js";
 
 test("patchHabits and patchVoiceProfile persist revisions", async () => {
@@ -29,6 +30,36 @@ test("patchHabits and patchVoiceProfile persist revisions", async () => {
   assert.equal(habits.adaptability, "high");
   assert.equal(voice.tonePreference, "warm");
   assert.equal(voice.stancePreference, "peer");
+});
+
+// P1-1: habits extended fields
+test("patchHabits persists P1-1 extended fields", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-habits-extended-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+  await initPersonaPackage(personaPath, "Roxy");
+
+  await patchHabits(personaPath, {
+    quirks: ["会在思考时用省略号", "偶尔反问"],
+    topicsOfInterest: ["宇宙", "音乐", "代码"],
+    humorStyle: "dry",
+    conflictBehavior: "hold-ground"
+  });
+
+  const habits = JSON.parse(await readFile(path.join(personaPath, "habits.json"), "utf8"));
+  assert.deepEqual(habits.quirks, ["会在思考时用省略号", "偶尔反问"]);
+  assert.deepEqual(habits.topicsOfInterest, ["宇宙", "音乐", "代码"]);
+  assert.equal(habits.humorStyle, "dry");
+  assert.equal(habits.conflictBehavior, "hold-ground");
+});
+
+test("crystallizeTopicsOfInterest returns no-update for empty memory db", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-topics-empty-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+  await initPersonaPackage(personaPath, "Roxy");
+
+  const result = await crystallizeTopicsOfInterest(personaPath);
+  assert.equal(result.updated, false);
+  assert.deepEqual(result.topics, []);
 });
 
 test("patchRelationshipState updates dimensions within clamp", async () => {

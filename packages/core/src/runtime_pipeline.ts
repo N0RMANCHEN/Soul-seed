@@ -28,13 +28,18 @@ export interface RuntimePipelineResult {
   metaReview?: MetaReviewDecision;
 }
 
+/**
+ * EA-0: Soul-first pipeline.
+ * `runSoul()` always executes first and returns a `DecisionTrace` with `agentRequest` populated.
+ * Agent is invoked only if `trace.agentRequest?.needed === true`.
+ * `decideMode` is no longer a parameter — the soul makes this decision.
+ */
 export async function runRuntimePipeline(params: {
   userInput: string;
   route: CognitiveRoute;
   routeReasonCodes: string[];
-  decideMode: () => "soul" | "agent";
   runSoul: () => Promise<{ trace: DecisionTrace }>;
-  runAgent: () => Promise<{ execution: ExecutionResult }>;
+  runAgent: (soulTrace: DecisionTrace) => Promise<{ execution: ExecutionResult }>;
 }): Promise<RuntimePipelineResult> {
   const now = () => new Date().toISOString();
   const stages: RuntimeStageTrace[] = [];
@@ -48,24 +53,30 @@ export async function runRuntimePipeline(params: {
   };
 
   pushStage("perception", `stimulus_received:${params.userInput.trim().slice(0, 80)}`);
-  const mode = params.decideMode();
 
-  // Idea stage: record actual routing decision and intent signals
+  // EA-0: Soul always runs first — never bypassed
+  const { trace } = await params.runSoul();
+  const agentNeeded = trace.agentRequest?.needed === true;
+
+  // Idea stage: reflect soul's routing decision + agent intent
   const ideaSummary = [
     `route:${params.route}`,
-    `mode:${mode}`,
+    `mode:${agentNeeded ? "agent" : "soul"}`,
     `signals:${params.routeReasonCodes.join(",")}`,
     params.routeReasonCodes.includes("high_emotion_signal") ? "emotional_context:true" : "",
-    params.routeReasonCodes.includes("relationship_intimacy_signal") ? "intimacy_context:true" : ""
+    params.routeReasonCodes.includes("relationship_intimacy_signal") ? "intimacy_context:true" : "",
+    agentNeeded ? `agent_type:${trace.agentRequest?.agentType ?? "retrieval"}` : ""
   ].filter(Boolean).join(";");
   pushStage("idea", ideaSummary);
 
-  if (mode === "agent") {
-    const { execution } = await params.runAgent();
+  if (agentNeeded) {
+    // Agent runs with soul trace as context
+    const { execution } = await params.runAgent(trace);
     const agentDelibSummary = [
       `planner_source:${execution.planState?.plannerSource ?? "unknown"}`,
       `steps:${execution.steps?.length ?? 0}`,
-      `stop_kind:${execution.stopCondition?.kind ?? "none"}`
+      `stop_kind:${execution.stopCondition?.kind ?? "none"}`,
+      `soul_trace_id:${trace.recallTraceId ?? "none"}`
     ].join(";");
     pushStage("deliberation", agentDelibSummary);
     pushStage("meta_review", `consistency_verdict:${execution.consistencyVerdict};degrade_reasons:${execution.consistencyDegradeReasons?.join(",") ?? "none"}`);
@@ -75,15 +86,13 @@ export async function runRuntimePipeline(params: {
       route: params.route,
       routeReasonCodes: params.routeReasonCodes,
       reply: execution.reply,
-      trace: null,
+      trace,  // EA-0: soul trace is always present, even in agent mode
       execution,
       stages
     };
   }
 
-  const { trace } = await params.runSoul();
-
-  // Deliberation stage: summarize what the decision trace captured
+  // Soul-only path
   const soulDelibSummary = [
     `risk_level:${trace.riskLevel ?? "low"}`,
     `refuse:${trace.refuse ? "yes" : "no"}`,
@@ -92,8 +101,6 @@ export async function runRuntimePipeline(params: {
     `voice_intent:${trace.voiceIntent ? JSON.stringify(trace.voiceIntent).slice(0, 60) : "default"}`
   ].join(";");
   pushStage("deliberation", soulDelibSummary);
-
-  // Meta-review stage: note that LLM meta-review will run post-generation in CLI
   pushStage("meta_review", `pre_generation_consistency:pending;post_generation_meta_review:scheduled`);
   pushStage("commit", `turn_committed;route:${params.route}`);
 

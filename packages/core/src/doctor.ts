@@ -4,6 +4,9 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { inspectMemoryStore, MEMORY_SCHEMA_VERSION, runMemoryStoreSql } from "./memory_store.js";
 import { ensureScarForBrokenLifeLog, readLifeEvents, MAX_REPRODUCTION_COUNT } from "./persona.js";
+import { isMoodStateValid, isMoodLatentValid, MOOD_STATE_FILENAME, MOOD_LATENT_DIM, createMoodLatentBaseline } from "./mood_state.js";
+import { isRelationshipLatentValid, RELATIONSHIP_LATENT_DIM, createRelationshipLatentBaseline } from "./relationship_state.js";
+import { isVoiceLatentValid, isBeliefLatentValid, VOICE_LATENT_DIM, BELIEF_LATENT_DIM, createVoiceLatentBaseline, createBeliefLatentBaseline } from "./expression_belief_state.js";
 import { inspectBoundaryRules } from "./constitution_rules.js";
 import { loadSocialGraph, validateSocialGraph, MAX_SOCIAL_PERSONS } from "./social_graph.js";
 import { MAX_USER_FACTS } from "./memory_user_facts.js";
@@ -23,6 +26,7 @@ const REQUIRED_FILES = [
   "relationship_state.json",
   "soul_lineage.json",
   "voice_profile.json",
+  MOOD_STATE_FILENAME,
   "life.log.jsonl",
   "memory.db"
 ];
@@ -49,7 +53,7 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
     const persona = await readJson<{ id?: string; schemaVersion?: string; paths?: Record<string, unknown> }>(
       path.join(rootPath, "persona.json")
     );
-    const identity = await readJson<{ personaId?: string }>(path.join(rootPath, "identity.json"));
+    const identity = await readJson<{ personaId?: string; schemaVersion?: string; selfDescription?: string; personalityCore?: unknown[] }>(path.join(rootPath, "identity.json"));
     const constitution = await readJson<{ mission?: string; boundaries?: unknown }>(path.join(rootPath, "constitution.json"));
     const worldview = await readJson<Record<string, unknown>>(path.join(rootPath, "worldview.json"));
     const habits = await readJson<Record<string, unknown>>(path.join(rootPath, "habits.json"));
@@ -155,6 +159,19 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
       });
     }
 
+    // P2-0: mood_state.json validity check
+    const moodStateRaw = await readJson<Record<string, unknown>>(
+      path.join(rootPath, MOOD_STATE_FILENAME)
+    ).catch(() => null);
+    if (!moodStateRaw || !isMoodStateValid(moodStateRaw)) {
+      issues.push({
+        code: "invalid_mood_state",
+        severity: "warning",
+        message: "mood_state.json is missing or invalid. Run ss persona init or ss doctor --fix to regenerate.",
+        path: MOOD_STATE_FILENAME
+      });
+    }
+
     if (!identity.personaId || typeof identity.personaId !== "string") {
       issues.push({
         code: "invalid_identity_persona_id",
@@ -167,6 +184,17 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
         code: "persona_id_mismatch",
         severity: "error",
         message: "persona.json id and identity.json personaId mismatch",
+        path: "identity.json"
+      });
+    }
+
+    // P1-0: identity v2 schema check (completeness check deferred until after events are loaded)
+    const identityIsV2 = identity.schemaVersion === "2.0";
+    if (!identityIsV2) {
+      issues.push({
+        code: "identity_schema_outdated",
+        severity: "hint",
+        message: "identity.json is using v1 schema (no selfDescription/personalityCore). Run ss persona identity --migrate to upgrade.",
         path: "identity.json"
       });
     }
@@ -229,6 +257,25 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
     }
 
     const events = await readLifeEvents(rootPath);
+
+    // P1-0: identity completeness — only fire when persona has conversation history
+    if (identityIsV2 && events.length > 0) {
+      const hasSelfDesc = typeof identity.selfDescription === "string" && identity.selfDescription.trim().length > 0;
+      const hasCoreTraits = Array.isArray(identity.personalityCore) && identity.personalityCore.length >= 1;
+      if (!hasSelfDesc || !hasCoreTraits) {
+        issues.push({
+          code: "identity_incomplete",
+          severity: "hint",
+          message: [
+            "identity.json is incomplete:",
+            !hasSelfDesc ? "selfDescription empty" : "",
+            !hasCoreTraits ? "personalityCore empty" : ""
+          ].filter(Boolean).join(" ") + ". Use ss persona identity --edit to fill in.",
+          path: "identity.json"
+        });
+      }
+    }
+
     const workingSet = await readWorkingSet(rootPath);
     for (const [idx, event] of events.entries()) {
       const eventPath = `life.log.jsonl:${idx + 1}`;
@@ -393,6 +440,9 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
       });
     }
 
+    // EC-2: Latent vector health check
+    issues.push(...(await checkLatentHealth(rootPath)));
+
     // P2-4: Constitution crystallization file size limits
     issues.push(...(await inspectCrystallizationFileSizes(rootPath)));
 
@@ -404,7 +454,7 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
   }
 
   return {
-    ok: issues.length === 0,
+    ok: issues.filter((i) => i.severity !== "hint").length === 0,
     checkedAt: new Date().toISOString(),
     issues
   };
@@ -791,7 +841,7 @@ function isSoulLineageValid(payload: Record<string, unknown>, expectedPersonaId:
     reproductionCount >= 0 &&
     (lastReproducedAt == null || isIsoDate(lastReproducedAt)) &&
     inheritancePolicy === "values_plus_memory_excerpt" &&
-    consentMode === "default_consent"
+    (consentMode === "default_consent" || consentMode === "require_roxy_voice" || consentMode === "roxy_veto")
   );
 }
 
@@ -1599,6 +1649,57 @@ function safeJsonParse(raw: string): unknown | null {
 
 function sha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/** EC-2: Check the health of all latent vectors (validity, homogeneity, excessive drift). */
+async function checkLatentHealth(rootPath: string): Promise<DoctorIssue[]> {
+  const issues: DoctorIssue[] = [];
+
+  let cognitionRaw: Record<string, unknown> | null = null;
+  let relationshipRaw: Record<string, unknown> | null = null;
+  let moodRaw: Record<string, unknown> | null = null;
+  try { cognitionRaw = JSON.parse(await readFile(path.join(rootPath, "cognition_state.json"), "utf8")) as Record<string, unknown>; } catch { /* skip */ }
+  try { relationshipRaw = JSON.parse(await readFile(path.join(rootPath, "relationship_state.json"), "utf8")) as Record<string, unknown>; } catch { /* skip */ }
+  try { moodRaw = JSON.parse(await readFile(path.join(rootPath, MOOD_STATE_FILENAME), "utf8")) as Record<string, unknown>; } catch { /* skip */ }
+
+  type IsValid = (z: unknown) => z is number[];
+  const latents: Array<{ name: string; filePath: string; raw: unknown; dim: number; baseline: number[]; isValid: IsValid }> = [
+    { name: "moodLatent",         filePath: MOOD_STATE_FILENAME,       raw: moodRaw?.moodLatent,         dim: MOOD_LATENT_DIM,         baseline: createMoodLatentBaseline(),         isValid: isMoodLatentValid as IsValid },
+    { name: "relationshipLatent", filePath: "relationship_state.json", raw: relationshipRaw?.relationshipLatent, dim: RELATIONSHIP_LATENT_DIM, baseline: createRelationshipLatentBaseline(), isValid: isRelationshipLatentValid as IsValid },
+    { name: "voiceLatent",        filePath: "cognition_state.json",    raw: cognitionRaw?.voiceLatent,   dim: VOICE_LATENT_DIM,        baseline: createVoiceLatentBaseline(),        isValid: isVoiceLatentValid as IsValid },
+    { name: "beliefLatent",       filePath: "cognition_state.json",    raw: cognitionRaw?.beliefLatent,  dim: BELIEF_LATENT_DIM,       baseline: createBeliefLatentBaseline(),       isValid: isBeliefLatentValid as IsValid },
+  ];
+
+  const DRIFT_THRESHOLD = 0.45;
+
+  for (const { name, filePath, raw, dim, baseline, isValid } of latents) {
+    if (raw == null) {
+      // relationshipLatent is optional until first conversation; others should exist after init
+      continue;
+    }
+    if (!isValid(raw)) {
+      issues.push({ code: "latent_invalid", severity: "warning", message: `${name} in ${filePath} is invalid (expected ${dim}-dim finite-number array)`, path: filePath });
+      continue;
+    }
+    const z = raw as number[];
+    // Degradation: variance < 0.001 → hint (vector hasn't evolved)
+    const mean = z.reduce((s, v) => s + v, 0) / z.length;
+    const variance = z.reduce((s, v) => s + (v - mean) ** 2, 0) / z.length;
+    if (variance < 0.001) {
+      issues.push({ code: "latent_homogeneous", severity: "hint", message: `${name} is highly homogeneous (variance=${variance.toFixed(5)}); the vector may not have evolved yet`, path: filePath });
+    }
+    // Excessive drift: report the worst-offending dimension
+    let maxDrift = 0;
+    let maxDriftIdx = -1;
+    for (let i = 0; i < z.length; i++) {
+      const d = Math.abs(z[i] - (baseline[i] ?? 0));
+      if (d > maxDrift) { maxDrift = d; maxDriftIdx = i; }
+    }
+    if (maxDrift > DRIFT_THRESHOLD) {
+      issues.push({ code: "latent_excessive_drift", severity: "warning", message: `${name}[${maxDriftIdx}] drifted ${maxDrift.toFixed(3)} from baseline (threshold=${DRIFT_THRESHOLD})`, path: filePath });
+    }
+  }
+  return issues;
 }
 
 async function readWorkingSet(rootPath: string): Promise<{ summaryIds: Set<string>; count: number }> {

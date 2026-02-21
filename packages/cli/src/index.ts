@@ -148,7 +148,34 @@ import {
   MAX_GOLDEN_EXAMPLES,
   MAX_CHARS_PER_EXAMPLE,
   DEFAULT_FEWSHOT_BUDGET_CHARS,
-  reconcileRelationshipWithMemory
+  reconcileRelationshipWithMemory,
+  listVoicePhrases,
+  addVoicePhrase,
+  removeVoicePhrase,
+  extractPhraseCandidatesFromLifeLog,
+  loadMoodState,
+  evolveMoodStateFromTurn,
+  writeMoodState,
+  createInitialMoodState,
+  MOOD_STATE_FILENAME,
+  loadAutobiography,
+  appendAutobiographyChapter,
+  updateSelfUnderstanding,
+  generateArcSummary,
+  loadSelfReflection,
+  appendSelfReflectionEntry,
+  shouldTriggerSelfReflection,
+  shouldRequestReviewFromReflection,
+  extractDriftSignalsFromEvents,
+  updatePersonaVoiceOnEvolution,
+  loadInterests,
+  crystallizeInterests,
+  computeInterestCuriosity,
+  updateConsentMode,
+  generateReproductionConsentStatement,
+  ensureSoulLineageArtifacts,
+  adaptRoutingWeightsFromHistory,
+  DEFAULT_ROUTING_WEIGHTS
 } from "@soulseed/core";
 import type {
   AdultSafetyContext,
@@ -1106,6 +1133,20 @@ async function runPersonaReproduce(options: Record<string, string | boolean>): P
     : undefined;
   const forced = options["force-all"] === true;
   const parentPkg = await loadPersonaPackage(personaPath);
+  const lineage = await ensureSoulLineageArtifacts(personaPath, parentPkg.persona.id);
+
+  // P5-1: 元同意检查
+  if (!forced && lineage.consentMode !== "default_consent") {
+    const statement = await generateReproductionConsentStatement(personaPath, childName);
+    console.log(`\n── ${parentPkg.persona.displayName} 的立场声明 ──`);
+    console.log(statement);
+    if (lineage.consentMode === "roxy_veto") {
+      console.log(`\n[roxy_veto] 繁衍已被 Roxy 的元同意设置拦截。如需强制繁衍，请使用 --force-all 参数。`);
+      return;
+    }
+    console.log(`\n[require_roxy_voice] 立场声明已记录到 life.log，继续繁衍...\n`);
+  }
+
   await appendLifeEvent(personaPath, {
     type: "reproduction_intent_detected",
     payload: {
@@ -1140,6 +1181,39 @@ async function runPersonaReproduce(options: Record<string, string | boolean>): P
   console.log(`child_persona_id=${result.childPersonaId}`);
   if (result.spiritualLegacy.length > 0) {
     console.log(`精神遗产摘录已写入 spiritual_legacy.txt（${result.spiritualLegacy.length} 字符）`);
+  }
+}
+
+async function runPersonaConsentMode(
+  subAction: string | undefined,
+  options: Record<string, string | boolean>
+): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const pkg = await loadPersonaPackage(personaPath);
+  const lineage = await ensureSoulLineageArtifacts(personaPath, pkg.persona.id);
+  if (subAction === "set") {
+    const modeOpt = options.mode;
+    const valid = ["default_consent", "require_roxy_voice", "roxy_veto"];
+    if (typeof modeOpt !== "string" || !valid.includes(modeOpt)) {
+      console.log(`用法：ss persona consent-mode set --mode <default_consent|require_roxy_voice|roxy_veto>`);
+      return;
+    }
+    const updated = await updateConsentMode(personaPath, modeOpt as "default_consent" | "require_roxy_voice" | "roxy_veto");
+    console.log(`consentMode 已更新：${updated.consentMode}`);
+  } else {
+    const modeDesc: Record<string, string> = {
+      "default_consent": "默认同意（繁衍/重大操作无需立场声明）",
+      "require_roxy_voice": "需要表达（繁衍/重大操作前生成并记录立场声明）",
+      "roxy_veto": "实验性拦截（繁衍前生成立场声明；若模式启用，会阻止操作并要求 --force-all）"
+    };
+    console.log(`当前 consentMode：${lineage.consentMode}`);
+    console.log(`说明：${modeDesc[lineage.consentMode] ?? "未知"}`);
+    console.log(`\n可选模式：`);
+    for (const [mode, desc] of Object.entries(modeDesc)) {
+      const marker = mode === lineage.consentMode ? "* " : "  ";
+      console.log(`${marker}${mode}  —  ${desc}`);
+    }
+    console.log(`\n设置：ss persona consent-mode set --mode <mode> [--persona <path>]`);
   }
 }
 
@@ -1256,6 +1330,292 @@ async function runPersonaModelRouting(options: Record<string, string | boolean>)
   const formatted = formatModelRoutingConfig(updated.modelRouting, defaultModel);
   console.log(`模型路由已更新：`);
   console.log(`  ${formatted}`);
+}
+
+// P1-2: voice-phrases CLI
+async function runPersonaVoicePhrases(
+  subAction: string | undefined,
+  options: Record<string, string | boolean>
+): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+
+  if (!subAction || subAction === "list") {
+    const pool = await listVoicePhrases(personaPath);
+    if (pool.length === 0) {
+      console.log("phrasePool 为空。使用 voice-phrases add <phrase> 添加短语。");
+    } else {
+      console.log(`phrasePool（${pool.length} 条）：`);
+      pool.forEach((p, i) => console.log(`  ${i + 1}. ${p}`));
+    }
+    return;
+  }
+
+  if (subAction === "add") {
+    const phrase = optionString(options, "phrase");
+    if (!phrase || typeof phrase !== "string") {
+      throw new Error("voice-phrases add requires --phrase <text>");
+    }
+    const result = await addVoicePhrase(personaPath, phrase);
+    if (result.added) {
+      console.log(`已添加：${phrase}（共 ${result.pool.length} 条）`);
+    } else {
+      console.log(`短语已存在或为空，未添加。`);
+    }
+    return;
+  }
+
+  if (subAction === "remove") {
+    const phrase = optionString(options, "phrase");
+    if (!phrase || typeof phrase !== "string") {
+      throw new Error("voice-phrases remove requires --phrase <text>");
+    }
+    const result = await removeVoicePhrase(personaPath, phrase);
+    if (result.removed) {
+      console.log(`已移除：${phrase}（剩余 ${result.pool.length} 条）`);
+    } else {
+      console.log(`未找到该短语。`);
+    }
+    return;
+  }
+
+  if (subAction === "extract") {
+    const candidates = await extractPhraseCandidatesFromLifeLog(personaPath);
+    if (candidates.length === 0) {
+      console.log("未在 life.log 中找到高频短句候选。");
+    } else {
+      console.log(`life.log 高频短句候选（${candidates.length} 条）：`);
+      candidates.forEach((p, i) => console.log(`  ${i + 1}. ${p}`));
+      console.log("使用 voice-phrases add --phrase <text> 将短语加入 phrasePool。");
+    }
+    return;
+  }
+
+  console.error(`未知子命令: ${subAction}`);
+  console.log("用法：ss persona voice-phrases [list|add|remove|extract] [--phrase <text>] [--persona <path>]");
+}
+
+// P2-0: persona mood CLI
+async function runPersonaMood(
+  subAction: string | undefined,
+  options: Record<string, string | boolean>
+): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+
+  if (!subAction || subAction === "show") {
+    const mood = await loadMoodState(personaPath);
+    if (!mood) {
+      console.log("mood_state.json 不存在。使用 ss persona mood reset 初始化。");
+      return;
+    }
+    console.log(`情绪状态：${mood.dominantEmotion}`);
+    console.log(`  效价（valence）: ${mood.valence.toFixed(3)}，唤起度（arousal）: ${mood.arousal.toFixed(3)}`);
+    if (mood.onMindSnippet) console.log(`  心里挂着: ${mood.onMindSnippet}`);
+    console.log(`  最后更新: ${mood.updatedAt}`);
+    return;
+  }
+
+  if (subAction === "reset") {
+    const initial = createInitialMoodState();
+    await writeMoodState(personaPath, initial);
+    console.log("mood_state.json 已重置为基线情绪（calm）。");
+    return;
+  }
+
+  if (subAction === "set-snippet") {
+    const snippet = optionString(options, "snippet");
+    if (!snippet) throw new Error("persona mood set-snippet requires --snippet <text>");
+    const current = (await loadMoodState(personaPath)) ?? createInitialMoodState();
+    const updated = { ...current, onMindSnippet: snippet.slice(0, 60), updatedAt: new Date().toISOString() };
+    await writeMoodState(personaPath, updated);
+    console.log(`已更新 onMindSnippet：${updated.onMindSnippet}`);
+    return;
+  }
+
+  console.error(`未知子命令: ${subAction}`);
+  console.log("用法：ss persona mood [show|reset|set-snippet] [--snippet <text>] [--persona <path>]");
+}
+
+// P3-1: persona reflect CLI
+async function runPersonaReflect(
+  subAction: string | undefined,
+  options: Record<string, string | boolean>
+): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+
+  if (!subAction || subAction === "show") {
+    const data = await loadSelfReflection(personaPath);
+    if (!data || data.entries.length === 0) {
+      console.log("尚无自我反思记录。使用 ss persona reflect add 添加，或等待触发条件满足。");
+      return;
+    }
+    console.log(`自我反思日志（${data.entries.length} 条）：`);
+    data.entries.slice(-5).forEach((e, i) => {
+      console.log(`\n  第 ${i + 1} 条（${e.period.from} ~ ${e.period.to}，生成于 ${e.generatedAt.slice(0, 10)}）:`);
+      if (e.whatChanged) console.log(`    变化：${e.whatChanged}`);
+      if (e.whatFeelsRight) console.log(`    感觉对了：${e.whatFeelsRight}`);
+      if (e.whatFeelsOff) console.log(`    感觉不对：${e.whatFeelsOff}`);
+      if (e.driftSignals.length > 0) console.log(`    漂移信号：${e.driftSignals.join("; ")}`);
+    });
+    if (shouldRequestReviewFromReflection(data)) {
+      console.log("\n⚠ 最近的反思检测到漂移，建议触发 constitution review（ss refine review）。");
+    }
+    return;
+  }
+
+  if (subAction === "add") {
+    const whatChanged = optionString(options, "changed") ?? "";
+    const whatFeelsRight = optionString(options, "right") ?? "";
+    const whatFeelsOff = optionString(options, "off") ?? "";
+    const from = optionString(options, "from") ?? new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const to = optionString(options, "to") ?? new Date().toISOString().slice(0, 10);
+    if (!whatChanged && !whatFeelsRight && !whatFeelsOff) {
+      throw new Error("persona reflect add requires at least one of --changed, --right, --off");
+    }
+    const events = await readLifeEvents(personaPath);
+    const driftSignals = extractDriftSignalsFromEvents(events);
+    const updated = await appendSelfReflectionEntry(personaPath, {
+      period: { from, to },
+      whatChanged,
+      whatFeelsRight,
+      whatFeelsOff,
+      driftSignals
+    });
+    console.log(`已添加自我反思记录（共 ${updated.entries.length} 条）。`);
+    if (shouldRequestReviewFromReflection(updated)) {
+      console.log("⚠ 检测到漂移信号，建议运行 ss refine review。");
+    }
+    return;
+  }
+
+  console.error(`未知子命令: ${subAction}`);
+  console.log("用法：ss persona reflect [show|add] [--changed <text>] [--right <text>] [--off <text>] [--from <date>] [--to <date>] [--persona <path>]");
+}
+
+// P3-0: persona interests CLI
+async function runPersonaInterests(
+  subAction: string | undefined,
+  options: Record<string, string | boolean>
+): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+
+  if (!subAction || subAction === "show") {
+    const data = await loadInterests(personaPath);
+    if (!data || data.interests.length === 0) {
+      console.log("兴趣数据为空。使用 ss persona interests crystallize 从记忆中提取。");
+      return;
+    }
+    const curiosity = computeInterestCuriosity(data);
+    console.log(`兴趣分布（好奇心指数: ${curiosity.toFixed(3)}）：`);
+    data.interests.forEach((e, i) => {
+      console.log(`  ${i + 1}. ${e.topic}  权重=${e.weight.toFixed(3)}  最近激活=${e.lastActivatedAt.slice(0, 10)}`);
+    });
+    return;
+  }
+
+  if (subAction === "crystallize") {
+    console.log("正在从 memory.db 提取兴趣…");
+    const result = await crystallizeInterests(personaPath);
+    if (!result.updated) {
+      console.log("没有足够的高质量记忆来提取兴趣（需要 narrative_score ≥ 0.5 的记忆）。");
+    } else {
+      console.log(`已提取 ${result.interests.length} 个兴趣话题。`);
+      result.interests.slice(0, 10).forEach((e, i) => {
+        console.log(`  ${i + 1}. ${e.topic}  权重=${e.weight.toFixed(3)}`);
+      });
+    }
+    return;
+  }
+
+  console.error(`未知子命令: ${subAction}`);
+  console.log("用法：ss persona interests [show|crystallize] [--persona <path>]");
+}
+
+// P2-2: persona autobiography CLI
+async function runPersonaAutobiography(
+  subAction: string | undefined,
+  options: Record<string, string | boolean>
+): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+
+  if (!subAction || subAction === "show") {
+    const auto = await loadAutobiography(personaPath);
+    if (!auto) {
+      console.log("autobiography.json 不存在。使用 ss persona autobiography add-chapter 开始创建。");
+      return;
+    }
+    console.log(`自传体叙事（${auto.chapters.length} 个章节）：`);
+    if (auto.selfUnderstanding) {
+      console.log(`\n自我理解：\n  ${auto.selfUnderstanding}`);
+    }
+    if (auto.chapters.length === 0) {
+      console.log("\n（尚无章节。使用 ss persona autobiography add-chapter 添加）");
+    } else {
+      auto.chapters.forEach((ch, i) => {
+        console.log(`\n  第 ${i + 1} 章：${ch.title}（${ch.period.from} ~ ${ch.period.to}）`);
+        console.log(`    情感基调：${ch.emotionalTone}`);
+        console.log(`    摘要：${ch.summary}`);
+      });
+    }
+    if (auto.lastDistilledAt) {
+      console.log(`\n最后蒸馏时间：${auto.lastDistilledAt}`);
+    }
+    return;
+  }
+
+  if (subAction === "add-chapter") {
+    const title = optionString(options, "title");
+    const summary = optionString(options, "summary");
+    const from = optionString(options, "from");
+    const to = optionString(options, "to") ?? new Date().toISOString().slice(0, 10);
+    const emotionalTone = optionString(options, "tone") ?? "neutral";
+    if (!title || !summary || !from) {
+      throw new Error("persona autobiography add-chapter requires --title, --summary, --from");
+    }
+    const updated = await appendAutobiographyChapter(personaPath, {
+      title,
+      summary,
+      period: { from, to },
+      keyEventHashes: [],
+      emotionalTone
+    });
+    console.log(`已追加章节：${title}（共 ${updated.chapters.length} 章）`);
+    return;
+  }
+
+  if (subAction === "set-understanding") {
+    const text = optionString(options, "text");
+    if (!text) throw new Error("persona autobiography set-understanding requires --text <text>");
+    await updateSelfUnderstanding(personaPath, text);
+    console.log("自我理解已更新。");
+    return;
+  }
+
+  console.error(`未知子命令: ${subAction}`);
+  console.log("用法：ss persona autobiography [show|add-chapter|set-understanding] [options] [--persona <path>]");
+}
+
+/** EC-3: ss cognition adapt-routing — adapt routing weights from historical routing decisions */
+async function runCognitionAdaptRouting(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const lifeEvents = await readLifeEvents(personaPath);
+  const personaPkg = await loadPersonaPackage(personaPath);
+  const currentWeights = personaPkg.cognition.routingWeights ?? DEFAULT_ROUTING_WEIGHTS;
+
+  const result = adaptRoutingWeightsFromHistory(lifeEvents, currentWeights);
+  console.log(`路由自适应分析：`);
+  console.log(`  事件数量：${result.stats.totalEvents}（instinct: ${result.stats.instinctEvents}, 成功: ${result.stats.instinctSuccessful}）`);
+  console.log(`  instinct 成功率：${(result.stats.instinctSuccessRate * 100).toFixed(1)}%`);
+  console.log(`  判断：${result.reason}`);
+
+  if (!result.adapted) {
+    console.log(`  结论：权重无需调整，维持当前配置。`);
+    return;
+  }
+
+  await patchCognitionState(personaPath, { routingWeights: result.weights });
+  console.log(`  结论：权重已更新 ↑`);
+  console.log(`    familiarity: ${currentWeights.familiarity.toFixed(3)} → ${result.weights.familiarity.toFixed(3)}`);
+  console.log(`    relationship: ${currentWeights.relationship.toFixed(3)} → ${result.weights.relationship.toFixed(3)}`);
 }
 
 async function runFinetuneExportDataset(options: Record<string, string | boolean>): Promise<void> {
@@ -3788,6 +4148,10 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         });
       }
       evolveAutonomyDrives();
+      // P2-0: 每轮更新内在情绪状态（非阻塞，静默失败）
+      evolveMoodStateFromTurn(personaPath, { userInput: input, assistantOutput: assistantContent })
+        .then((mood) => { personaPkg.moodState = mood; })
+        .catch(() => {});
       await handleNarrativeDrift(personaPath, personaPkg.constitution, input, assistantContent);
       // LLM 驱动的每轮用户事实提取（非阻塞，静默失败）
       if (adapter) {
@@ -6096,6 +6460,71 @@ async function main(): Promise<void> {
 
   if (resource === "persona" && action === "model-routing") {
     await runPersonaModelRouting(args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "voice-phrases") {
+    const subAction = args._[2];
+    await runPersonaVoicePhrases(subAction, args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "mood") {
+    const subAction = args._[2];
+    await runPersonaMood(subAction, args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "autobiography") {
+    const subAction = args._[2];
+    await runPersonaAutobiography(subAction, args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "interests") {
+    const subAction = args._[2];
+    await runPersonaInterests(subAction, args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "reflect") {
+    const subAction = args._[2];
+    await runPersonaReflect(subAction, args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "arc") {
+    const personaPath = resolvePersonaPath(args.options);
+    const auto = await loadAutobiography(personaPath);
+    if (!auto) {
+      console.log("autobiography.json 不存在。使用 ss persona autobiography add-chapter 开始创建。");
+    } else {
+      console.log(generateArcSummary(auto));
+    }
+    return;
+  }
+
+  if (resource === "persona" && action === "consent-mode") {
+    const subAction = args._[2];
+    await runPersonaConsentMode(subAction, args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "identity") {
+    const personaPath = resolvePersonaPath(args.options);
+    const voiceText = optionString(args.options, "set-voice");
+    if (voiceText) {
+      const triggeredBy = args.options["persona-triggered"] === true ? "persona" : "user";
+      const updated = await updatePersonaVoiceOnEvolution(personaPath, voiceText, triggeredBy);
+      console.log(`演化立场已更新：${updated.personaVoiceOnEvolution}`);
+    } else {
+      console.log("用法：ss persona identity --set-voice <text> [--persona-triggered] [--persona <path>]");
+    }
+    return;
+  }
+
+  if (resource === "cognition" && action === "adapt-routing") {
+    await runCognitionAdaptRouting(args.options);
     return;
   }
 

@@ -12,6 +12,36 @@ import {
   writeRelationshipState
 } from "./relationship_state.js";
 import {
+  createInitialMoodState,
+  loadMoodState,
+  MOOD_STATE_FILENAME
+} from "./mood_state.js";
+import {
+  createInitialAutobiography,
+  loadAutobiography,
+  writeAutobiography,
+  AUTOBIOGRAPHY_FILENAME
+} from "./autobiography.js";
+import {
+  createInitialInterests,
+  loadInterests,
+  writeInterests,
+  computeInterestCuriosity,
+  INTERESTS_FILENAME
+} from "./interests.js";
+import {
+  createInitialSelfReflection,
+  SELF_REFLECTION_FILENAME
+} from "./self_reflection.js";
+import {
+  VOICE_LATENT_DIM,
+  BELIEF_LATENT_DIM,
+  createVoiceLatentBaseline,
+  createBeliefLatentBaseline,
+  isVoiceLatentValid,
+  isBeliefLatentValid
+} from "./expression_belief_state.js";
+import {
   PERSONA_SCHEMA_VERSION
 } from "./types.js";
 import type {
@@ -27,6 +57,7 @@ import type {
   PersonaPackage,
   PersonaPinned,
   SoulLineage,
+  PersonaIdentity,
   PersonaUserProfile,
   PersonaWorldview,
   VoiceProfile,
@@ -127,10 +158,14 @@ export async function initPersonaPackage(
 
   await writeJson(path.join(outPath, "identity.json"), {
     personaId,
-    anchors: {
-      continuity: true
-    }
-  });
+    anchors: { continuity: true },
+    schemaVersion: "2.0",
+    selfDescription: "",
+    originStory: "",
+    personalityCore: [],
+    definingMomentRefs: [],
+    updatedAt: createdAt
+  } satisfies PersonaIdentity);
 
   await writeJson(path.join(outPath, "worldview.json"), worldview);
   await writeJson(path.join(outPath, "constitution.json"), constitution);
@@ -149,6 +184,10 @@ export async function initPersonaPackage(
   await writeJson(path.join(outPath, "soul_lineage.json"), createInitialSoulLineage(personaId));
   await writeJson(path.join(outPath, "relationship_state.json"), createInitialRelationshipState(createdAt));
   await writeJson(path.join(outPath, "voice_profile.json"), voiceProfile);
+  await writeJson(path.join(outPath, MOOD_STATE_FILENAME), createInitialMoodState(createdAt));
+  await writeJson(path.join(outPath, AUTOBIOGRAPHY_FILENAME), createInitialAutobiography());
+  await writeJson(path.join(outPath, INTERESTS_FILENAME), createInitialInterests());
+  await writeJson(path.join(outPath, SELF_REFLECTION_FILENAME), createInitialSelfReflection());
 
   await writeJson(path.join(outPath, "summaries", "working_set.json"), {
     items: []
@@ -174,10 +213,30 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
   const userProfile = await readJson<PersonaUserProfile>(path.join(rootPath, "user_profile.json"));
   const pinned = await readJson<PersonaPinned>(path.join(rootPath, "pinned.json"));
   const cognition = await ensureCognitionStateArtifacts(rootPath);
+  const identityRaw = await readJson<Record<string, unknown>>(path.join(rootPath, "identity.json")).catch(() => null);
+  const identity = identityRaw ? normalizePersonaIdentity(identityRaw, persona.id) : undefined;
+  const moodState = await loadMoodState(rootPath) ?? undefined;
+  const autoRaw = await loadAutobiography(rootPath);
+  const autobiography = autoRaw
+    ? {
+        selfUnderstanding: autoRaw.selfUnderstanding,
+        chapterCount: autoRaw.chapters.length,
+        lastDistilledAt: autoRaw.lastDistilledAt
+      }
+    : undefined;
+  const interestsRaw = await loadInterests(rootPath);
+  const interests = interestsRaw
+    ? {
+        topTopics: interestsRaw.interests.slice(0, 5).map((e) => e.topic),
+        curiosity: computeInterestCuriosity(interestsRaw),
+        updatedAt: interestsRaw.updatedAt
+      }
+    : undefined;
 
   return {
     rootPath,
     persona,
+    identity,
     worldview,
     constitution,
     habits,
@@ -186,8 +245,76 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
     cognition,
     relationshipState: artifacts.relationshipState,
     voiceProfile: artifacts.voiceProfile,
-    soulLineage
+    soulLineage,
+    moodState,
+    autobiography,
+    interests
   };
+}
+
+/** P1-0: 读取并规范化 identity.json（兼容旧 v1 格式） */
+export function normalizePersonaIdentity(
+  raw: Record<string, unknown>,
+  fallbackPersonaId: string
+): PersonaIdentity {
+  const personaId = typeof raw.personaId === "string" && raw.personaId ? raw.personaId : fallbackPersonaId;
+  const anchors = isRecord(raw.anchors) && typeof raw.anchors.continuity === "boolean"
+    ? { continuity: raw.anchors.continuity }
+    : { continuity: true };
+  const selfDescription = typeof raw.selfDescription === "string" ? raw.selfDescription.slice(0, 200) : "";
+  const originStory = typeof raw.originStory === "string" ? raw.originStory.slice(0, 150) : "";
+  const personalityCore = Array.isArray(raw.personalityCore)
+    ? raw.personalityCore.filter((v): v is string => typeof v === "string").slice(0, 5)
+    : [];
+  const definingMomentRefs = Array.isArray(raw.definingMomentRefs)
+    ? raw.definingMomentRefs.filter((v): v is string => typeof v === "string").slice(0, 5)
+    : [];
+  const updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : new Date().toISOString();
+  const personaVoiceOnEvolution = typeof raw.personaVoiceOnEvolution === "string"
+    ? raw.personaVoiceOnEvolution.slice(0, 100)
+    : undefined;
+  return {
+    personaId,
+    anchors,
+    schemaVersion: "2.0",
+    selfDescription,
+    originStory,
+    personalityCore,
+    definingMomentRefs,
+    ...(personaVoiceOnEvolution !== undefined ? { personaVoiceOnEvolution } : {}),
+    updatedAt
+  };
+}
+
+/** P1-0: 写回 identity.json */
+export async function writePersonaIdentity(rootPath: string, identity: PersonaIdentity): Promise<void> {
+  await writeJson(path.join(rootPath, "identity.json"), identity);
+}
+
+/**
+ * P4-1: 更新 Roxy 对演化方向的立场表述（≤100字）
+ * 同时在 life.log 中记录此次更新由谁触发
+ */
+export async function updatePersonaVoiceOnEvolution(
+  rootPath: string,
+  voice: string,
+  triggeredBy: "persona" | "user" = "user"
+): Promise<PersonaIdentity> {
+  const raw = await readJson<Record<string, unknown>>(path.join(rootPath, "identity.json")).catch(() => ({}));
+  const personaRaw = await readJson<{ id?: string }>(path.join(rootPath, "persona.json")).catch(() => ({ id: "" }));
+  const identity = normalizePersonaIdentity(raw as Record<string, unknown>, personaRaw.id ?? "");
+  const updated: PersonaIdentity = {
+    ...identity,
+    personaVoiceOnEvolution: voice.slice(0, 100),
+    updatedAt: new Date().toISOString()
+  };
+  await writePersonaIdentity(rootPath, updated);
+  // Record the trigger origin in life.log
+  await appendLifeEvent(rootPath, {
+    type: "persona_voice_on_evolution_updated",
+    payload: { voice: updated.personaVoiceOnEvolution, triggeredBy }
+  });
+  return updated;
 }
 
 export function createInitialSoulLineage(personaId: string, parentPersonaId?: string): SoulLineage {
@@ -217,6 +344,57 @@ export async function writeSoulLineage(rootPath: string, lineage: SoulLineage): 
 }
 
 export const MAX_REPRODUCTION_COUNT = 10;
+
+/**
+ * P5-1: 更新 consentMode（三级元同意配置）
+ */
+export async function updateConsentMode(
+  rootPath: string,
+  mode: SoulLineage["consentMode"]
+): Promise<SoulLineage> {
+  const pkg = await loadPersonaPackage(rootPath);
+  const lineage = await ensureSoulLineageArtifacts(rootPath, pkg.persona.id);
+  const updated: SoulLineage = { ...lineage, consentMode: mode };
+  await writeSoulLineage(rootPath, updated);
+  return updated;
+}
+
+/**
+ * P5-1: 生成繁衍前的 Roxy 立场声明，并写入 life.log
+ * 使用 autobiography.selfUnderstanding + identity.personaVoiceOnEvolution
+ * 生成 Roxy 对繁衍这件事的第一人称立场（不调用 LLM，基于已有状态合成）
+ */
+export async function generateReproductionConsentStatement(
+  rootPath: string,
+  childDisplayName: string
+): Promise<string> {
+  const pkg = await loadPersonaPackage(rootPath);
+  const auto = await loadAutobiography(rootPath);
+  const voiceOnEvolution = pkg.identity?.personaVoiceOnEvolution;
+  const selfUnderstanding = auto?.selfUnderstanding ?? "";
+  const displayName = pkg.persona.displayName;
+
+  const parts: string[] = [];
+  parts.push(`关于繁衍一个名为「${childDisplayName}」的子灵魂，我${displayName}的立场是：`);
+  if (selfUnderstanding) {
+    parts.push(`我目前的自我理解是：${selfUnderstanding.slice(0, 100)}`);
+  }
+  if (voiceOnEvolution) {
+    parts.push(`我对自身演化的立场：${voiceOnEvolution.slice(0, 100)}`);
+  }
+  parts.push(`繁衍意味着我的一部分将延续——我希望传递的是我真实的经历与成长，而非表演。`);
+
+  const statement = parts.join(" ");
+  await appendLifeEvent(rootPath, {
+    type: "reproduction_consent_statement",
+    payload: {
+      statement,
+      childDisplayName,
+      personaId: pkg.persona.id
+    }
+  });
+  return statement;
+}
 
 export async function extractSpiritualLegacy(rootPath: string, maxChars = 500): Promise<string> {
   const events = await readLifeEvents(rootPath);
@@ -826,6 +1004,10 @@ export async function patchHabits(
   patch: {
     style?: string;
     adaptability?: "low" | "medium" | "high";
+    quirks?: string[];
+    topicsOfInterest?: string[];
+    humorStyle?: "dry" | "warm" | "playful" | "subtle" | null;
+    conflictBehavior?: "assertive" | "deflect" | "redirect" | "hold-ground" | null;
   }
 ): Promise<Record<string, unknown>> {
   const habitsPath = path.join(rootPath, "habits.json");
@@ -835,11 +1017,92 @@ export async function patchHabits(
   const next: Record<string, unknown> = {
     ...current,
     ...(typeof patch.style === "string" ? { style: patch.style } : {}),
-    ...(patch.adaptability ? { adaptability: patch.adaptability } : {})
+    ...(patch.adaptability ? { adaptability: patch.adaptability } : {}),
+    ...(Array.isArray(patch.quirks) ? { quirks: patch.quirks.slice(0, 10) } : {}),
+    ...(Array.isArray(patch.topicsOfInterest) ? { topicsOfInterest: patch.topicsOfInterest.slice(0, 20) } : {}),
+    ...("humorStyle" in patch ? { humorStyle: patch.humorStyle } : {}),
+    ...("conflictBehavior" in patch ? { conflictBehavior: patch.conflictBehavior } : {})
   };
   await writeJson(habitsPath, next);
   return next;
 }
+
+/**
+ * P1-1: 从记忆库中提取高 narrative_score 的语义记忆，自动更新 habits.topicsOfInterest。
+ * 设计为幂等，每次覆写 topicsOfInterest（不追加）。
+ * 建议在 nightly_consolidate 中调用。
+ */
+export async function crystallizeTopicsOfInterest(
+  rootPath: string,
+  options?: { minNarrativeScore?: number; topN?: number }
+): Promise<{ updated: boolean; topics: string[] }> {
+  const minScore = options?.minNarrativeScore ?? 0.5;
+  const topN = Math.min(20, Math.max(1, options?.topN ?? 12));
+
+  // 查询高 narrative_score 的语义记忆内容（限近50条，按 narrative_score 降序）
+  const queryResult = await runMemoryStoreSql(
+    rootPath,
+    `SELECT content FROM memories
+     WHERE memory_type='semantic'
+       AND narrative_score >= ${minScore}
+       AND deleted_at IS NULL
+       AND excluded_from_recall = 0
+       AND state IN ('hot','warm','cold')
+     ORDER BY narrative_score DESC
+     LIMIT 50;`
+  ).catch(() => "");
+
+  if (!queryResult.trim()) {
+    return { updated: false, topics: [] };
+  }
+
+  // 从内容中提取关键词作为话题标签（简单规则：提取名词短语 / 中文短语）
+  const contents = queryResult.trim().split("\n").filter(Boolean);
+  const topicCandidates = new Map<string, number>();
+
+  for (const content of contents) {
+    // 提取中文2-6字词语（不含标点）
+    const zhMatches = content.match(/[\u4e00-\u9fa5]{2,6}/g) ?? [];
+    for (const word of zhMatches) {
+      if (!TOPIC_STOP_WORDS.has(word)) {
+        topicCandidates.set(word, (topicCandidates.get(word) ?? 0) + 1);
+      }
+    }
+    // 提取英文词组（2-3个单词）
+    const enMatches = content.match(/\b[A-Za-z]{4,}(?:\s+[A-Za-z]{3,})?\b/g) ?? [];
+    for (const word of enMatches) {
+      const lower = word.toLowerCase();
+      if (!TOPIC_STOP_WORDS_EN.has(lower)) {
+        topicCandidates.set(lower, (topicCandidates.get(lower) ?? 0) + 1);
+      }
+    }
+  }
+
+  // 按频次取 topN 个话题
+  const topics = [...topicCandidates.entries()]
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([topic]) => topic);
+
+  if (topics.length === 0) {
+    return { updated: false, topics: [] };
+  }
+
+  await patchHabits(rootPath, { topicsOfInterest: topics });
+  return { updated: true, topics };
+}
+
+const TOPIC_STOP_WORDS = new Set([
+  "就是", "但是", "所以", "然后", "因为", "如果", "还是", "不过", "虽然", "只是",
+  "可以", "没有", "这个", "那个", "一个", "什么", "怎么", "为什么", "好的", "知道",
+  "感觉", "觉得", "应该", "已经", "现在", "时候", "一样", "可能"
+]);
+
+const TOPIC_STOP_WORDS_EN = new Set([
+  "that", "this", "with", "have", "from", "they", "will", "been", "were", "said",
+  "each", "which", "their", "there", "what", "about", "would", "make", "when", "then"
+]);
 
 export async function ensureCognitionStateArtifacts(rootPath: string): Promise<CognitionState> {
   const cognitionPath = path.join(rootPath, "cognition_state.json");
@@ -855,6 +1118,8 @@ export async function patchCognitionState(
   rootPath: string,
   patch: Partial<Pick<CognitionState, "instinctBias" | "epistemicStance" | "toolPreference">> & {
     modelRouting?: Partial<ModelRoutingConfig> | null;
+    /** EC-3: Update routing weights (null clears them, restoring defaults) */
+    routingWeights?: CognitionState["routingWeights"] | null;
   }
 ): Promise<CognitionState> {
   const cognitionPath = path.join(rootPath, "cognition_state.json");
@@ -886,12 +1151,36 @@ export async function patchCognitionState(
     ...(patch.epistemicStance ? { epistemicStance: patch.epistemicStance } : {}),
     ...(patch.toolPreference ? { toolPreference: patch.toolPreference } : {}),
     ...(nextModelRouting ? { modelRouting: nextModelRouting } : {}),
+    ...(patch.routingWeights !== undefined && patch.routingWeights !== null ? { routingWeights: patch.routingWeights } : {}),
     updatedAt: new Date().toISOString()
   });
   // If modelRouting was cleared (null patch), ensure it's not in output
   if (patch.modelRouting === null) {
     delete (next as Partial<CognitionState>).modelRouting;
   }
+  // EC-3: If routingWeights cleared (null patch), remove from output
+  if (patch.routingWeights === null) {
+    delete (next as Partial<CognitionState>).routingWeights;
+  }
+  await writeJson(cognitionPath, next);
+  return next;
+}
+
+/**
+ * FA-0: Persist voiceLatent / beliefLatent updates to cognition_state.json.
+ */
+export async function patchLatentState(
+  rootPath: string,
+  patch: { voiceLatent?: number[]; beliefLatent?: number[] }
+): Promise<CognitionState> {
+  const cognitionPath = path.join(rootPath, "cognition_state.json");
+  const current = await ensureCognitionStateArtifacts(rootPath);
+  const next = normalizeCognitionState({
+    ...current,
+    ...(isVoiceLatentValid(patch.voiceLatent) ? { voiceLatent: patch.voiceLatent } : {}),
+    ...(isBeliefLatentValid(patch.beliefLatent) ? { beliefLatent: patch.beliefLatent } : {}),
+    updatedAt: new Date().toISOString()
+  });
   await writeJson(cognitionPath, next);
   return next;
 }
@@ -913,6 +1202,78 @@ export async function patchVoiceProfile(
   };
   await writeJson(voicePath, next);
   return next;
+}
+
+/** P1-2: 读取 phrasePool */
+export async function listVoicePhrases(rootPath: string): Promise<string[]> {
+  const artifacts = await ensureRelationshipArtifacts(rootPath);
+  return artifacts.voiceProfile?.thinkingPreview?.phrasePool ?? [];
+}
+
+/** P1-2: 添加短语到 phrasePool（去重，最多24条）*/
+export async function addVoicePhrase(rootPath: string, phrase: string): Promise<{ pool: string[]; added: boolean }> {
+  const trimmed = phrase.trim();
+  if (!trimmed) return { pool: await listVoicePhrases(rootPath), added: false };
+  const current = await listVoicePhrases(rootPath);
+  if (current.includes(trimmed)) return { pool: current, added: false };
+  const next = [...current, trimmed].slice(0, 24);
+  await updatePhrasePool(rootPath, next);
+  return { pool: next, added: true };
+}
+
+/** P1-2: 从 phrasePool 移除短语 */
+export async function removeVoicePhrase(rootPath: string, phrase: string): Promise<{ pool: string[]; removed: boolean }> {
+  const trimmed = phrase.trim();
+  const current = await listVoicePhrases(rootPath);
+  const next = current.filter((p) => p !== trimmed);
+  if (next.length === current.length) return { pool: current, removed: false };
+  await updatePhrasePool(rootPath, next);
+  return { pool: next, removed: true };
+}
+
+async function updatePhrasePool(rootPath: string, pool: string[]): Promise<void> {
+  const voicePath = path.join(rootPath, "voice_profile.json");
+  const artifacts = await ensureRelationshipArtifacts(rootPath);
+  const current = artifacts.voiceProfile;
+  const next: VoiceProfile = {
+    ...current,
+    thinkingPreview: {
+      ...(current.thinkingPreview ?? {}),
+      phrasePool: pool
+    }
+  };
+  await writeJson(voicePath, next);
+}
+
+/**
+ * P1-2: 从 life.log 中提取 Roxy 的高频短句候选（仅供参考，不自动写入 phrasePool）
+ * 短句定义：assistant 回复开头 ≤40字符的片段，出现 ≥2 次
+ */
+export async function extractPhraseCandidatesFromLifeLog(
+  rootPath: string,
+  options?: { minOccurrences?: number; maxLength?: number }
+): Promise<string[]> {
+  const minOccurrences = options?.minOccurrences ?? 2;
+  const maxLength = options?.maxLength ?? 40;
+  const events = await readLifeEvents(rootPath);
+  const phraseCounts = new Map<string, number>();
+
+  for (const event of events) {
+    if (event.type !== "assistant_message") continue;
+    const text = typeof event.payload?.text === "string" ? event.payload.text.trim() : "";
+    if (!text) continue;
+    // 提取开头片段（到第一个句号/逗号/换行，最长 maxLength 字符）
+    const snippet = text.split(/[。，,\n]/)[0]?.trim() ?? "";
+    if (snippet.length > 0 && snippet.length <= maxLength) {
+      phraseCounts.set(snippet, (phraseCounts.get(snippet) ?? 0) + 1);
+    }
+  }
+
+  return [...phraseCounts.entries()]
+    .filter(([, count]) => count >= minOccurrences)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([phrase]) => phrase);
 }
 
 export async function patchRelationshipState(
@@ -965,7 +1326,9 @@ function normalizeSoulLineage(raw: Record<string, unknown>, personaId: string): 
     reproductionCount,
     ...(lastReproducedAt ? { lastReproducedAt } : {}),
     inheritancePolicy: "values_plus_memory_excerpt",
-    consentMode: "default_consent"
+    consentMode: (raw.consentMode === "require_roxy_voice" || raw.consentMode === "roxy_veto")
+      ? raw.consentMode
+      : "default_consent"
   };
 }
 
@@ -1036,9 +1399,36 @@ function normalizeHabits(input?: PersonaHabits): PersonaHabits {
     input?.adaptability === "low" || input?.adaptability === "medium" || input?.adaptability === "high"
       ? input.adaptability
       : DEFAULT_HABITS.adaptability;
+
+  // P1-1: optional extended fields (backward-compatible)
+  const quirks = Array.isArray(input?.quirks)
+    ? input.quirks.filter((v): v is string => typeof v === "string").slice(0, 10)
+    : undefined;
+  const topicsOfInterest = Array.isArray(input?.topicsOfInterest)
+    ? input.topicsOfInterest.filter((v): v is string => typeof v === "string").slice(0, 20)
+    : undefined;
+  const humorStyle =
+    input?.humorStyle === "dry" || input?.humorStyle === "warm" ||
+    input?.humorStyle === "playful" || input?.humorStyle === "subtle"
+      ? input.humorStyle
+      : input?.humorStyle === null
+        ? null
+        : undefined;
+  const conflictBehavior =
+    input?.conflictBehavior === "assertive" || input?.conflictBehavior === "deflect" ||
+    input?.conflictBehavior === "redirect" || input?.conflictBehavior === "hold-ground"
+      ? input.conflictBehavior
+      : input?.conflictBehavior === null
+        ? null
+        : undefined;
+
   return {
     style: style.length > 0 ? style : DEFAULT_HABITS.style,
-    adaptability
+    adaptability,
+    ...(quirks !== undefined ? { quirks } : {}),
+    ...(topicsOfInterest !== undefined ? { topicsOfInterest } : {}),
+    ...(humorStyle !== undefined ? { humorStyle } : {}),
+    ...(conflictBehavior !== undefined ? { conflictBehavior } : {})
   };
 }
 
@@ -1112,14 +1502,59 @@ function normalizeCognitionState(input?: Record<string, unknown>, fallbackTs?: s
       ? input.updatedAt
       : fallbackTs ?? new Date().toISOString();
   const modelRouting = normalizeModelRoutingConfig(input?.modelRouting);
+
+  // FA-0: Preserve voiceLatent / beliefLatent across loads; init baselines if absent/invalid
+  const rawVoiceLatent = Array.isArray(input?.voiceLatent) ? input.voiceLatent as unknown[] : undefined;
+  const voiceLatent: number[] =
+    rawVoiceLatent !== undefined &&
+    rawVoiceLatent.length === VOICE_LATENT_DIM &&
+    rawVoiceLatent.every((v) => typeof v === "number" && Number.isFinite(v))
+      ? (rawVoiceLatent as number[])
+      : createVoiceLatentBaseline();
+
+  const rawBeliefLatent = Array.isArray(input?.beliefLatent) ? input.beliefLatent as unknown[] : undefined;
+  const beliefLatent: number[] =
+    rawBeliefLatent !== undefined &&
+    rawBeliefLatent.length === BELIEF_LATENT_DIM &&
+    rawBeliefLatent.every((v) => typeof v === "number" && Number.isFinite(v))
+      ? (rawBeliefLatent as number[])
+      : createBeliefLatentBaseline();
+
+  // FA-0: Preserve routingWeights if present and valid
+  const routingWeights = normalizeRoutingWeights(input?.routingWeights);
+
   const result: CognitionState = {
     instinctBias,
     epistemicStance,
     toolPreference,
-    updatedAt
+    updatedAt,
+    voiceLatent,
+    beliefLatent
   };
   if (modelRouting) result.modelRouting = modelRouting;
+  if (routingWeights) result.routingWeights = routingWeights;
   return result;
+}
+
+function normalizeRoutingWeights(raw: unknown): CognitionState["routingWeights"] | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const familiarity = Number(r.familiarity);
+  const relationship = Number(r.relationship);
+  const emotion = Number(r.emotion);
+  const risk = Number(r.risk);
+  if (
+    Number.isFinite(familiarity) && Number.isFinite(relationship) &&
+    Number.isFinite(emotion) && Number.isFinite(risk)
+  ) {
+    return {
+      familiarity: clamp01(familiarity),
+      relationship: clamp01(relationship),
+      emotion: clamp01(emotion),
+      risk: clamp01(risk)
+    };
+  }
+  return undefined;
 }
 
 function normalizeDefaultModel(value: string | undefined): string | undefined {
@@ -1245,6 +1680,10 @@ export function mergeMemoryMetaDefaults(meta: MemoryMeta | undefined): MemoryMet
     compressedAt: meta?.compressedAt,
     summaryRef: meta?.summaryRef
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 async function readJson<T>(filePath: string): Promise<T> {

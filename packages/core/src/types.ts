@@ -33,6 +33,31 @@ export interface PersonaMeta {
   };
 }
 
+/**
+ * P1-0: identity.json v2 schema
+ * 身份锚点——不只是 personaId，而是"我是谁"的自我理解
+ */
+export interface PersonaIdentity {
+  /** persona 唯一 ID（永不变） */
+  personaId: string;
+  /** 身份锚点（保向后兼容） */
+  anchors: { continuity: boolean };
+  /** schema 版本 */
+  schemaVersion: "2.0";
+  /** Roxy 用第一人称对自己的描述（≤200字）*/
+  selfDescription?: string;
+  /** 起源叙事摘要（≤150字）*/
+  originStory?: string;
+  /** 3-5 个核心性格词（自己认可的）*/
+  personalityCore?: string[];
+  /** 指向 life.log 中关键事件的 hash（最多5条）*/
+  definingMomentRefs?: string[];
+  /** P4-1: Roxy 对自己演化方向的立场表述（≤100字）*/
+  personaVoiceOnEvolution?: string;
+  /** 最近更新时间 */
+  updatedAt?: string;
+}
+
 export interface PersonaConstitution {
   values: string[];
   boundaries: string[];
@@ -59,6 +84,14 @@ export interface PersonaInitOptions {
 export interface PersonaHabits {
   style: string;
   adaptability: "low" | "medium" | "high";
+  /** P1-1: 典型行为特点（如"会在思考时用省略号"）*/
+  quirks?: string[];
+  /** P1-1: 让 persona 变活跃的话题标签（由 crystallization 自动涌现）*/
+  topicsOfInterest?: string[];
+  /** P1-1: 幽默风格 */
+  humorStyle?: "dry" | "warm" | "playful" | "subtle" | null;
+  /** P1-1: 冲突处理风格 */
+  conflictBehavior?: "assertive" | "deflect" | "redirect" | "hold-ground" | null;
 }
 
 export interface PersonaUserProfile {
@@ -78,6 +111,23 @@ export interface CognitionState {
   toolPreference: "auto" | "read_first" | "reply_first";
   updatedAt: string;
   modelRouting?: ModelRoutingConfig;
+  /** EB-2: 可配置路由权重（可由 self_revision 自适应调整） */
+  routingWeights?: {
+    familiarity: number;
+    relationship: number;
+    emotion: number;
+    risk: number;
+  };
+  /** EB-5: 可配置关系动力学常数（替代硬编码值，可由 self_revision 自适应调整） */
+  relationshipDynamics?: {
+    decayPerIdleInterval?: number;
+    libidoDecayMultiplier?: number;
+    softCeiling?: number;
+  };
+  /** EB-6: 16-dim 表达意图潜在向量；VoiceIntent 枚举字段为投影层 */
+  voiceLatent?: number[];
+  /** EB-6: 32-dim 信念/判断潜在向量；epistemicStance/PersonaJudgmentLabel 为投影层 */
+  beliefLatent?: number[];
 }
 
 export interface AdultSafetyContext {
@@ -92,9 +142,43 @@ export interface PersonaPinned {
   updatedAt?: string;
 }
 
+/**
+ * P2-0: 内在情绪状态模型
+ * 描述 persona 在某一时刻的情绪状态，独立于关系维度。
+ */
+export type DominantEmotion =
+  | "calm"
+  | "curious"
+  | "playful"
+  | "melancholic"
+  | "tender"
+  | "restless"
+  | "warm"
+  | "guarded";
+
+export interface MoodState {
+  /** EB-1: 情绪 Latent 向量（32维）— 真实内在情绪状态；valence/arousal 从此投影 */
+  moodLatent?: number[];
+  /** 情绪效价：-1(负面) ~ +1(正面)，基线 0.5（从 moodLatent 投影，向后兼容接口）*/
+  valence: number;
+  /** 情绪唤起度：0(平静) ~ 1(激动)，基线 0.3（从 moodLatent 投影，向后兼容接口）*/
+  arousal: number;
+  /** 主导情绪标签（从 moodLatent 投影，向后兼容接口）*/
+  dominantEmotion: DominantEmotion;
+  /** 引发当前情绪的事件 hash（最近3条）*/
+  triggers: string[];
+  /** Roxy 心里正挂着的一句话（≤60字）*/
+  onMindSnippet: string | null;
+  /** 每小时向基线衰减的比率（默认 0.08）*/
+  decayRate: number;
+  /** 最后更新时间 */
+  updatedAt: string;
+}
+
 export interface PersonaPackage {
   rootPath: string;
   persona: PersonaMeta;
+  identity?: PersonaIdentity;
   worldview?: PersonaWorldview;
   constitution: PersonaConstitution;
   habits?: PersonaHabits;
@@ -104,6 +188,20 @@ export interface PersonaPackage {
   relationshipState?: RelationshipState;
   voiceProfile?: VoiceProfile;
   soulLineage?: SoulLineage;
+  /** P2-0: 内在情绪状态 */
+  moodState?: MoodState;
+  /** P2-2: 自传体叙事 */
+  autobiography?: {
+    selfUnderstanding: string;
+    chapterCount: number;
+    lastDistilledAt: string | null;
+  };
+  /** P3-0: 兴趣分布摘要 */
+  interests?: {
+    topTopics: string[];
+    curiosity: number;
+    updatedAt: string;
+  };
 }
 
 export interface RelationshipDimensions {
@@ -131,6 +229,8 @@ export interface RelationshipState {
   drivers: RelationshipDriver[];
   version: "3";
   updatedAt: string;
+  /** EB-5: 64-dim relationship latent vector; dims[0-5] map to named dimensions */
+  relationshipLatent?: number[];
 }
 
 export interface SoulLineage {
@@ -140,7 +240,7 @@ export interface SoulLineage {
   reproductionCount: number;
   lastReproducedAt?: string;
   inheritancePolicy: "values_plus_memory_excerpt";
-  consentMode: "default_consent";
+  consentMode: "default_consent" | "require_roxy_voice" | "roxy_veto";
 }
 
 export interface VoiceProfile {
@@ -169,6 +269,8 @@ export interface MemoryEvidenceBlock {
   id: string;
   source: "user" | "assistant" | "system";
   content: string;
+  /** P4-0: 记忆不确定性分级 */
+  uncertaintyLevel?: "certain" | "uncertain";
 }
 
 export interface DecisionTrace {
@@ -213,6 +315,19 @@ export interface DecisionTrace {
   routeReasonCodes?: string[];
   routeTag?: "instinct" | "deliberative" | "meta";
   modelUsed?: string;
+  /** EB-0: 内容安全语义评估向量 [intent_risk, content_risk, relational_risk] */
+  riskLatent?: [number, number, number];
+  /** EB-0: 使用的风险评估路径 */
+  riskAssessmentPath?: "semantic" | "regex_fallback";
+  /** EA-0: Soul 对是否需要调用 Agent 的裁决 */
+  agentRequest?: {
+    needed: boolean;
+    agentType: "retrieval" | "transform" | "capture" | "action";
+    riskLevel: "low" | "medium" | "high";
+    requiresConfirmation: boolean;
+  };
+  /** EA-0: Agent trace 关联的 Soul trace id */
+  soulTraceId?: string;
 }
 
 export type PersonaJudgmentLabel = "fiction" | "non_fiction" | "mixed" | "uncertain";
@@ -448,6 +563,16 @@ export interface ExecutionResult {
   traceIds: string[];
   planState?: PlanState;
   stopCondition?: StopCondition;
+  /** EA-0: 关联的 Soul trace id，由 execution_protocol 注入 */
+  soulTraceId?: string;
+  /** EA-1: Agent 产生的记忆候选提案（未经元认知裁决，不写入 persona 记忆）*/
+  memoryProposals?: Array<{
+    kind: "semantic" | "preference" | "relational" | "open_question";
+    content: string;
+    evidenceRefs: string[];
+    confidence: number;
+    expiresAt?: string;
+  }>;
 }
 
 export type MemoryTier = "highlight" | "pattern" | "error";
@@ -544,7 +669,9 @@ export type LifeEventType =
   | "constitution_review_rejected"
   | "social_graph_person_proposed"
   | "social_graph_person_added"
-  | "social_graph_person_removed";
+  | "social_graph_person_removed"
+  | "persona_voice_on_evolution_updated"
+  | "reproduction_consent_statement";
 
 export type SelfRevisionDomain =
   | "habits"
@@ -596,7 +723,8 @@ export interface ModelAdapter {
 
 export interface DoctorIssue {
   code: string;
-  severity: "error" | "warning";
+  /** error / warning: affects ok; hint: informational only, does not affect ok */
+  severity: "error" | "warning" | "hint";
   message: string;
   path: string;
 }

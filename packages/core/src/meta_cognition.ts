@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type {
   CapabilityCallRequest,
+  DecisionTrace,
   MetaActionArbitration,
   MetaActionDraft,
   MetaIntentPlan,
+  PersonaConstitution,
   PersonaJudgmentLabel
 } from "./types.js";
+import { arbitrateMemoryProposals, type AgentMemoryProposal, type MemoryArbitrationResult } from "./agent_memory_proposal.js";
 
 export function planMetaIntent(params: {
   userInput: string;
@@ -93,6 +96,93 @@ export function arbitrateMetaAction(params: {
     summary: "dialogue_domain_persona_priority",
     applied: params.mode === "active"
   };
+}
+
+/**
+ * EA-2: 前置裁决 — Agent 调用守门人
+ * 决定是否允许 agent 调用，以及是否需要用户确认。
+ */
+export interface AgentInvocationArbitration {
+  proceed: boolean;
+  agentType: "retrieval" | "transform" | "capture" | "action";
+  requiresConfirmation: boolean;
+  rationale: string;
+}
+
+export function arbitrateAgentInvocation(
+  trace: DecisionTrace,
+  userInput: string
+): AgentInvocationArbitration {
+  const agentReq = trace.agentRequest;
+  if (!agentReq || !agentReq.needed) {
+    return {
+      proceed: false,
+      agentType: "retrieval",
+      requiresConfirmation: false,
+      rationale: "soul_decided_no_agent_needed"
+    };
+  }
+
+  const agentType = agentReq.agentType;
+  const riskLevel = agentReq.riskLevel;
+
+  // High-risk or action-type always requires user confirmation
+  const requiresConfirmation = agentType === "action" || riskLevel === "high";
+
+  // Retrieval is always safe to proceed automatically
+  if (agentType === "retrieval") {
+    return {
+      proceed: true,
+      agentType,
+      requiresConfirmation: false,
+      rationale: "retrieval_agent_auto_proceed"
+    };
+  }
+
+  return {
+    proceed: true,
+    agentType,
+    requiresConfirmation,
+    rationale: requiresConfirmation
+      ? `${agentType}_agent_requires_confirmation:risk=${riskLevel}`
+      : `${agentType}_agent_auto_proceed:risk=${riskLevel}`
+  };
+}
+
+/**
+ * EA-2: 后置裁决 — 记忆提案守门人
+ * 包装 agent_memory_proposal.arbitrateMemoryProposals，附加可选的宪法冲突检测。
+ */
+export function arbitrateAgentMemory(
+  proposals: AgentMemoryProposal[],
+  options?: { constitution?: Pick<PersonaConstitution, "boundaries"> }
+): MemoryArbitrationResult {
+  // First pass: standard rules-based arbitration
+  const result = arbitrateMemoryProposals(proposals);
+
+  // Second pass: reject content conflicting with persona boundaries
+  if (options?.constitution?.boundaries && options.constitution.boundaries.length > 0) {
+    const accepted = result.accepted.filter(p => {
+      const content = p.content.toLowerCase();
+      for (const boundary of options.constitution!.boundaries!) {
+        const keyword = boundary.toLowerCase().slice(0, 30);
+        if (keyword.length > 1 && content.includes(keyword)) {
+          result.rejected.push({ ...p, status: "rejected", rejectionReason: `conflicts_with_boundary: ${keyword}` } as AgentMemoryProposal & { rejectionReason: string });
+          return false;
+        }
+      }
+      return true;
+    });
+    return {
+      accepted,
+      rejected: result.rejected,
+      rationale: result.rationale + (result.accepted.length !== accepted.length
+        ? ` (${result.accepted.length - accepted.length} filtered by constitution boundaries)`
+        : "")
+    };
+  }
+
+  return result;
 }
 
 export function judgePersonaContentLabel(params: {
