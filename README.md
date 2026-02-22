@@ -44,6 +44,112 @@ npm run build
 
 ---
 
+## Installation / 安装
+
+### Prerequisites / 前置条件
+
+- **Node.js** >= 18.0
+- **npm** >= 9.0 (or equivalent package manager)
+- **sqlite3** (for development; usually pre-installed on macOS/Linux)
+  - Windows users: see [doc/Windows.md](doc/Windows.md)
+
+> **Node.js 版本:** >= 18.0
+> **npm 版本:** >= 9.0
+> **sqlite3:** 用于开发环境；macOS/Linux 通常预装
+
+### Step 1: Clone Repository / 克隆仓库
+
+```bash
+git clone https://github.com/hirohi/soul-seed.git
+cd soul-seed
+```
+
+### Step 2: Install Dependencies / 安装依赖
+
+```bash
+npm install
+```
+
+This installs all dependencies for `packages/core`, `packages/cli`, and `packages/mcp-server`.
+
+> 这会安装 `packages/core`、`packages/cli` 和 `packages/mcp-server` 所有依赖。
+
+### Step 3: Build / 构建
+
+```bash
+npm run build
+```
+
+Compiles TypeScript to JavaScript in each package.
+
+> 在每个包中将 TypeScript 编译为 JavaScript。
+
+---
+
+## API Configuration / API 配置
+
+Soulseed uses **OpenAI-compatible LLM APIs** (e.g., DeepSeek, OpenAI, Mistral, etc.).
+
+> Soulseed 支持**兼容 OpenAI 的 LLM API**（如 DeepSeek、OpenAI、Mistral 等）。
+
+### Step 1: Create `.env` File / 创建 `.env` 文件
+
+```bash
+cp .env.example .env
+```
+
+### Step 2: Add Your API Key / 添加 API 密钥
+
+Open `.env` and fill in your credentials:
+
+```bash
+# Required / 必填
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Optional / 可选（通常不需要修改）
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_MODEL=deepseek-chat
+```
+
+### Supported API Providers / 支持的 API 提供商
+
+| Provider / 提供商 | Base URL | Default Model / 默认模型 | API Key |
+|---|---|---|---|
+| **DeepSeek** | `https://api.deepseek.com/v1` | `deepseek-chat` | [platform.deepseek.com](https://platform.deepseek.com) |
+
+> **Current status / 当前状态：**  
+> ✅ **DeepSeek is supported.**  
+> ✅ **目前仅支持 DeepSeek。**  
+> Other providers will be added later. / 其他供应商将在后续版本补充支持。
+> 
+
+### Step 3: Verify Configuration / 验证配置
+
+```bash
+# Quick health check / 快速健康检查
+./ss doctor
+```
+
+If everything is configured correctly, you should see:
+- ✓ Core directories initialized
+- ✓ Default personas found
+- ✓ API connectivity OK
+
+> 如果配置正确，应该看到上述检查项全部通过。
+
+### Step 4: (Optional) Test API Connection / 可选：测试 API 连接
+
+```bash
+# Use the built-in Alpha persona to test / 使用内置 Alpha 人格测试
+./ss Alpha
+
+# In the chat, type / 在对话中输入：
+# "ping" or "测试连接" or "hello"
+# The persona should respond normally
+```
+
+---
+
 ## Built-in Personas / 内置人格
 
 No setup required. Just run. / 无需创建，直接使用。
