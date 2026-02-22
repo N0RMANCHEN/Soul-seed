@@ -1692,6 +1692,7 @@ async function readJson<T>(filePath: string): Promise<T> {
 }
 
 async function writeJson(filePath: string, data: unknown): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true });
   const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   await writeFile(tmpPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
   await rename(tmpPath, filePath);
