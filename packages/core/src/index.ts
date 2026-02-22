@@ -66,3 +66,4 @@ export * from "./expression_belief_state.js";
 export * from "./latent_cross_influence.js";
 export * from "./routing_adaptation.js";
 export * from "./memory_rotation.js";
+export * from "./persona_write_lock.js";

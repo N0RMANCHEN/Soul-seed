@@ -42,7 +42,9 @@ import {
   isBeliefLatentValid
 } from "./expression_belief_state.js";
 import {
-  PERSONA_SCHEMA_VERSION
+  PERSONA_SCHEMA_VERSION,
+  MAX_PINNED_COUNT,
+  MAX_PINNED_CHARS
 } from "./types.js";
 import type {
   LifeEvent,
@@ -53,6 +55,7 @@ import type {
   PersonaHabits,
   PersonaInitOptions,
   PersonaConstitution,
+  PersonaLibraryBlock,
   PersonaMeta,
   PersonaPackage,
   PersonaPinned,
@@ -553,15 +556,15 @@ export async function addPinnedMemory(rootPath: string, text: string): Promise<P
   const current = existsSync(pinnedPath)
     ? await readJson<PersonaPinned>(pinnedPath)
     : ({ memories: [] } as PersonaPinned);
-  const normalized = text.trim().slice(0, 240);
+  const normalized = text.trim().slice(0, MAX_PINNED_CHARS);
   if (!normalized) {
     return current;
   }
   const dedup = [...new Set([...(Array.isArray(current.memories) ? current.memories : []), normalized])].slice(
     0,
-    32
+    MAX_PINNED_COUNT
   );
-  const next: PersonaPinned = { memories: dedup, updatedAt: new Date().toISOString() };
+  const next: PersonaPinned = { ...current, memories: dedup, updatedAt: new Date().toISOString() };
   await writeJson(pinnedPath, next);
   return next;
 }
@@ -573,10 +576,55 @@ export async function removePinnedMemory(rootPath: string, text: string): Promis
     : ({ memories: [] } as PersonaPinned);
   const normalized = text.trim();
   const next: PersonaPinned = {
+    ...current,
     memories: (Array.isArray(current.memories) ? current.memories : []).filter((item) => item !== normalized),
     updatedAt: new Date().toISOString()
   };
   await writeJson(pinnedPath, next);
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// P0-14: Persona Library — searchable blocks stored in pinned.json
+// These are NOT injected every turn; they are retrieved on-demand.
+// ---------------------------------------------------------------------------
+
+async function readPinned(rootPath: string): Promise<PersonaPinned> {
+  const pinnedPath = path.join(rootPath, "pinned.json");
+  return existsSync(pinnedPath)
+    ? await readJson<PersonaPinned>(pinnedPath)
+    : { memories: [] };
+}
+
+export async function listLibraryBlocks(rootPath: string): Promise<PersonaLibraryBlock[]> {
+  const pinned = await readPinned(rootPath);
+  return Array.isArray(pinned.library) ? pinned.library : [];
+}
+
+export async function addLibraryBlock(
+  rootPath: string,
+  block: Omit<PersonaLibraryBlock, "id" | "createdAt">
+): Promise<PersonaLibraryBlock> {
+  const pinned = await readPinned(rootPath);
+  const library = Array.isArray(pinned.library) ? [...pinned.library] : [];
+  const newBlock: PersonaLibraryBlock = {
+    id: `lib_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    title: block.title.trim().slice(0, 100),
+    content: block.content.slice(0, 2000),
+    tags: block.tags?.map((t) => t.trim()).filter(Boolean),
+    createdAt: new Date().toISOString()
+  };
+  library.push(newBlock);
+  const next: PersonaPinned = { ...pinned, library, updatedAt: new Date().toISOString() };
+  await writeJson(path.join(rootPath, "pinned.json"), next);
+  return newBlock;
+}
+
+export async function removeLibraryBlock(rootPath: string, blockId: string): Promise<PersonaPinned> {
+  const pinned = await readPinned(rootPath);
+  const library = (Array.isArray(pinned.library) ? pinned.library : []).filter((b) => b.id !== blockId);
+  const next: PersonaPinned = { ...pinned, library, updatedAt: new Date().toISOString() };
+  await writeJson(path.join(rootPath, "pinned.json"), next);
   return next;
 }
 

@@ -52,6 +52,24 @@ const TOOL_BUDGET: Record<string, ToolBudget> = {
 
 const ALLOWED_TOOLS = new Set(Object.keys(TOOL_BUDGET));
 
+/**
+ * P0-16: Tools that modify persona state (write to life.log, memory.db, etc.).
+ * These are disabled by default. Set SOULSEED_MCP_ALLOW_WRITES=true to enable.
+ */
+const WRITE_TOOLS = new Set([
+  "conversation.save_turn",
+  "goal.create",
+  "goal.cancel",
+  "agent.run",
+  "identity.update_voice_on_evolution",
+  "session.capability_call",
+  "runtime.turn",
+  "runtime.goal.resume"
+]);
+
+/** P0-16: Check env flag once at module load time. */
+const MCP_WRITES_ENABLED = process.env.SOULSEED_MCP_ALLOW_WRITES === "true";
+
 function errorResult(message: string): CallToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify({ error: message }) }],
@@ -68,6 +86,9 @@ export interface ToolRegistryOptions {
     status: "ok" | "rejected";
     reason: string;
     durationMs: number;
+    /** P0-16: Whether this tool modifies persona state */
+    isWrite: boolean;
+    personaId: string;
   }) => void;
 }
 
@@ -110,21 +131,36 @@ export class ToolRegistry {
 
   async dispatch(toolName: string, args: Record<string, unknown>): Promise<CallToolResult> {
     const startedAt = Date.now();
+    const personaId = this.personaPkg.persona.id;
+    const isWrite = WRITE_TOOLS.has(toolName);
+
     if (!ALLOWED_TOOLS.has(toolName)) {
       await appendLifeEvent(this.personaPath, {
         type: "mcp_tool_rejected",
-        payload: {
-          toolName,
-          reason: "tool_not_in_allow_list"
-        }
+        payload: { toolName, reason: "tool_not_in_allow_list" }
       }).catch(() => undefined);
       this.auditLogger?.({
-        toolName,
-        status: "rejected",
-        reason: "tool_not_in_allow_list",
-        durationMs: Date.now() - startedAt
+        toolName, status: "rejected", reason: "tool_not_in_allow_list",
+        durationMs: Date.now() - startedAt, isWrite, personaId
       });
       return errorResult("tool_not_allowed");
+    }
+
+    // P0-16: Block write tools unless SOULSEED_MCP_ALLOW_WRITES=true
+    if (isWrite && !MCP_WRITES_ENABLED) {
+      const reason = "write_tools_disabled";
+      await appendLifeEvent(this.personaPath, {
+        type: "mcp_tool_rejected",
+        payload: { toolName, reason }
+      }).catch(() => undefined);
+      this.auditLogger?.({
+        toolName, status: "rejected", reason,
+        durationMs: Date.now() - startedAt, isWrite, personaId
+      });
+      return errorResult(
+        `Write tool '${toolName}' is disabled by default. ` +
+        `Set SOULSEED_MCP_ALLOW_WRITES=true to enable write operations.`
+      );
     }
 
     const budget = this.effectiveBudget[toolName];
@@ -141,10 +177,8 @@ export class ToolRegistry {
         }
       }).catch(() => undefined);
       this.auditLogger?.({
-        toolName,
-        status: "rejected",
-        reason: "session_budget_exceeded",
-        durationMs: Date.now() - startedAt
+        toolName, status: "rejected", reason: "session_budget_exceeded",
+        durationMs: Date.now() - startedAt, isWrite, personaId
       });
       return errorResult("session_budget_exceeded");
     }
@@ -457,10 +491,8 @@ export class ToolRegistry {
         }
       }).catch(() => undefined);
       this.auditLogger?.({
-        toolName,
-        status: "ok",
-        reason: "ok",
-        durationMs: Date.now() - startedAt
+        toolName, status: "ok", reason: "ok",
+        durationMs: Date.now() - startedAt, isWrite, personaId
       });
 
       return {
@@ -478,10 +510,8 @@ export class ToolRegistry {
         }
       }).catch(() => undefined);
       this.auditLogger?.({
-        toolName,
-        status: "rejected",
-        reason: `handler_error:${msg}`,
-        durationMs: Date.now() - startedAt
+        toolName, status: "rejected", reason: `handler_error:${msg}`,
+        durationMs: Date.now() - startedAt, isWrite, personaId
       });
       return errorResult(`handler_error: ${msg}`);
     }

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import path from "node:path";
+import os from "node:os";
 import process from "node:process";
 import readline from "node:readline";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { readdirSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {
   createToolSessionState,
@@ -176,7 +178,14 @@ import {
   ensureSoulLineageArtifacts,
   adaptRoutingWeightsFromHistory,
   DEFAULT_ROUTING_WEIGHTS,
-  rotateLifeLogIfNeeded
+  rotateLifeLogIfNeeded,
+  checkEnvironment,
+  isEnvironmentReady,
+  listLibraryBlocks,
+  addLibraryBlock,
+  removeLibraryBlock,
+  MAX_PINNED_COUNT,
+  MAX_PINNED_CHARS
 } from "@soulseed/core";
 import type {
   AdultSafetyContext,
@@ -227,7 +236,8 @@ const RESERVED_ROOT_COMMANDS = new Set([
   "refine",
   "social",
   "mcp",
-  "explain"
+  "explain",
+  "space"
 ]);
 
 const PERSONA_TEMPLATES: Record<PersonaTemplateKey, PersonaTemplate> = {
@@ -361,7 +371,10 @@ function printHelp(): void {
       "Soulseed CLI",
       "",
       "常用命令:",
-      "  new <name> [--out ./personas/<name>.soulseedpersona] [--template friend|peer|intimate|neutral] [--model deepseek-chat] [--quick]",
+      "  new <name>                                         # one-question setup (default)",
+      "  new <name> --quick                                 # instant create, no questions",
+      "  new <name> --advanced                              # full configuration wizard",
+      "  new <name> [--out <path>] [--template friend|peer|intimate|neutral] [--model deepseek-chat]",
       "  <name> [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
       "  doctor [--persona ./personas/<name>.soulseedpersona]",
       "  goal create --title <text> [--persona <path>]",
@@ -835,6 +848,17 @@ function buildInitOptionsFromTemplate(params: {
 }
 
 async function runPersonaNew(nameArg: string | undefined, options: Record<string, string | boolean>): Promise<string> {
+  // P0-12: Lightweight env gate — fail early with actionable message
+  const envReady = await isEnvironmentReady();
+  if (!envReady) {
+    const results = await checkEnvironment();
+    const failed = results.filter((r) => !r.ok);
+    const hints = failed.map((r) => `  • ${r.component}: ${r.hint ?? r.message}`).join("\n");
+    throw new Error(
+      `缺少必需依赖，无法创建 persona：\n${hints}\n\n请先安装以上依赖后重试。`
+    );
+  }
+
   const rawName = (nameArg ?? optionString(options, "name") ?? "").trim();
   if (!rawName) {
     throw new Error("new 需要 <name>，例如：./ss new Teddy");
@@ -870,6 +894,46 @@ async function runPersonaNew(nameArg: string | undefined, options: Record<string
     return outPath;
   }
 
+  const advanced = options.advanced === true;
+
+  if (!advanced) {
+    // Default flow: one question, smart defaults — no technical jargon
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      const vibeLabels: Record<PersonaTemplateKey, string> = {
+        friend:   "Warm & caring      温暖亲切",
+        peer:     "Thoughtful & equal  平等深思",
+        intimate: "Deeply personal     亲密私密",
+        neutral:  "Focused & clear     专注清晰"
+      };
+      console.log(`\n  How should ${rawName} feel?`);
+      console.log(`  ${rawName} 是什么风格？\n`);
+      console.log(`    1  ${vibeLabels.friend}`);
+      console.log(`    2  ${vibeLabels.peer}`);
+      console.log(`    3  ${vibeLabels.intimate}`);
+      console.log(`    4  ${vibeLabels.neutral}`);
+      console.log(``);
+      const vibeAnswer = (await askQuestion(rl, `  Your choice [1–4, default 1]: `)).trim().toLowerCase();
+      const vibeMap: Record<string, PersonaTemplateKey> = {
+        "1": "friend",   "f": "friend",   "friend": "friend",
+        "2": "peer",     "p": "peer",     "peer": "peer",
+        "3": "intimate", "i": "intimate", "intimate": "intimate",
+        "4": "neutral",  "n": "neutral",  "neutral": "neutral"
+      };
+      const templateKey: PersonaTemplateKey = vibeMap[vibeAnswer] ?? templateFromOption ?? "friend";
+      const initOptions = buildInitOptionsFromTemplate({ templateKey, model: modelFromOption });
+      await initPersonaPackage(outPath, rawName, initOptions);
+      console.log(`\n  ✦  ${rawName} is ready.  ${rawName} 已就绪。`);
+      console.log(`     Style: ${vibeLabels[templateKey]}`);
+      console.log(`     Path:  ${outPath}`);
+      console.log(`\n     Start talking:  ./ss ${rawName}\n`);
+      return outPath;
+    } finally {
+      rl.close();
+    }
+  }
+
+  // --advanced: full configuration wizard for power users
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
@@ -1739,6 +1803,16 @@ async function runExamples(
 }
 
 async function runChat(options: Record<string, string | boolean>): Promise<void> {
+  // P0-12: Lightweight env gate — fail early if sqlite3 is missing
+  const envReady = await isEnvironmentReady();
+  if (!envReady) {
+    const results = await checkEnvironment();
+    const failed = results.filter((r) => !r.ok);
+    const lines = failed.map((r) => `  • ${r.component}: ${r.hint ?? r.message}`).join("\n");
+    console.error(`[soulseed] 缺少必需依赖，无法启动会话：\n${lines}\n\n请先安装以上依赖后重试。`);
+    process.exit(1);
+  }
+
   let personaPath = resolvePersonaPath(options);
   let personaPkg = await loadPersonaPackage(personaPath);
   let strictMemoryGrounding = resolveStrictMemoryGrounding(options);
@@ -1823,6 +1897,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   let pendingReadConfirmPath: string | null = null;
   let pendingFetchConfirmUrl: string | null = null;
   let pendingExitConfirm = false;
+  let pendingCreatePersonaName: string | null = null;
+  let pendingDeleteConfirmPath: string | null = null;
+  let pendingSharedSpaceSetupPath: string | null = null;
+  let pendingFixConfirm = false;
+  let pendingProposedFix: { path: string; content: string; description: string } | null = null;
   let annoyanceBias = 0;
   let curiosity = 0.22;
   let proactiveQuietStart: number | undefined = undefined; // 静默开始小时
@@ -2661,7 +2740,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       ownerSessionAuthorized: ownerAuthExpiresAtMs > Date.now(),
       approvedReadPaths,
       approvedFetchOrigins,
-      fetchOriginAllowlist
+      fetchOriginAllowlist,
+      sharedSpacePath:
+        personaPkg.persona.sharedSpace?.enabled ? personaPkg.persona.sharedSpace.path : undefined
     });
 
     await appendLifeEvent(personaPath, {
@@ -2695,6 +2776,28 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         sayAsAssistant(`我可以现在打开这个网址：${normalizedUrl}。你回“好”我就开始，不想读就回“取消”。`);
       } else if (guarded.capability === "session.set_mode") {
         sayAsAssistant("这是高风险设置，请在命令后补充 `confirmed=true` 再执行。");
+      } else if (guarded.capability === "session.create_persona") {
+        const nameToCreate = String(guarded.normalizedInput.name ?? "").trim();
+        if (!nameToCreate) {
+          sayAsAssistant("请告诉我要创建的人格名字。");
+        } else {
+          pendingCreatePersonaName = nameToCreate;
+          sayAsAssistant(`我准备创建一个新人格「${nameToCreate}」并自动切换到它。回「是」确认，或回「取消」放弃。`);
+        }
+      } else if (guarded.capability === "session.shared_space_setup") {
+        const setupPath = String(guarded.normalizedInput.path ?? "").trim();
+        pendingSharedSpaceSetupPath = setupPath;
+        const personaName = personaPkg.persona.displayName;
+        sayAsAssistant(
+          `我准备在 ${setupPath} 创建我们的专属文件夹：\n  from_${personaName}/ （我放给你的文件）\n  to_${personaName}/ （你放给我的文件）\n回「是」确认，或回「取消」放弃。`
+        );
+      } else if (guarded.capability === "session.shared_space_delete") {
+        const filePath = String(guarded.normalizedInput.path ?? "").trim();
+        pendingDeleteConfirmPath = filePath;
+        const relPath = personaPkg.persona.sharedSpace?.path
+          ? path.relative(personaPkg.persona.sharedSpace.path, filePath)
+          : path.basename(filePath);
+        sayAsAssistant(`确认要删除 ${relPath} 吗？回「是」确认，或回「取消」放弃。`);
       }
       return "handled";
     }
@@ -2721,6 +2824,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         sayAsAssistant("网址格式不正确，请提供以 http:// 或 https:// 开头的完整网址。");
       } else if (guarded.reason === "fetch_origin_not_allowed") {
         sayAsAssistant("这个网址域名不在允许列表中，已拒绝抓取。请联系 Owner 配置 SOULSEED_FETCH_ALLOWLIST。");
+      } else if (guarded.reason === "shared_space_not_configured") {
+        sayAsAssistant(
+          `还没有配置专属文件夹。你可以说「设置我们的专属文件夹到 ~/Desktop/我们的空间」，或者运行 ./ss space ${personaPkg.persona.displayName} --path ~/Desktop/我们的空间`
+        );
+      } else if (guarded.reason === "path_outside_shared_space") {
+        sayAsAssistant("这个路径在专属文件夹范围之外，不能操作。");
       } else {
         sayAsAssistant("这个能力调用被策略拒绝了。");
       }
@@ -3035,6 +3144,140 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       return "handled";
     }
 
+    if (guarded.capability === "session.create_persona") {
+      const nameToCreate = String(guarded.normalizedInput.name ?? "").trim();
+      if (!nameToCreate) {
+        sayAsAssistant("请告诉我要创建的人格名字。");
+        return "handled";
+      }
+      const outPath = path.resolve(process.cwd(), `./personas/${nameToCreate}.soulseedpersona`);
+      try {
+        await initPersonaPackage(outPath, nameToCreate);
+        const newPkg = await loadPersonaPackage(outPath);
+        const prevName = personaPkg.persona.displayName;
+        personaPath = outPath;
+        personaPkg = newPkg;
+        sayAsAssistant(`好，新人格「${nameToCreate}」已创建，我现在是 ${newPkg.persona.displayName}，从 ${prevName} 切过来了。`);
+        await appendLifeEvent(personaPath, {
+          type: "capability_call_succeeded",
+          payload: { capability: "session.create_persona", name: nameToCreate }
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        sayAsAssistant(`创建人格失败：${msg}`);
+      }
+      return "handled";
+    }
+
+    if (guarded.capability === "session.shared_space_setup") {
+      const setupPath = String(guarded.normalizedInput.path ?? "").trim();
+      const personaName = personaPkg.persona.displayName;
+      try {
+        mkdirSync(path.join(setupPath, `from_${personaName}`), { recursive: true });
+        mkdirSync(path.join(setupPath, `to_${personaName}`), { recursive: true });
+        const metaPath = path.join(personaPath, "persona.json");
+        const meta = JSON.parse(readFileSync(metaPath, "utf8")) as Record<string, unknown>;
+        const sharedSpace = { path: setupPath, enabled: true, createdAt: new Date().toISOString() };
+        meta.sharedSpace = sharedSpace;
+        writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
+        personaPkg.persona.sharedSpace = sharedSpace;
+        sayAsAssistant(
+          `专属文件夹已建立：${setupPath}\n  📂 from_${personaName}/ ← 我放给你的文件\n  📂 to_${personaName}/ ← 你放给我的文件`
+        );
+        await appendLifeEvent(personaPath, {
+          type: "capability_call_succeeded",
+          payload: { capability: guarded.capability, path: setupPath }
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        sayAsAssistant(`创建专属文件夹失败：${msg}`);
+      }
+      return "handled";
+    }
+
+    if (guarded.capability === "session.shared_space_list") {
+      const spacePath = personaPkg.persona.sharedSpace!.path;
+      const personaName = personaPkg.persona.displayName;
+      const listing = buildSharedSpaceListing(spacePath, personaName);
+      setActiveReadingSource({ kind: "file", uri: spacePath, content: listing });
+      sayAsAssistant(`专属文件夹内容已加载，我来看看里面有什么。`);
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: { capability: guarded.capability, spacePath }
+      });
+      return "handled";
+    }
+
+    if (guarded.capability === "session.shared_space_read") {
+      const filePath = String(guarded.normalizedInput.path ?? "").trim();
+      if (!filePath) {
+        sayAsAssistant("请告诉我要读取的文件名，例如：读取我们文件夹里的 notes.txt");
+        return "handled";
+      }
+      try {
+        const content = readFileSync(filePath, "utf8");
+        setActiveReadingSource({ kind: "file", uri: filePath, content });
+        approvedReadPaths.add(filePath);
+        const relPath = path.relative(personaPkg.persona.sharedSpace!.path, filePath);
+        sayAsAssistant(`已读取文件 ${relPath}，我来看看内容。`);
+        await appendLifeEvent(personaPath, {
+          type: "capability_call_succeeded",
+          payload: { capability: guarded.capability, path: filePath }
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        sayAsAssistant(`读取文件失败：${msg}`);
+      }
+      return "handled";
+    }
+
+    if (guarded.capability === "session.shared_space_write") {
+      const filePath = String(guarded.normalizedInput.path ?? "").trim();
+      const content = String(guarded.normalizedInput.content ?? "");
+      if (!filePath) {
+        sayAsAssistant(
+          "请告诉我要写入的文件名和内容，格式：存到我们的文件夹 filename.txt: 内容"
+        );
+        return "handled";
+      }
+      try {
+        mkdirSync(path.dirname(filePath), { recursive: true });
+        writeFileSync(filePath, content, "utf8");
+        const relPath = path.relative(personaPkg.persona.sharedSpace!.path, filePath);
+        sayAsAssistant(`已写入：${relPath}`);
+        await appendLifeEvent(personaPath, {
+          type: "capability_call_succeeded",
+          payload: { capability: guarded.capability, path: filePath }
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        sayAsAssistant(`写入文件失败：${msg}`);
+      }
+      return "handled";
+    }
+
+    if (guarded.capability === "session.shared_space_delete") {
+      const filePath = String(guarded.normalizedInput.path ?? "").trim();
+      if (!filePath) {
+        sayAsAssistant("请告诉我要删除的文件名。");
+        return "handled";
+      }
+      try {
+        rmSync(filePath);
+        approvedReadPaths.delete(filePath);
+        const relPath = path.relative(personaPkg.persona.sharedSpace!.path, filePath);
+        sayAsAssistant(`已删除：${relPath}`);
+        await appendLifeEvent(personaPath, {
+          type: "capability_call_succeeded",
+          payload: { capability: guarded.capability, path: filePath }
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        sayAsAssistant(`删除文件失败：${msg}`);
+      }
+      return "handled";
+    }
+
     return "not_matched";
   };
 
@@ -3102,7 +3345,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       : incomingRaw;
     const normalizedTrimmed = normalizedLine.trim();
     const hasPendingConfirm =
-      pendingExitConfirm || pendingReadConfirmPath != null || pendingFetchConfirmUrl != null;
+      pendingExitConfirm || pendingReadConfirmPath != null || pendingFetchConfirmUrl != null ||
+      pendingCreatePersonaName != null || pendingFixConfirm || pendingProposedFix != null ||
+      pendingSharedSpaceSetupPath != null || pendingDeleteConfirmPath != null;
 
     if (!fromPasteFlush && normalizedTrimmed === "/paste on") {
       pasteAutoEnabled = false;
@@ -3287,6 +3532,184 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             return;
           }
           sayAsAssistant("我在等你确认。回“好”继续，或回“取消”。");
+          rl.prompt();
+          return;
+        }
+        if (pendingCreatePersonaName) {
+          if (isReadConfirmed(input)) {
+            const nameToCreate = pendingCreatePersonaName;
+            pendingCreatePersonaName = null;
+            const outPath = path.resolve(process.cwd(), `./personas/${nameToCreate}.soulseedpersona`);
+            try {
+              await initPersonaPackage(outPath, nameToCreate);
+              const newPkg = await loadPersonaPackage(outPath);
+              const prevName = personaPkg.persona.displayName;
+              personaPath = outPath;
+              personaPkg = newPkg;
+              sayAsAssistant(
+                `好，新人格「${nameToCreate}」已创建，我现在是 ${newPkg.persona.displayName}，从 ${prevName} 切过来了。`
+              );
+              await appendLifeEvent(personaPath, {
+                type: "capability_call_confirmed",
+                payload: { capability: "session.create_persona", name: nameToCreate }
+              });
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              sayAsAssistant(`创建人格失败：${msg}`);
+            }
+            rl.prompt();
+            return;
+          }
+          if (isCancelIntent(input)) {
+            pendingCreatePersonaName = null;
+            sayAsAssistant("好，我先不创建新人格了。");
+            rl.prompt();
+            return;
+          }
+          sayAsAssistant(`我在等你确认创建「${pendingCreatePersonaName}」。回「是」继续，或回「取消」。`);
+          rl.prompt();
+          return;
+        }
+        if (pendingSharedSpaceSetupPath) {
+          if (isReadConfirmed(input)) {
+            const setupPath = pendingSharedSpaceSetupPath;
+            pendingSharedSpaceSetupPath = null;
+            const personaName = personaPkg.persona.displayName;
+            try {
+              mkdirSync(path.join(setupPath, `from_${personaName}`), { recursive: true });
+              mkdirSync(path.join(setupPath, `to_${personaName}`), { recursive: true });
+              const metaPath = path.join(personaPath, "persona.json");
+              const meta = JSON.parse(readFileSync(metaPath, "utf8")) as Record<string, unknown>;
+              const sharedSpace = { path: setupPath, enabled: true, createdAt: new Date().toISOString() };
+              meta.sharedSpace = sharedSpace;
+              writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
+              personaPkg.persona.sharedSpace = sharedSpace;
+              sayAsAssistant(
+                `专属文件夹已建立：${setupPath}\n  📂 from_${personaName}/ ← 我放给你的文件\n  📂 to_${personaName}/ ← 你放给我的文件`
+              );
+              await appendLifeEvent(personaPath, {
+                type: "capability_call_confirmed",
+                payload: { capability: "session.shared_space_setup", path: setupPath }
+              });
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              sayAsAssistant(`创建专属文件夹失败：${msg}`);
+            }
+            rl.prompt();
+            return;
+          }
+          if (isCancelIntent(input)) {
+            pendingSharedSpaceSetupPath = null;
+            sayAsAssistant("好，专属文件夹先不设置了。");
+            rl.prompt();
+            return;
+          }
+          sayAsAssistant("我在等你确认。回「是」继续，或回「取消」。");
+          rl.prompt();
+          return;
+        }
+        if (pendingDeleteConfirmPath) {
+          if (isReadConfirmed(input)) {
+            const filePath = pendingDeleteConfirmPath;
+            pendingDeleteConfirmPath = null;
+            try {
+              rmSync(filePath);
+              approvedReadPaths.delete(filePath);
+              const relPath = personaPkg.persona.sharedSpace?.path
+                ? path.relative(personaPkg.persona.sharedSpace.path, filePath)
+                : path.basename(filePath);
+              sayAsAssistant(`已删除：${relPath}`);
+              await appendLifeEvent(personaPath, {
+                type: "capability_call_confirmed",
+                payload: { capability: "session.shared_space_delete", path: filePath }
+              });
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              sayAsAssistant(`删除文件失败：${msg}`);
+            }
+            rl.prompt();
+            return;
+          }
+          if (isCancelIntent(input)) {
+            pendingDeleteConfirmPath = null;
+            sayAsAssistant("好，文件保留。");
+            rl.prompt();
+            return;
+          }
+          sayAsAssistant("我在等你确认删除。回「是」确认，或回「取消」保留。");
+          rl.prompt();
+          return;
+        }
+        if (pendingFixConfirm) {
+          if (isReadConfirmed(input)) {
+            pendingFixConfirm = false;
+            const fix = pendingProposedFix;
+            pendingProposedFix = null;
+            if (fix) {
+              try {
+                if (isFixProtectedPath(fix.path)) {
+                  sayAsAssistant(`不能修改受保护路径：${fix.path}。默认人格文件不允许通过提案修改。`);
+                } else {
+                  const { writeFileSync } = await import("node:fs");
+                  writeFileSync(fix.path, fix.content, "utf-8");
+                  sayAsAssistant(`修改已应用：${fix.description}（${fix.path}）。`);
+                  await appendLifeEvent(personaPath, {
+                    type: "capability_call_succeeded",
+                    payload: {
+                      capability: "session.propose_fix",
+                      path: fix.path,
+                      description: fix.description
+                    }
+                  });
+                }
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                sayAsAssistant(`应用修复失败：${msg}`);
+              }
+            }
+            rl.prompt();
+            return;
+          }
+          if (isCancelIntent(input)) {
+            pendingFixConfirm = false;
+            pendingProposedFix = null;
+            sayAsAssistant("好，修复提案已取消。");
+            rl.prompt();
+            return;
+          }
+          sayAsAssistant("我在等你确认。输入「是」应用修改，或输入「否」取消。");
+          rl.prompt();
+          return;
+        }
+        if (
+          pendingProposedFix != null &&
+          (input.trim() === "确认修复" ||
+            input.trim().toLowerCase() === "confirm fix" ||
+            input.trim() === "应用修复")
+        ) {
+          const fix = pendingProposedFix;
+          let currentContent = "(文件不存在，将新建)";
+          try {
+            const { readFileSync } = await import("node:fs");
+            currentContent = readFileSync(fix.path, "utf-8");
+          } catch {
+            // file may not exist
+          }
+          const proposedLines = fix.content.split("\n");
+          const currentLines = currentContent.split("\n");
+          console.log(`\n[修复提案] ${fix.description}`);
+          console.log(`文件：${fix.path}`);
+          console.log(`当前行数：${currentLines.length}  →  提案行数：${proposedLines.length}`);
+          console.log("\n── 提案内容预览（前60行）──");
+          console.log(proposedLines.slice(0, 60).join("\n"));
+          if (proposedLines.length > 60) {
+            console.log(`... (共 ${proposedLines.length} 行，已截断)`);
+          }
+          console.log("────────────────────────────\n");
+          pendingFixConfirm = true;
+          sayAsAssistant(
+            `以上是「${fix.description}」的完整提案内容。确认要将 ${fix.path} 修改为以上内容吗？输入「是」应用，输入「否」取消。`
+          );
           rl.prompt();
           return;
         }
@@ -3709,7 +4132,20 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           undefined,
           personaPkg.persona.memoryPolicy?.disableGoldenExamples === true
         );
-        const contextExtras = [alwaysInjectBlock, socialBlock, fewShotBlock].filter(Boolean).join("\n");
+        // Shared space context injection
+        const sharedSpaceBlock = (() => {
+          const ss = personaPkg.persona.sharedSpace;
+          if (!ss?.enabled) return "";
+          const personaName = personaPkg.persona.displayName;
+          return [
+            "## 专属文件夹",
+            `你和用户有一个专属共享文件夹，位于：${ss.path}`,
+            `- from_${personaName}/ 是你放给用户的文件（你可以在这里创建/编辑文件）`,
+            `- to_${personaName}/ 是用户放给你的文件（你可以在这里读取用户留给你的内容）`,
+            "你对此文件夹有完整的读/写/创建/删除权限。"
+          ].join("\n");
+        })();
+        const contextExtras = [alwaysInjectBlock, socialBlock, fewShotBlock, sharedSpaceBlock].filter(Boolean).join("\n");
         const messages = turnExecution.mode === "soul"
           ? instinctRoute
             ? compileInstinctContext(personaPkg, effectiveInput, trace, {
@@ -4249,6 +4685,24 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
       });
       lastAssistantOutput = assistantContent;
+      // Parse soulseed-fix proposal from Beta's response (Plan B fix proposal flow)
+      if (!pendingProposedFix) {
+        const fixRe = /```soulseed-fix\r?\npath:\s*(.+?)\r?\ndescription:\s*(.+?)\r?\n---\r?\n([\s\S]*?)```/;
+        const fixMatch = fixRe.exec(assistantContent);
+        if (fixMatch) {
+          const rawPath = fixMatch[1].trim();
+          const description = fixMatch[2].trim();
+          const proposedContent = fixMatch[3];
+          if (rawPath && proposedContent !== undefined) {
+            pendingProposedFix = {
+              path: path.resolve(rawPath),
+              content: proposedContent,
+              description
+            };
+            sayAsAssistant(`Beta 提案了一个修改（${description}）。输入「确认修复」查看改动并决定是否应用，或输入「取消」放弃。`);
+          }
+        }
+      }
       const relationshipAfterAssistant = evolveRelationshipStateFromAssistant(
         personaPkg.relationshipState ?? createInitialRelationshipState(),
         assistantContent,
@@ -4553,6 +5007,12 @@ function detectQuickFeedbackIntent(input: string): "positive" | "negative" | "un
     return "negative";
   }
   return "unknown";
+}
+
+function isFixProtectedPath(filePath: string): boolean {
+  // Protect default persona files from being overwritten via fix proposals
+  const normalized = filePath.replace(/\\/g, '/');
+  return normalized.includes('/personas/defaults/');
 }
 
 function isUserAnnoyedByProactive(input: string): boolean {
@@ -5342,6 +5802,24 @@ async function confirmRename(
 }
 
 async function runDoctor(options: Record<string, string | boolean>): Promise<void> {
+  // P0-12: Environment pre-check (always runs first)
+  const envResults = await checkEnvironment();
+  console.log("\n[doctor] 环境检查 / Environment check:");
+  let envOk = true;
+  for (const r of envResults) {
+    const status = r.ok ? "✓" : "✗";
+    console.log(`  ${status} ${r.component}: ${r.message}`);
+    if (!r.ok) {
+      envOk = false;
+      if (r.hint) console.log(`    → 修复：${r.hint}`);
+    }
+  }
+  if (!envOk) {
+    console.error("\n[doctor] 环境缺少必需依赖，部分检查可能失败。请先按上方提示安装后重试。");
+    process.exitCode = 1;
+  }
+  console.log();
+
   const personaPath = resolvePersonaPath(options);
 
   // --check-drift: 行为漂移检测（P3-6）
@@ -6424,8 +6902,8 @@ async function runMemoryPin(action: string | undefined, options: Record<string, 
     if (typeof text !== "string" || text.trim().length === 0) {
       throw new Error("memory pin add 需要 --text <memory>");
     }
-    if (text.trim().length > 240) {
-      throw new Error("memory pin add --text 长度不能超过 240 字符");
+    if (text.trim().length > MAX_PINNED_CHARS) {
+      throw new Error(`memory pin add --text 长度不能超过 ${MAX_PINNED_CHARS} 字符`);
     }
     const pinned = await addPinnedMemory(personaPath, text);
     console.log(JSON.stringify(pinned, null, 2));
@@ -6449,6 +6927,45 @@ async function runMemoryPin(action: string | undefined, options: Record<string, 
   }
 
   throw new Error("memory pin 用法: memory pin <add|list|remove> [--text <memory>] [--persona <path>]");
+}
+
+// P0-14: Persona library CRUD — ss pinned library <list|add|remove>
+async function runPinnedLibrary(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+
+  if (action === "list") {
+    const blocks = await listLibraryBlocks(personaPath);
+    if (blocks.length === 0) {
+      console.log("(persona library is empty — use `ss pinned library add --title <t> --content <c>` to add blocks)");
+    } else {
+      for (const b of blocks) {
+        console.log(`[${b.id}] ${b.title}${b.tags?.length ? " [" + b.tags.join(", ") + "]" : ""}`);
+        console.log(`  ${b.content.slice(0, 120)}${b.content.length > 120 ? "..." : ""}`);
+      }
+    }
+    return;
+  }
+
+  if (action === "add") {
+    const title = optionString(options, "title");
+    const content = optionString(options, "content");
+    if (!title?.trim()) throw new Error("pinned library add 需要 --title <title>");
+    if (!content?.trim()) throw new Error("pinned library add 需要 --content <content>");
+    const tags = typeof options.tags === "string" ? options.tags.split(",").map((t) => t.trim()) : undefined;
+    const block = await addLibraryBlock(personaPath, { title, content, tags });
+    console.log(`已添加 library block: [${block.id}] ${block.title}`);
+    return;
+  }
+
+  if (action === "remove") {
+    const id = optionString(options, "id");
+    if (!id?.trim()) throw new Error("pinned library remove 需要 --id <block-id>");
+    await removeLibraryBlock(personaPath, id);
+    console.log(`已删除 library block: ${id}`);
+    return;
+  }
+
+  throw new Error("用法: ss pinned library <list|add|remove> [--title <t>] [--content <c>] [--tags <t1,t2>] [--id <id>]");
 }
 
 async function autoPromoteHighSalienceMemories(
@@ -6807,6 +7324,12 @@ async function main(): Promise<void> {
 
   if (resource === "memory" && action === "pin") {
     const pinAction = typeof args._[2] === "string" ? args._[2] : undefined;
+    // P0-14: `memory pin library <list|add|remove>` — persona library blocks
+    if (pinAction === "library") {
+      const libraryAction = typeof args._[3] === "string" ? args._[3] : undefined;
+      await runPinnedLibrary(libraryAction, args.options);
+      return;
+    }
     await runMemoryPin(pinAction, args.options);
     return;
   }
@@ -6824,6 +7347,11 @@ async function main(): Promise<void> {
   if (resource === "memory" && action === "facts") {
     const factsAction = typeof args._[2] === "string" ? args._[2] : "list";
     await runMemoryFacts(factsAction, args.options);
+    return;
+  }
+
+  if (resource === "space") {
+    await runSharedSpaceCommand(action, args.options);
     return;
   }
 
@@ -7424,4 +7952,122 @@ function resolvePersonaOption(options: Record<string, string | boolean>): string
     return defaultPath;
   }
   return null;
+}
+
+// ── Shared Space helpers ────────────────────────────────────────────────────
+
+function buildSharedSpaceListing(spacePath: string, personaName: string): string {
+  const lines: string[] = [`专属文件夹内容 (${spacePath})`];
+  const MAX_FILES = 50;
+  let totalCount = 0;
+  let shown = 0;
+
+  const scanDir = (dir: string, prefix: string): void => {
+    if (!existsSync(dir)) return;
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true }) as import("node:fs").Dirent[];
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (shown >= MAX_FILES) {
+        totalCount++;
+        continue;
+      }
+      totalCount++;
+      shown++;
+      const fullPath = path.join(dir, String(entry.name));
+      if (entry.isDirectory()) {
+        lines.push(`  ${prefix}${String(entry.name)}/`);
+      } else {
+        let size = "";
+        try {
+          const st = statSync(fullPath);
+          size = ` (${(st.size / 1024).toFixed(1)} KB, ${st.mtime.toISOString().slice(0, 10)})`;
+        } catch {
+          // ignore
+        }
+        lines.push(`  ${prefix}${String(entry.name)}${size}`);
+      }
+    }
+  };
+
+  scanDir(path.join(spacePath, `from_${personaName}`), `from_${personaName}/`);
+  scanDir(path.join(spacePath, `to_${personaName}`), `to_${personaName}/`);
+
+  if (totalCount > MAX_FILES) {
+    lines.push(`  ... 还有 ${totalCount - MAX_FILES} 个文件未显示`);
+  }
+  if (totalCount === 0) {
+    lines.push("  （文件夹为空）");
+  }
+  return lines.join("\n");
+}
+
+async function runSharedSpaceCommand(
+  personaName: string | undefined,
+  options: Record<string, string | boolean>
+): Promise<void> {
+  const name = (personaName ?? "").trim();
+  if (!name) {
+    console.error("用法: ./ss space <PersonaName> [--path <dir>] [--remove]");
+    process.exitCode = 1;
+    return;
+  }
+
+  const pPath = resolvePersonaPathByName(name);
+  if (!existsSync(pPath)) {
+    console.error(`未找到 persona "${name}"，路径：${pPath}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const metaPath = path.join(pPath, "persona.json");
+  let meta: Record<string, unknown>;
+  try {
+    meta = JSON.parse(readFileSync(metaPath, "utf8")) as Record<string, unknown>;
+  } catch (err: unknown) {
+    console.error(`读取 persona.json 失败：${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // --remove: clear sharedSpace config
+  if (options.remove === true) {
+    delete meta.sharedSpace;
+    writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
+    console.log(`✓ 已移除 ${name} 的专属文件夹配置`);
+    return;
+  }
+
+  // --path: set up shared space
+  if (typeof options.path === "string" && options.path.trim().length > 0) {
+    const rawPath = options.path.trim().replace(/^~/, os.homedir());
+    const resolvedPath = path.resolve(rawPath);
+    mkdirSync(path.join(resolvedPath, `from_${name}`), { recursive: true });
+    mkdirSync(path.join(resolvedPath, `to_${name}`), { recursive: true });
+    const sharedSpace = { path: resolvedPath, enabled: true, createdAt: new Date().toISOString() };
+    meta.sharedSpace = sharedSpace;
+    writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
+    console.log(`✓ 专属文件夹已建立：${resolvedPath}`);
+    console.log(`  📂 from_${name}/  ← ${name} 放给用户的文件`);
+    console.log(`  📂 to_${name}/    ← 用户放给 ${name} 的文件`);
+    return;
+  }
+
+  // No options: show current config
+  const ss = meta.sharedSpace as { path?: string; enabled?: boolean; createdAt?: string } | undefined;
+  if (!ss) {
+    console.log(`${name} 尚未配置专属文件夹。`);
+    console.log(`配置命令：./ss space ${name} --path ~/Desktop/我们的空间`);
+  } else {
+    console.log(`${name} 的专属文件夹配置：`);
+    console.log(`  路径：${ss.path ?? "(未设置)"}`);
+    console.log(`  启用：${ss.enabled ? "是" : "否"}`);
+    console.log(`  创建时间：${ss.createdAt ?? "(未知)"}`);
+    if (ss.path && existsSync(ss.path)) {
+      console.log(buildSharedSpaceListing(ss.path, name));
+    }
+  }
 }

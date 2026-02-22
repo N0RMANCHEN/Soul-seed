@@ -8,16 +8,19 @@ export interface CapabilityIntentResolution {
 }
 
 const CAPABILITY_HINTS: RegExp[] = [
-  /你能做什么/,
-  /都能帮我做什么/,
-  /可以做什么/,
+  /你能[做干]什么/u,
+  /都能帮我[做干]什么/u,
+  /[可能]以[做干]什么/u,
+  /有(?:哪些|什么)功能/u,
   /capabilit/i,
-  /what can you do/i
+  /what can you do/i,
+  /what.*(?:feature|abilit)/i
 ];
 
 const SHOW_MODE_HINTS: RegExp[] = [
   /当前模式/,
   /模式状态/,
+  /(?:查看|显示|看看).*模式/u,
   /show.*mode/i,
   /mode status/i
 ];
@@ -32,16 +35,19 @@ const EXIT_HINTS: RegExp[] = [
   /\bquit\b/i
 ];
 const EXIT_CONFIRMED_HINTS: RegExp[] = [
-  /^我走了[。！!~～]?$/u,
-  /^我走啦[。！!~～]?$/u,
-  /^先走了[。！!~～]?$/u,
-  /^先走啦[。！!~～]?$/u,
-  /^我先走了[。！!~～]?$/u,
-  /^拜拜[。！!~～]?$/u,
-  /^再见[。！!~～]?$/u,
-  /^回头聊[。！!~～]?$/u,
-  /^晚点聊[。！!~～]?$/u,
-  /^先这样[。！!~～]?$/u
+  /(?:^|好的|好|嗯|那)我(?:先)?走了[。！!~～]?$/u,
+  /(?:^|好的|好|嗯|那)我走啦[。！!~～]?$/u,
+  /先走了[。！!~～]?$/u,
+  /先走啦[。！!~～]?$/u,
+  /我(?:先)?走了[。！!~～]?/u,
+  /拜拜[。！!~～]?/u,
+  /再见[。！!~～]?/u,
+  /回头聊[。！!~～]?/u,
+  /晚点聊[。！!~～]?/u,
+  /先这样[。！!~～]?/u,
+  /\bbye\b/i,
+  /\bgoodbye\b/i,
+  /\bsee you\b/i
 ];
 
 const OWNER_PATTERN = /^owner\s+(\S+)\s+(.+)$/i;
@@ -62,6 +68,31 @@ const LIST_PERSONAS_HINTS: RegExp[] = [
 // Patterns: /connect <name>, 切换到 <name>, 连接到 <name>, switch to <name>
 const CONNECT_TO_PATTERN =
   /^(?:\/connect\s+|切换到\s*|连接到\s*|switch\s+to\s+|connect\s+to\s+)(.+)$/i;
+
+// Patterns for creating a new persona: /new <name>, 创建人格 <name>, 新建人格 <name>
+const CREATE_PERSONA_PATTERN =
+  /^(?:\/new\s+|创建人格\s+|新建人格\s+|create\s+persona\s+)(.+)$/i;
+
+// Shared space patterns
+const SHARED_SPACE_SETUP_ZH = /^(?:设置|配置|创建)(?:我们的|我和\S+的)?(?:专属|共享)?文件夹\s*(?:到|为|在|路径)?\s*(.+)$/u;
+const SHARED_SPACE_SETUP_EN = /^(?:set\s+up|setup|configure|create)\s+(?:our\s+)?(?:shared|private)?\s*(?:folder|directory)\s+(?:at|to|in)?\s*(.+)$/i;
+
+const SHARED_SPACE_LIST_HINTS: RegExp[] = [
+  /看看?我们的(?:专属|共享)?文件夹/u,
+  /我们?(?:的)?文件夹里(?:有什么|有哪些|的内容)/u,
+  /列出(?:共享|我们的)文件/u,
+  /(?:shared\s+folder\s+content|what.+our\s+folder|list.+our\s+folder)/i,
+];
+
+const SHARED_SPACE_READ_ZH = /(?:读取|打开|看看?)(?:我们的)?(?:共享|专属)?文件夹(?:里的?|中的?)?\s*["']?([^\s"'，。！？]+)["']?/u;
+const SHARED_SPACE_READ_EN = /(?:read|open|show)\s+["']?([^\s"']+)["']?\s+from\s+our\s+(?:shared\s+)?folder/i;
+
+const SHARED_SPACE_WRITE_ZH = /^(?:存|保存|写|放)(?:到|在)我们(?:的)?(?:共享|专属)?文件夹[\s:：]+["']?([^\s"':：，。！？]+)["']?(?:[\s:：]+(.+))?$/su;
+const SHARED_SPACE_WRITE_EN = /^(?:save|write|put)\s+(?:to\s+)?our\s+(?:shared\s+)?folder\s+["']?([^\s"':]+)["']?(?::\s*(.+))?$/si;
+const SHARED_SPACE_WRITE_HINTS: RegExp[] = [/(?:存|保存|写)到我们(的)?文件夹/u, /save.*our\s+folder/i];
+
+const SHARED_SPACE_DELETE_ZH = /(?:删除|移除|清除)(?:我们的)?(?:共享|专属)?文件夹(?:里的?|中的?)?\s*["']?([^\s"'，。！？]+)["']?/u;
+const SHARED_SPACE_DELETE_EN = /(?:delete|remove)\s+["']?([^\s"']+)["']?\s+from\s+our\s+(?:shared\s+)?folder/i;
 
 export function resolveCapabilityIntent(inputRaw: string): CapabilityIntentResolution {
   const input = inputRaw.trim();
@@ -109,6 +140,16 @@ export function resolveCapabilityIntent(inputRaw: string): CapabilityIntentResol
       "session.connect_to",
       { targetName: connectMatch[1].trim() },
       "rule:connect_to",
+      0.97
+    );
+  }
+
+  const createPersonaMatch = CREATE_PERSONA_PATTERN.exec(input);
+  if (createPersonaMatch) {
+    return buildResolution(
+      "session.create_persona",
+      { name: createPersonaMatch[1].trim() },
+      "rule:create_persona",
       0.97
     );
   }
@@ -165,6 +206,64 @@ export function resolveCapabilityIntent(inputRaw: string): CapabilityIntentResol
       "rule:standalone_mode_update",
       0.95
     );
+  }
+
+  // Shared space: setup
+  const ssSetupZh = SHARED_SPACE_SETUP_ZH.exec(input);
+  if (ssSetupZh) {
+    return buildResolution("session.shared_space_setup", { path: ssSetupZh[1].trim() }, "rule:shared_space_setup", 0.96);
+  }
+  const ssSetupEn = SHARED_SPACE_SETUP_EN.exec(input);
+  if (ssSetupEn) {
+    return buildResolution("session.shared_space_setup", { path: ssSetupEn[1].trim() }, "rule:shared_space_setup", 0.96);
+  }
+
+  // Shared space: delete (check before read to avoid "删除" being caught by read)
+  const ssDeleteZh = SHARED_SPACE_DELETE_ZH.exec(input);
+  if (ssDeleteZh) {
+    return buildResolution("session.shared_space_delete", { path: ssDeleteZh[1].trim() }, "rule:shared_space_delete", 0.95);
+  }
+  const ssDeleteEn = SHARED_SPACE_DELETE_EN.exec(input);
+  if (ssDeleteEn) {
+    return buildResolution("session.shared_space_delete", { path: ssDeleteEn[1].trim() }, "rule:shared_space_delete", 0.95);
+  }
+
+  // Shared space: list
+  if (SHARED_SPACE_LIST_HINTS.some((p) => p.test(input))) {
+    return buildResolution("session.shared_space_list", {}, "rule:shared_space_list", 0.95);
+  }
+
+  // Shared space: read
+  const ssReadZh = SHARED_SPACE_READ_ZH.exec(input);
+  if (ssReadZh) {
+    return buildResolution("session.shared_space_read", { path: ssReadZh[1].trim() }, "rule:shared_space_read", 0.95);
+  }
+  const ssReadEn = SHARED_SPACE_READ_EN.exec(input);
+  if (ssReadEn) {
+    return buildResolution("session.shared_space_read", { path: ssReadEn[1].trim() }, "rule:shared_space_read", 0.95);
+  }
+
+  // Shared space: write
+  const ssWriteZh = SHARED_SPACE_WRITE_ZH.exec(input);
+  if (ssWriteZh) {
+    return buildResolution(
+      "session.shared_space_write",
+      { path: ssWriteZh[1].trim(), content: (ssWriteZh[2] ?? "").trim() },
+      "rule:shared_space_write",
+      0.95
+    );
+  }
+  const ssWriteEn = SHARED_SPACE_WRITE_EN.exec(input);
+  if (ssWriteEn) {
+    return buildResolution(
+      "session.shared_space_write",
+      { path: ssWriteEn[1].trim(), content: (ssWriteEn[2] ?? "").trim() },
+      "rule:shared_space_write",
+      0.95
+    );
+  }
+  if (SHARED_SPACE_WRITE_HINTS.some((p) => p.test(input))) {
+    return buildResolution("session.shared_space_write", { path: "", content: "" }, "rule:shared_space_write_hint", 0.85);
   }
 
   return { matched: false, confidence: 0, reason: "no_rule_match" };

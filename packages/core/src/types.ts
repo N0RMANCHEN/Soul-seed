@@ -8,6 +8,15 @@ export interface ChatMessage {
 
 export const PERSONA_SCHEMA_VERSION = "0.2.0";
 
+export interface SharedSpaceConfig {
+  /** Absolute path to the shared space root directory */
+  path: string;
+  /** Whether the shared space is currently enabled */
+  enabled: boolean;
+  /** ISO timestamp when created */
+  createdAt: string;
+}
+
 export interface PersonaMeta {
   id: string;
   displayName: string;
@@ -38,6 +47,8 @@ export interface PersonaMeta {
      */
     goldenExampleQualityThreshold?: number;
   };
+  /** Shared space folder for bidirectional file exchange with user */
+  sharedSpace?: SharedSpaceConfig;
   paths?: {
     identity?: string;
     worldview?: string;
@@ -157,8 +168,24 @@ export interface AdultSafetyContext {
   fictionalRoleplay: boolean;
 }
 
+/** A single searchable block stored in persona_library (inside pinned.json). */
+export interface PersonaLibraryBlock {
+  id: string;
+  title: string;
+  /** Full content — up to 2000 chars. Use library.search for retrieval injection. */
+  content: string;
+  tags?: string[];
+  createdAt?: string;
+}
+
+/** Hard budget constants — ≤5 entries, each ≤300 chars. */
+export const MAX_PINNED_COUNT = 5;
+export const MAX_PINNED_CHARS = 300;
+
 export interface PersonaPinned {
   memories: string[];
+  /** Optional searchable knowledge blocks (not injected every turn). */
+  library?: PersonaLibraryBlock[];
   updatedAt?: string;
 }
 
@@ -412,7 +439,13 @@ export type CapabilityName =
   | "session.set_mode"
   | "session.exit"
   | "session.list_personas"
-  | "session.connect_to";
+  | "session.connect_to"
+  | "session.create_persona"
+  | "session.shared_space_setup"
+  | "session.shared_space_list"
+  | "session.shared_space_read"
+  | "session.shared_space_write"
+  | "session.shared_space_delete";
 
 export type CapabilityRiskLevel = "low" | "medium" | "high";
 
@@ -757,6 +790,15 @@ export interface DoctorReport {
   ok: boolean;
   checkedAt: string;
   issues: DoctorIssue[];
+}
+
+export interface EnvCheckResult {
+  component: string;
+  ok: boolean;
+  /** Short message shown in doctor output */
+  message: string;
+  /** Copy-paste install hint shown only when ok=false */
+  hint?: string;
 }
 
 export interface WorkingSetItem {

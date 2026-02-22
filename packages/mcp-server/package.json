@@ -1,12 +1,13 @@
 {
   "name": "@soulseed/mcp-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "bin": { "soulseed-mcp": "dist/index.js" },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@soulseed/core": "0.1.0"
+    "@soulseed/core": "0.2.0"
   },
   "scripts": {
     "lint": "tsc -p tsconfig.json --noEmit",

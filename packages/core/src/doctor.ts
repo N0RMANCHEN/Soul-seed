@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import path from "node:path";
 import { inspectMemoryStore, MEMORY_SCHEMA_VERSION, runMemoryStoreSql } from "./memory_store.js";
 import { ensureScarForBrokenLifeLog, readLifeEvents, MAX_REPRODUCTION_COUNT } from "./persona.js";
@@ -11,8 +13,8 @@ import { inspectBoundaryRules } from "./constitution_rules.js";
 import { loadSocialGraph, validateSocialGraph, MAX_SOCIAL_PERSONS } from "./social_graph.js";
 import { MAX_USER_FACTS } from "./memory_user_facts.js";
 import { checkCrystallizationFileSizes } from "./constitution_crystallization.js";
-import { PERSONA_SCHEMA_VERSION } from "./types.js";
-import type { DoctorIssue, DoctorReport } from "./types.js";
+import { PERSONA_SCHEMA_VERSION, MAX_PINNED_COUNT, MAX_PINNED_CHARS } from "./types.js";
+import type { DoctorIssue, DoctorReport, EnvCheckResult } from "./types.js";
 
 const REQUIRED_FILES = [
   "persona.json",
@@ -31,8 +33,9 @@ const REQUIRED_FILES = [
   "memory.db"
 ];
 const EXPECTED_MISSION = "Be a consistent long-lived self-determined persona.";
-const MAX_PINNED_MEMORIES = 32;
-const MAX_PINNED_MEMORY_LENGTH = 240;
+// P0-14: pinned budget — use canonical constants
+const MAX_PINNED_MEMORIES = MAX_PINNED_COUNT;
+const MAX_PINNED_MEMORY_LENGTH = MAX_PINNED_CHARS;
 
 export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
   const issues: DoctorIssue[] = [];
@@ -551,6 +554,107 @@ async function readJson<T>(filePath: string): Promise<T> {
 
 // Suppress unused import warning
 void stat;
+
+// ---------------------------------------------------------------------------
+// P0-12: Environment pre-check
+// ---------------------------------------------------------------------------
+
+const execFileAsync = promisify(execFile);
+
+const INSTALL_HINTS: Record<string, string> = {
+  darwin: "brew install sqlite3",
+  linux: "sudo apt install sqlite3   # or: sudo dnf install sqlite",
+  win32: "winget install SQLite.SQLite   # or: scoop install sqlite"
+};
+
+function installHint(): string {
+  const platform = process.platform;
+  return INSTALL_HINTS[platform] ?? "Install sqlite3 from https://www.sqlite.org/download.html";
+}
+
+/**
+ * Check that the runtime environment is ready for Soulseed.
+ * Call this at startup to surface missing dependencies early.
+ */
+export async function checkEnvironment(): Promise<EnvCheckResult[]> {
+  const results: EnvCheckResult[] = [];
+
+  // 1. sqlite3 binary presence
+  const sqliteCheck = await (async (): Promise<EnvCheckResult> => {
+    try {
+      const { stdout } = await execFileAsync("sqlite3", ["--version"], { timeout: 5000 });
+      return {
+        component: "sqlite3",
+        ok: true,
+        message: `sqlite3 found: ${stdout.trim().split("\n")[0]}`
+      };
+    } catch {
+      return {
+        component: "sqlite3",
+        ok: false,
+        message: "sqlite3 CLI not found",
+        hint: installHint()
+      };
+    }
+  })();
+  results.push(sqliteCheck);
+
+  // Only run extension checks if sqlite3 is present
+  if (sqliteCheck.ok) {
+    // 2. FTS5 support
+    const ftsCheck = await (async (): Promise<EnvCheckResult> => {
+      try {
+        await execFileAsync("sqlite3", [":memory:", "CREATE VIRTUAL TABLE t USING fts5(x); DROP TABLE t;"], { timeout: 5000 });
+        return { component: "sqlite3_fts5", ok: true, message: "FTS5 extension available" };
+      } catch {
+        return {
+          component: "sqlite3_fts5",
+          ok: false,
+          message: "FTS5 extension not available — memory search will be degraded",
+          hint: "Reinstall sqlite3 with FTS5 support. " + installHint()
+        };
+      }
+    })();
+    results.push(ftsCheck);
+
+    // 3. JSON1 support
+    const jsonCheck = await (async (): Promise<EnvCheckResult> => {
+      try {
+        await execFileAsync("sqlite3", [":memory:", "SELECT json('{}');"], { timeout: 5000 });
+        return { component: "sqlite3_json1", ok: true, message: "JSON1 extension available" };
+      } catch {
+        return {
+          component: "sqlite3_json1",
+          ok: false,
+          message: "JSON1 extension not available — some queries will fail",
+          hint: "Reinstall sqlite3 with JSON1 support. " + installHint()
+        };
+      }
+    })();
+    results.push(jsonCheck);
+  }
+
+  // 4. Node.js version (>=18 for native fetch + --test runner)
+  const nodeVersion = process.version;
+  const nodeMajor = parseInt(nodeVersion.slice(1), 10);
+  results.push({
+    component: "node",
+    ok: nodeMajor >= 18,
+    message: nodeMajor >= 18 ? `Node.js ${nodeVersion}` : `Node.js ${nodeVersion} — requires >=18`,
+    hint: nodeMajor < 18 ? "Upgrade Node.js: https://nodejs.org/" : undefined
+  });
+
+  return results;
+}
+
+/**
+ * Returns true if the environment has the minimum required dependencies.
+ * Use this as a fast gate in startup paths.
+ */
+export async function isEnvironmentReady(): Promise<boolean> {
+  const results = await checkEnvironment();
+  return results.every((r) => r.ok);
+}
 
 function isMemoryMetaValid(meta: unknown, summaryIds: Set<string>): boolean {
   if (meta == null) {

@@ -1,8 +1,9 @@
 /**
  * P2-0: 内在情绪状态模型
  * 独立于关系维度，描述 persona 在当前时刻的情绪状态。
- * 随对话自动演化，并向基线（valence=0.5, arousal=0.3）衰减。
+ * 随对话自动演化，并向基线（valence=0.0, arousal=0.3）衰减。
  * EB-1: 增加 moodLatent（32维）为真实内在情绪状态；valence/arousal/dominantEmotion 为投影层。
+ * P0-15: valence 统一到 [-1, 1]，baseline=0.0（中性）。
  */
 import { writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -13,14 +14,15 @@ export const MOOD_STATE_FILENAME = "mood_state.json";
 export const MOOD_LATENT_HISTORY_FILENAME = "mood_latent_history.jsonl";
 export const MOOD_LATENT_DIM = 32;
 
-const BASELINE_VALENCE = 0.5;
+// P0-15: valence is unified to [-1, 1]; baseline = 0.0 (neutral)
+const BASELINE_VALENCE = 0.0;
 const BASELINE_AROUSAL = 0.3;
 
 // ─── EB-1: Mood Latent 向量操作 ──────────────────────────────────────────────
 
 /**
  * 创建 32 维基线 latent 向量
- * dim[0] = valence baseline (0.5), dim[1] = arousal baseline (0.3), rest = 0.0
+ * dim[0] = valence baseline (0.0 = neutral), dim[1] = arousal baseline (0.3), rest = 0.0
  */
 export function createMoodLatentBaseline(): number[] {
   const z = new Array(MOOD_LATENT_DIM).fill(0.0) as number[];
@@ -265,17 +267,18 @@ function computeMoodDelta(
   };
 }
 
+// P0-15: thresholds recalibrated for valence ∈ [-1, 1], baseline = 0.0
 export function inferDominantEmotion(valence: number, arousal: number): DominantEmotion {
-  // 高效价 + 高唤起 → playful
-  if (valence >= 0.65 && arousal >= 0.55) return "playful";
+  // 高效价（> +0.30）+ 高唤起 → playful
+  if (valence >= 0.30 && arousal >= 0.55) return "playful";
   // 高效价 + 中唤起 → warm
-  if (valence >= 0.65 && arousal >= 0.3) return "warm";
-  // 高效价 + 低唤起 → tender
-  if (valence >= 0.55 && arousal < 0.3) return "tender";
-  // 负效价 + 高唤起 → guarded
-  if (valence < 0.25 && arousal >= 0.5) return "guarded";
+  if (valence >= 0.30 && arousal >= 0.3) return "warm";
+  // 轻微正效价 + 低唤起 → tender
+  if (valence >= 0.10 && arousal < 0.3) return "tender";
+  // 强负效价 + 高唤起 → guarded
+  if (valence < -0.30 && arousal >= 0.5) return "guarded";
   // 负效价 + 低唤起 → melancholic
-  if (valence < 0.35 && arousal < 0.4) return "melancholic";
+  if (valence < -0.15 && arousal < 0.4) return "melancholic";
   // 中效价 + 高唤起 → curious 或 restless
   if (arousal >= 0.6) return "restless";
   if (arousal >= 0.45) return "curious";

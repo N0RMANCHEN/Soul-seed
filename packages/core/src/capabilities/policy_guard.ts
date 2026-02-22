@@ -1,4 +1,5 @@
 import path from "node:path";
+import os from "node:os";
 import type { CapabilityCallRequest, CapabilityName } from "../types.js";
 import { getCapabilityDefinition } from "./registry.js";
 
@@ -9,6 +10,8 @@ export interface CapabilityGuardContext {
   approvedReadPaths?: Set<string>;
   approvedFetchOrigins?: Set<string>;
   fetchOriginAllowlist?: Set<string>;
+  /** Absolute path to persona's shared space root, if configured and enabled */
+  sharedSpacePath?: string;
 }
 
 export interface CapabilityGuardResult {
@@ -113,6 +116,66 @@ export function evaluateCapabilityPolicy(
   }
 
   if (request.name === "session.proactive_tune" || request.name === "session.proactive_status") {
+    return allow(request.name, "allowed", input, false);
+  }
+
+  if (request.name === "session.create_persona") {
+    const rawName = typeof input.name === "string" ? input.name.trim() : "";
+    if (!rawName) {
+      return reject(request.name, "missing_persona_name", input, false);
+    }
+    input.name = rawName;
+    if (input.confirmed !== true) {
+      return confirm(request.name, "create_persona_confirmation_required", input, false);
+    }
+    return allow(request.name, "create_persona_allowed", input, false);
+  }
+
+  // Shared space: setup
+  if (request.name === "session.shared_space_setup") {
+    const rawPath = typeof input.path === "string" ? input.path.trim() : "";
+    if (!rawPath) {
+      return reject(request.name, "missing_path", input, false);
+    }
+    // Expand ~ to home directory
+    input.path = rawPath.startsWith("~") ? rawPath.replace(/^~/, os.homedir()) : rawPath;
+    if (input.confirmed !== true) {
+      return confirm(request.name, "setup_confirmation_required", input, false);
+    }
+    return allow(request.name, "setup_allowed", input, false);
+  }
+
+  // Shared space: list — only needs sharedSpacePath to exist
+  if (request.name === "session.shared_space_list") {
+    if (!context.sharedSpacePath) {
+      return reject(request.name, "shared_space_not_configured", input, false);
+    }
+    return allow(request.name, "allowed", input, false);
+  }
+
+  // Shared space: read / write / delete — strict path sandbox
+  if (
+    request.name === "session.shared_space_read" ||
+    request.name === "session.shared_space_write" ||
+    request.name === "session.shared_space_delete"
+  ) {
+    if (!context.sharedSpacePath) {
+      return reject(request.name, "shared_space_not_configured", input, false);
+    }
+    const rawFilePath = typeof input.path === "string" ? input.path.trim() : "";
+    if (rawFilePath) {
+      const resolved = path.resolve(context.sharedSpacePath, rawFilePath);
+      // Path traversal protection: resolved path must be inside sharedSpacePath
+      if (!resolved.startsWith(context.sharedSpacePath + path.sep) && resolved !== context.sharedSpacePath) {
+        return reject(request.name, "path_outside_shared_space", input, false);
+      }
+      input.path = resolved;
+    }
+    if (request.name === "session.shared_space_delete") {
+      if (input.confirmed !== true) {
+        return confirm(request.name, "delete_confirmation_required", input, false);
+      }
+    }
     return allow(request.name, "allowed", input, false);
   }
 

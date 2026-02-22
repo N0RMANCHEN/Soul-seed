@@ -85,6 +85,48 @@ const DEFINITIONS: CapabilityDefinition[] = [
     ownerOnly: false,
     requiresConfirmation: false,
     description: "Switch the current session to a different persona by name."
+  },
+  {
+    name: "session.create_persona",
+    risk: "medium",
+    ownerOnly: false,
+    requiresConfirmation: true,
+    description: "Create a new persona package with the given name and automatically switch to it."
+  },
+  {
+    name: "session.shared_space_setup",
+    risk: "medium",
+    ownerOnly: false,
+    requiresConfirmation: true,
+    description: "Configure shared space folder for this persona"
+  },
+  {
+    name: "session.shared_space_list",
+    risk: "low",
+    ownerOnly: false,
+    requiresConfirmation: false,
+    description: "List files in persona shared space"
+  },
+  {
+    name: "session.shared_space_read",
+    risk: "low",
+    ownerOnly: false,
+    requiresConfirmation: false,
+    description: "Read file from shared space (pre-approved)"
+  },
+  {
+    name: "session.shared_space_write",
+    risk: "medium",
+    ownerOnly: false,
+    requiresConfirmation: false,
+    description: "Write/create file in shared space (sandboxed)"
+  },
+  {
+    name: "session.shared_space_delete",
+    risk: "medium",
+    ownerOnly: false,
+    requiresConfirmation: true,
+    description: "Delete file from shared space"
   }
 ];
 

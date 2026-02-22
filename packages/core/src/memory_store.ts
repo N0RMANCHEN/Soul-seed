@@ -305,7 +305,11 @@ export async function runMemoryStoreSql(rootPath: string, sql: string): Promise<
 
 async function getUserVersion(dbPath: string): Promise<number> {
   const out = await runSqlite(dbPath, "PRAGMA user_version;");
-  const parsed = Number.parseInt(out.trim(), 10);
+  // runSqlite prepends "PRAGMA busy_timeout=5000" which echoes "5000" as its first output line.
+  // Take the last non-empty line so we get the actual user_version and not the busy_timeout value.
+  const lines = out.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const last = lines[lines.length - 1] ?? "";
+  const parsed = Number.parseInt(last, 10);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
@@ -600,15 +604,44 @@ async function getTableColumns(dbPath: string, tableName: string): Promise<Set<s
   return columns;
 }
 
+// P0-13: busy_timeout + WAL mode injected before every SQL call.
+// Retry on SQLITE_BUSY with exponential backoff (max 4 retries, up to 800ms delay).
+const SQLITE_BUSY_PATTERNS = ["database is locked", "SQLITE_BUSY", "unable to open database file"];
+const RETRY_DELAYS_MS = [100, 200, 400, 800];
+
+function isSqliteBusy(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return SQLITE_BUSY_PATTERNS.some((p) => msg.includes(p));
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function runSqlite(dbPath: string, sql: string): Promise<string> {
   const execFileAsync = promisify(execFile);
-  try {
-    const { stdout } = await execFileAsync("sqlite3", [dbPath, sql], {
-      maxBuffer: 1024 * 1024
-    });
-    return stdout.trim();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`sqlite3 command failed: ${message}`);
+  // Prepend pragmas: set busy_timeout so SQLite waits instead of failing immediately,
+  // and enable WAL mode for better concurrent read/write performance.
+  const wrappedSql = `PRAGMA busy_timeout=5000;\nPRAGMA journal_mode=WAL;\n${sql}`;
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const { stdout } = await execFileAsync("sqlite3", [dbPath, wrappedSql], {
+        maxBuffer: 1024 * 1024
+      });
+      // Filter out the "wal" echo from journal_mode pragma
+      const lines = stdout.trim().split("\n").filter((l) => l !== "wal" && l !== "WAL");
+      return lines.join("\n").trim();
+    } catch (error) {
+      lastError = error;
+      if (isSqliteBusy(error) && attempt < RETRY_DELAYS_MS.length) {
+        await sleep(RETRY_DELAYS_MS[attempt]!);
+        continue;
+      }
+      break;
+    }
   }
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`sqlite3 command failed: ${message}`);
 }

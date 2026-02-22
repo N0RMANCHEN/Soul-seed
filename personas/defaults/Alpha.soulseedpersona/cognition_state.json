@@ -1,8 +1,8 @@
 {
-  "instinctBias": 0.2799999999999999,
+  "instinctBias": 0.17999999999999983,
   "epistemicStance": "assertive",
   "toolPreference": "reply_first",
-  "updatedAt": "2026-02-22T02:08:06.103Z",
+  "updatedAt": "2026-02-22T02:21:22.487Z",
   "voiceLatent": [
     0.33,
     0.33,

@@ -7,7 +7,8 @@
 - 状态：`done` / `in_progress` / `todo` / `blocked`
 - **当前状态：Phase A–E 全部完成，无剩余任务**
 
-## 已完成摘要
+## 已完成摘要（含 Phase F 已完成项）
+- **Phase F FA-0 ~ FA-5**（2026-02-22 完成）：streamPersonaAutonomy 人格身份注入、greeting/farewell 写入 life.log、粘贴检测全量防抖、工具调用人格声化、SIGINT+切换人格声化、意图正则扩容 — 全部 done
 - **P0 全量**（P0-1 ~ P0-10）：记忆落地、写入、召回、迁移、CLI、DecisionTrace、scar、主入口、统一执行体验、ConsistencyKernel — 全部 done
 - **P1 全量**（P1-0 ~ P1-14）：Planner/Executor、生命周期 v3、软遗忘、ToolBus、MCP、GoalStore、Constitution 语义化、统一运行时协议、Runtime Pipeline 五段式、双进程路由、Idea+Deliberation 合并、Meta-Review LLM 化、本能路径、Commit 通道 — 全部 done
 - **P2 全量**（P2-1 ~ P2-6）：冷归档、working_set 降级、存储预算、原则精炼、记忆三层结构与事实晋升、社交关系图谱 — 全部 done
@@ -33,6 +34,157 @@
 - **Phase D 全量**（P0-0 ~ P5-1）：schema v2 升级、relationship 权重校准、constitution_quality 原型对齐、identity.json v2（selfDescription/originStory/personalityCore）、habits.json 深化（quirks/topicsOfInterest/humorStyle/conflictBehavior）、voice_profile phrasePool 种群化、mood_state.json（moodLatent[32] + valence/arousal 投影）、narrative_guard persona-aware 升级、autobiography.json（章节 + selfUnderstanding + growthVector）、interests.json（记忆自动涌现）、self_reflection.json（周期 LLM 第一人称）、记忆不确定性标注（uncertaintyLevel）、persona 主体参与晶化、发展弧追踪（`ss persona arc`）、元同意 consentMode 三级 — 全部 done
 - **Phase E 全量**（EA-0 ~ EC-4）：runtime_pipeline soul-first 修复、记忆提案协议（agent_memory_proposal）、元认知主权双重裁决、Agent 四类专门化、内容安全语义化（riskLatent[3]）、情绪感知语义化（moodLatent + LLM delta）、路由信号语义化（routingWeights 可配置）、记忆提炼语义化（full 模式 LLM）、守护层语义化（drift_latent）、关系状态向量化（relationshipLatent[64]）、表达/信念向量化（voiceLatent[16] + beliefLatent[32]）、向量持久化集成（EC-0）、跨维度 Latent 联动（EC-1）、Latent 健康诊断（EC-2）、路由权重自适应（EC-3 + `ss cognition adapt-routing`）、语义关系演化（EC-4）— 全部 done
 - **附加完成**：会话能力系统（`capabilities/registry.ts` + `capabilities/intent_resolver.ts`，11 种 session.* 能力 + 自然语言意图解析）；Life.log 自动轮换（`memory_rotation.ts`，超限归档最旧 20%）；`ss persona list_personas` / `connect_to` 会话内 persona 切换
+
+---
+
+---
+
+# Phase G：开源产品化 & 稳健性（Open-source Productization & Robustness）
+
+> 更新日期：2026-02-22
+> 触发原因：项目对外推广前，需确保"陌生人一把跑通、跨平台可预期、默认安全、并发不炸、persona 可维护可裁剪"。
+> 任务编号规则沿用：P{优先级}-{序号}，从 P0-11 起续编。
+
+---
+
+## P0（阻塞级：不做会显著影响开源采用/稳定性）
+
+### P0-11　开源合规：LICENSE + SPDX
+- 状态：`todo`
+- 问题：根目录缺 LICENSE → 法律上别人很难放心用/改/商用
+- 改动：
+  - 新增 `LICENSE`（MIT）
+  - `README.md` 加 License 徽章与段落
+  - 所有 `package.json`（root + core + cli + mcp-server）加 `"license": "MIT"`
+- DoD：GitHub 上 license 可识别；README 明确授权范围
+
+### P0-12　First-run 成功率：doctor 前置 + 依赖自检
+- 状态：`todo`
+- 问题：MemoryStore 依赖外部 `sqlite3` CLI，用户没装会直接崩；首次使用缺"自动提示修复"
+- 改动：
+  - `doctor.ts` 新增 `checkEnvironment()` — 检测 sqlite3 是否存在、FTS5/JSON1 扩展是否可用
+  - `ss new` / `ss <name>` 入口：首次运行自动触发轻量 env check，缺依赖时打印可复制的安装命令
+  - 覆盖 macOS（brew）/ Linux（apt）/ Windows（winget）三种平台提示
+- DoD：无 sqlite3 时给出可复制命令；新用户不会"直接报错不知道怎么修"
+
+### P0-13　SQLite 并发稳定：busy_timeout + 重试退避 + persona 写锁
+- 状态：`todo`
+- 问题：`runSqlite()` 无 busy_timeout；并发写出现 `database is locked`；CLI + MCP 同 persona 同时写有概率断链/锁死
+- 改动：
+  - `memory_store.ts`：每次 SQL 前注入 `PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;`
+  - 对 `database is locked` 做有限重试（指数退避 100→200→400→800ms，上限 4 次）
+  - 新增 `packages/core/src/persona_write_lock.ts`：persona 级 `.lock` 文件（PID + TTL 30s 租约），`withPersonaLock()` 包装所有写路径
+- DoD：并发压测（两个进程同时写）不再高概率失败；失败时可诊断、可恢复
+
+### P0-14　Pinned 预算与分层：保持"少而硬"，别把它当手册库
+- 状态：`todo`
+- 问题：`pinned.memories.slice(0,5)` 每轮强注入；一旦 pinned 变长会 token 膨胀、抢注意力
+- 改动：
+  - 强约束 pinned：条数上限 ≤5，每条 ≤300 chars（更新常量）
+  - `types.ts` 新增 `PersonaLibraryBlock { id, title, content, tags? }` + `PersonaPinned.library?`
+  - `persona.ts` 新增 `addLibraryBlock / removeLibraryBlock / listLibraryBlocks`
+  - CLI 新增 `ss pinned library add|remove|list`
+- DoD：pinned 始终小且稳定；大块内容进入 library，不再每轮硬塞
+
+### P0-15　mood 范围一致性修复 + 回归用例
+- 状态：`todo`
+- 问题：`BASELINE_VALENCE = 0.5` 与 `valence ∈ [-1, 1]` 语义矛盾（基线偏向正面极端）；阈值体系不一致
+- 改动：
+  - 统一：`BASELINE_VALENCE = 0.0`（中性），`valence ∈ [-1, 1]`
+  - 更新 `mood_state.ts` 所有阈值比较（> 0.5 → > 0.0）、`latent_cross_influence.ts`、`doctor.ts` checkLatentHealth
+  - 新增 `datasets/mood/cases.jsonl`（10–15 条回归用例）
+  - 新增 `scripts/eval_mood.mjs`（加载 cases，运行 `projectMoodLatent`，print pass/fail）
+- DoD：`node scripts/eval_mood.mjs` 全部通过；mood 投影/联动无隐性偏差
+
+### P0-16　MCP 默认安全：最小权限 + 显式写入开关
+- 状态：`todo`
+- 问题：MCP 生态敏感，默认权限不清晰会劝退用户
+- 改动：
+  - `tool_registry.ts`：定义 `WRITE_TOOLS` 集合；启动时检测 `SOULSEED_MCP_ALLOW_WRITES` 环境变量
+  - 默认（未设置）：write tools 一律返回 reject，携带清晰说明
+  - 启动时打印当前权限模式：`"MCP: read-only (set SOULSEED_MCP_ALLOW_WRITES=true to enable writes)"`
+  - 规范化 auditLogger schema：补充 `isWrite: boolean`、`personaId: string` 字段
+- DoD：默认 `ss mcp-server` 所有写工具返回 reject；README 明确声明此行为
+
+---
+
+## P1（高优先：可维护性/可扩展性升级）
+
+### P1-0　SQLite Driver 抽象（scaffold）
+- 状态：`todo`
+- 动机：CLI sqlite3 跨平台不稳；Windows 用户常被卡死
+- 改动：
+  - 新增 `packages/core/src/memory_store_driver.ts`：`interface MemoryStoreDriver`；`CliSqliteDriver`（现有行为封装）
+  - `memory_store.ts` 内部改用 driver 接口（无行为变化）
+  - `ss doctor` env check 输出当前 driver 类型
+  - 完整的 Wasm/better-sqlite3 驱动留待后续 PR
+
+### P1-1　Persona 规范化：`ss persona lint`
+- 状态：`todo`
+- 改动：
+  - 新增 `packages/core/src/persona_lint.ts`：`lintPersona(rootPath) → LintResult[]`
+    - constitution.values 去重/长度/数量；boundaries 同；habits 各字段上限；pinned/golden_examples/phrasePool 上限
+  - `types.ts` 新增 `LintResult { field, severity: "warn"|"error", message }`
+  - CLI 新增 `ss persona lint [name]`，非零退出码于 error
+
+### P1-2　Persona 编译快照：`ss persona compile`
+- 状态：`todo`
+- 改动：
+  - 新增 `packages/core/src/persona_compile.ts`：`compilePersonaSnapshot(personaPkg) → CompiledPersonaSnapshot`
+    - 字段：`hash (SHA-256)`、`compiledAt`、`systemPromptPreview`、`sections`
+  - CLI 新增 `ss persona compile [name]`，写出 `<personaRoot>/compiled_snapshot.json`
+  - `DecisionTrace` 可选字段 `compiledHash`
+
+### P1-3　Persona library 检索注入（scaffold）
+- 状态：`todo`
+- 改动：
+  - 新增 `packages/core/src/persona_library.ts`：`searchLibraryBlocks(blocks, query, topK)` — 关键词/标签匹配（embedding 留后续）
+  - `memory_user_facts.ts` 的 `compileAlwaysInjectContext()`：有 library 时检索 topK 在字符预算内注入
+
+---
+
+## P2（中优先：体验与生态）
+
+### P2-0　开源"上手路径"文档化与示例资产
+- 状态：`todo`
+- 改动：
+  - 新增 `doc/Quickstart.md`：5 分钟内跑出"记忆写入→召回→解释"的完整链路
+  - 新增 `doc/Windows.md`：Windows 安装指南（sqlite3 via winget/scoop，node via fnm）
+  - 新增 `personas/demo.soulseedpersona/`：最简演示 persona，无 API key 也可跑（mock LLM 模式）
+
+### P2-1　Release discipline：SemVer + CHANGELOG
+- 状态：`todo`
+- 改动：
+  - 新增 `CHANGELOG.md`（v0.1.0 Phase A–E 摘要，v0.2.0 Phase G 摘要）
+  - root `package.json` 加 `"version": "0.2.0"`；各子包版本同步
+
+### P2-2　性能与可观测：慢点定位
+- 状态：`todo`
+- 改动：
+  - 新增 `packages/core/src/perf_trace.ts`：`PerfSpan { label, startMs, durationMs }`；`startSpan / endSpan`
+  - 关键路径打点：recall / embedding / sqlite write / LLM call
+  - CLI `--perf` flag：每轮末打印各阶段耗时
+
+---
+
+## 执行顺序
+
+```
+Step 0  doc/Roadmap.md 补充本 Phase G 章节  ← 已完成
+P0-11   LICENSE + README + package.json     ← 当前
+P0-12   doctor env check + sqlite3 gate
+P0-13   busy_timeout + WAL + retry + write lock
+P0-14   pinned caps + library blocks
+P0-15   mood valence 统一 + eval 脚本
+P0-16   MCP read-only default + write audit
+P1-0    driver 抽象 scaffold
+P1-1    persona lint
+P1-2    persona compile snapshot
+P1-3    library 检索注入 scaffold
+P2-0    文档 + demo persona
+P2-1    CHANGELOG + 版本号
+P2-2    perf scaffold
+```
 
 ---
 
@@ -82,6 +234,121 @@
 ## 下一步执行顺序
 
 所有前序 Roadmap 任务已全部完成。
+
+---
+
+---
+
+# Phase F：CLI 人格声化 · 开场结束一致性 · Agent 体验闭环
+
+> 更新日期：2026-02-22
+> 触发原因：系统性 CLI 用户体验审查，发现三类结构性缺陷：
+> 1. **声音割裂**：CLI 内大量 `console.log` 系统味文字与人格对话交替出现，破坏沉浸感；开场/结束语走独立轻量管道，persona 身份注入不完整，产生模板腔；
+> 2. **记忆盲区**：greeting 和 farewell 不写入 life.log，导致每次会话开场结束对人格而言"不存在"；
+> 3. **工具/Agent 体验割裂**：工具调用时用系统消息告知用户，而非人格声音；Agent 执行期间无人格层面的用户感知通道。
+> 目标：让用户在 CLI 中从第一句话到最后一句话，全程感受到的都是人格本身在说话，而非系统在报告。
+
+---
+
+## Track A：已完成（FA，2026-02-22 完成）
+
+### FA-0　streamPersonaAutonomy 人格身份注入
+- 状态：`done`
+- 问题：`streamPersonaAutonomy` 的 system prompt 仅有 `"你是一个有连续人格的中文对话者"`，无任何 persona 身份、情绪、习惯数据，导致开场白/结束语/主动消息语气与正常对话人格严重割裂。
+- 修复：注入 `selfDescription`、`personalityCore`、`moodState`（dominantEmotion/valence/arousal/onMindSnippet）、`autobiography.selfUnderstanding`、`habits.quirks`、`constitution.mission`；persona name 明确传入 system prompt。
+- DoD：开场白/结束语/主动消息均基于完整人格上下文生成；与正常对话语气一致
+
+### FA-1　Greeting / Farewell 写入 life.log
+- 状态：`done`
+- 问题：greeting 和 farewell 生成后仅存 `lastAssistantOutput` 变量，不写入 `life.log`，人格对每次会话的开场结束无记忆。
+- 修复：greeting 显示后写入 `type: "assistant_message"` + `mode: "greeting"` + `trigger: "session_start"`；farewell 显示后写入同类事件 `trigger: "session_end"`。
+
+### FA-2　粘贴检测全量防抖
+- 状态：`done`
+- 问题：自动粘贴检测条件（行长 ≥40 / 含中文标点）漏掉短英文行作为多行粘贴的首行，导致首行单独发送、其余行合并，拆分成多条消息。
+- 修复：将条件改为无差别 80ms 防抖——所有非命令非 pending-confirm 行统一缓冲，80ms 内无新行则一次性发送。80ms 内多行合并为一条消息。
+
+### FA-3　工具调用人格声化
+- 状态：`done`
+- 问题：`performReadAttachment` / `performUrlFetch` 内状态消息（正在获取、已附加、失败原因）均为 `console.log` 系统式输出，与人格声音割裂。`/read` 命令内联处理同问题。
+- 修复：两个函数增加 `onMessage?: (msg: string) => void` 参数；4 处调用点传入 `sayAsAssistant`；`/read` 内联路径直接改用 `sayAsAssistant`；消息措辞改为第一人称口语（"好，读到了"、"这个链接没拿到"等）。
+
+### FA-4　系统事件人格声化
+- 状态：`done`
+- 问题：Ctrl+C 中断提示（`[aborted]`）、SIGINT 退出引导（`'输入"退出会话"或 /exit 结束。'`）、persona 切换成功（`[→ 已连接到 X]`）均用 `process.stdout.write` 或 `console.log`，非人格声音。
+- 修复：三处均改用 `sayAsAssistant`，措辞改为口语第一人称。
+
+### FA-5　意图正则扩容
+- 状态：`done`
+- 问题：`CAPABILITY_HINTS` 缺少 "你能干什么"/"有哪些功能" 等常见变体；`SHOW_MODE_HINTS` 缺少 "查看模式"；`EXIT_CONFIRMED_HINTS` 全部使用 `^...$` 严格全锚，自然语言如 "好的再见"、"那我先走了啊" 无法匹配，exit pending 状态悬挂。
+- 修复：`EXIT_CONFIRMED_HINTS` 去除开头严格锚，支持前缀词；`CAPABILITY_HINTS` 增加 `/你能[做干]什么/u`、`/有(?:哪些|什么)功能/u` 等；`SHOW_MODE_HINTS` 增加 `查看/显示.*模式`；新增英文 bye/goodbye/see you 到退出确认。
+
+---
+
+## Track B：待完成（FB）
+
+### FB-0　CLI 全量人格声化（第二批）
+- 状态：`todo`
+- 优先级：**P1（高优先，用户感知层）**
+- 问题：审查发现 `startChatSession` 函数内仍有约 37 处 `console.log` 用于用户可见输出，覆盖以下命令：
+  - `/files`：列出已附加文件/网址（5 处 console.log）
+  - `/clearread`：清空附加资源（1 处）
+  - `/proactive status|quiet`：状态/静默时段（6 处）
+  - `/relation [detail]`：关系状态详情（8 处）
+  - `/rename confirm`：改名确认结果（3 处）
+  - `/reproduce force`：繁衍结果（3 处）
+  - `/read` 用法错误提示（1 处）
+  - 修复提案（fix proposal）预览区块（7 处）
+  - 流式响应 try/catch 错误消息 `[error] ${msg}`（1 处）
+- 修复方向：统一改为 `sayAsAssistant()`；措辞改为人格口吻（第一人称、口语），不破坏信息量。详细列表：
+  - `尚未附加任何文件或网址。` → `我这里还没有附加文件或链接。`
+  - `已附加文件:` / `已获取网址:` → 合并为一段自然语言列表输出
+  - `主动消息: 人格自决模式（...）` → `我现在的主动节奏...`
+  - `[修复提案] ...` 块 → 保留结构化内容，但加人格前言
+  - 等等（实现时逐一调整措辞）
+- DoD：`startChatSession` 内不再有用户可见的裸 `console.log`（调试/日志类除外）；所有用户提示经 `sayAsAssistant` 输出
+
+### FB-1　Agent 执行期间用户感知通道
+- 状态：`todo`
+- 优先级：**P1**
+- 问题：Agent 模式执行时（Retrieval/Transform/Capture/Action Agent），用户侧无任何等待提示；agent 调用工具时工具的 `onMessage` 目前传入 `sayAsAssistant`，但 agent 启动/结束本身无人格层面的通知，用户体验为"无响应黑盒"。
+- 修复：
+  - Agent 前置裁决通过后，若 `requiresConfirmation = false`（自动执行），persona 输出一句简短预告（"我去查一下，稍等…"、"让我看看资料，一会儿告诉你"——基于 agentType 和 relationship state 措辞不同）
+  - 若 `requiresConfirmation = true`（Action Agent），persona 以第一人称向用户说明意图并请求确认
+  - Agent 返回结果后，persona 自然整合结果输出（非"Agent 返回：..."的系统式播报）
+  - 这些通知文字均经 `sayAsAssistant` 输出，可选择 `streamPersonaAutonomy(mode: "agent_status")` 生成
+- DoD：任何 Agent 调用用户都能感知进度；action agent 用户确认流程有人格声音
+
+### FB-2　开场/结束语短语库（voice_profile 扩展）
+- 状态：`todo`
+- 优先级：**P2**
+- 问题：`streamPersonaAutonomy` 即使注入了人格身份，仍依赖 LLM 即时生成开场白，在无 API key 时退化为固定模板（`buildGreetingFallback`）。persona 的 `voice_profile.json` 已有 `thinkingPreview.phrasePool` 先例，但没有 greeting/farewell 专属短语库——persona 作者无法贡献自己风格的开场/结束语。
+- 修复：
+  - `voice_profile.json` schema 扩展：新增顶层 `greetingPhrasePool: string[]` 和 `farewellPhrasePool: string[]`（可选，默认空数组）
+  - `buildGreetingFallback` 逻辑升级：有 phrasePool 时随机采样，而非固定模板
+  - `streamPersonaAutonomy(mode: "greeting"|"farewell")` 优先使用 phrasePool（不走 LLM 调用）；仅当 pool 为空时走 LLM
+  - 为 Alpha/Beta 默认人格各写入 5-10 条符合其性格的开场/结束短语
+  - 新增 `ss persona voice-phrases greet list|add|remove` 和 `farewell list|add|remove` CLI
+- DoD：有 phrasePool 时开场/结束不触发 LLM 调用；Alpha/Beta 默认人格有自己的短语库；CLI 可管理
+
+### FB-3　死代码清理
+- 状态：`todo`
+- 优先级：**P3（低）**
+- 问题：`buildSessionGreeting(displayName: string)` 函数（`packages/cli/src/index.ts` 约 4582 行）定义但从未调用，是废弃的历史占位。
+- 修复：删除该函数。
+- DoD：`ss build` 通过；无引用死代码
+
+---
+
+## 执行顺序建议
+
+```
+FA-0 ~ FA-5   （2026-02-22 已全部完成）
+FB-0          （第一优先：用户可见输出人格声化，约 1-2 小时）
+FB-1          （第二优先：Agent 体验闭环，约 2-3 小时）
+FB-2          （择机：短语库扩展，约 1-2 小时 + 人格内容创作时间）
+FB-3          （低优先：随手清理）
+```
 
 ---
 

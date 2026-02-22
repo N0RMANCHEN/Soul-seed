@@ -1,0 +1,15 @@
+{"id":"m01","desc":"高正效价 + 高唤起 → playful","moodLatent":[0.7,0.65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":0.7,"arousal":0.65,"dominantEmotion":"playful"}}
+{"id":"m02","desc":"高正效价 + 中唤起 → warm","moodLatent":[0.5,0.4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":0.5,"arousal":0.4,"dominantEmotion":"warm"}}
+{"id":"m03","desc":"轻微正效价 + 低唤起 → tender","moodLatent":[0.2,0.2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":0.2,"arousal":0.2,"dominantEmotion":"tender"}}
+{"id":"m04","desc":"强负效价 + 高唤起 → guarded","moodLatent":[-0.5,0.6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":-0.5,"arousal":0.6,"dominantEmotion":"guarded"}}
+{"id":"m05","desc":"负效价 + 低唤起 → melancholic","moodLatent":[-0.3,0.25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":-0.3,"arousal":0.25,"dominantEmotion":"melancholic"}}
+{"id":"m06","desc":"中效价 + 极高唤起 → restless","moodLatent":[0.05,0.75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":0.05,"arousal":0.75,"dominantEmotion":"restless"}}
+{"id":"m07","desc":"中效价 + 中唤起 → curious","moodLatent":[0.0,0.5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":0.0,"arousal":0.5,"dominantEmotion":"curious"}}
+{"id":"m08","desc":"中性基线 → calm","moodLatent":[0.0,0.3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":0.0,"arousal":0.3,"dominantEmotion":"calm"}}
+{"id":"m09","desc":"完全中性 → calm","moodLatent":[0.0,0.0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":0.0,"arousal":0.0,"dominantEmotion":"calm"}}
+{"id":"m10","desc":"负效价边界 → melancholic not guarded","moodLatent":[-0.2,0.35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":-0.2,"arousal":0.35,"dominantEmotion":"melancholic"}}
+{"id":"m11","desc":"极高正效价 + 低唤起 → tender not warm","moodLatent":[0.8,0.15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":0.8,"arousal":0.15,"dominantEmotion":"tender"}}
+{"id":"m12","desc":"轻微负效价 + 低唤起 → calm (not yet melancholic)","moodLatent":[-0.1,0.25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":-0.1,"arousal":0.25,"dominantEmotion":"calm"}}
+{"id":"m13","desc":"高正效价 + 极低唤起 → tender","moodLatent":[0.6,0.05,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":0.6,"arousal":0.05,"dominantEmotion":"tender"}}
+{"id":"m14","desc":"负效价边界 guarded (strong neg + high arousal)","moodLatent":[-0.35,0.55,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":-0.35,"arousal":0.55,"dominantEmotion":"guarded"}}
+{"id":"m15","desc":"中效价 + 中唤起 0.45 → curious","moodLatent":[0.05,0.46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"expected":{"valence":0.05,"arousal":0.46,"dominantEmotion":"curious"}}

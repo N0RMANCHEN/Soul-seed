@@ -33,6 +33,14 @@ async function main(): Promise<void> {
     return;
   }
 
+  // P0-16: Announce write permission mode at startup
+  const writesEnabled = process.env["SOULSEED_MCP_ALLOW_WRITES"] === "true";
+  process.stderr.write(
+    writesEnabled
+      ? "[soulseed-mcp] Write mode: ENABLED (SOULSEED_MCP_ALLOW_WRITES=true)\n"
+      : "[soulseed-mcp] Write mode: read-only (set SOULSEED_MCP_ALLOW_WRITES=true to enable writes)\n"
+  );
+
   const registry = new ToolRegistry({ personaPath, personaPkg });
   const server = createRpcServer(registry);
   await server.connect(new StdioServerTransport());

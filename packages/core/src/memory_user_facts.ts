@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { runMemoryStoreSql } from "./memory_store.js";
 import { appendLifeEvent } from "./persona.js";
 import type { ModelAdapter, PersonaPackage } from "./types.js";
+import { MAX_PINNED_COUNT } from "./types.js";
 
 /** Maximum number of user facts in always-inject layer */
 export const MAX_USER_FACTS = 50;
@@ -279,7 +280,7 @@ export async function compileAlwaysInjectContext(
   personaPkg: PersonaPackage
 ): Promise<AlwaysInjectContext> {
   const facts = await getUserFacts(rootPath, { limit: MAX_USER_FACTS });
-  const pinnedMemories = personaPkg.pinned.memories.slice(0, 5);
+  const pinnedMemories = personaPkg.pinned.memories.slice(0, MAX_PINNED_COUNT);
   const relState = personaPkg.relationshipState;
   const relationshipSummary = relState
     ? `state=${relState.state} trust=${relState.dimensions.trust.toFixed(2)} intimacy=${relState.dimensions.intimacy.toFixed(2)}`
