@@ -476,8 +476,18 @@ function resolvePersonaPath(options: Record<string, string | boolean>): string {
   throw new Error("未找到可用 persona。请先运行：./ss new <name>");
 }
 
+/** 按名字解析人格路径：先查 personas/，再查 personas/defaults/（内置 Alpha/Beta），否则返回 personas/<name>。 */
 function resolvePersonaPathByName(name: string): string {
-  return path.resolve(process.cwd(), `./personas/${name}.soulseedpersona`);
+  const inRoot = path.resolve(process.cwd(), `./personas/${name}.soulseedpersona`);
+  const inDefaults = path.resolve(process.cwd(), `./personas/defaults/${name}.soulseedpersona`);
+  if (existsSync(inRoot)) return inRoot;
+  if (existsSync(inDefaults)) return inDefaults;
+  return inRoot;
+}
+
+/** 内置人格所在路径（仅用于存在性检测，不用于解析）。 */
+function getDefaultPersonaPath(name: string): string {
+  return path.resolve(process.cwd(), `./personas/defaults/${name}.soulseedpersona`);
 }
 
 function resolveStrictMemoryGrounding(options: Record<string, string | boolean>): boolean {
@@ -836,9 +846,15 @@ async function runPersonaNew(nameArg: string | undefined, options: Record<string
   const outPath =
     optionString(options, "out")?.trim().length
       ? path.resolve(process.cwd(), optionString(options, "out") as string)
-      : resolvePersonaPathByName(rawName);
+      : path.resolve(process.cwd(), `./personas/${rawName}.soulseedpersona`);
   if (existsSync(outPath)) {
     throw new Error(`persona 已存在：${outPath}`);
+  }
+  const defaultPath = getDefaultPersonaPath(rawName);
+  if (existsSync(defaultPath)) {
+    throw new Error(
+      `${rawName} 是内置人格，已存在于 personas/defaults/。请使用 ./ss ${rawName} 使用；若需自建人格请换用其他名字。`
+    );
   }
   const quick = options.quick === true;
   const templateFromOption = parseTemplate(optionString(options, "template"));

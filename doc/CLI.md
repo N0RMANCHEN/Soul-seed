@@ -21,13 +21,15 @@ npm run build
 ./ss                         # 查看帮助
 ./ss new Teddy               # 创建 persona（交互向导）
 ./ss Teddy                   # 直接进入 Teddy 对话
+./ss Alpha                   # 内置向导人格（personas/defaults/）
+./ss Beta                    # 内置诊断人格（personas/defaults/）
 ./ss doctor                  # 全量健康检查
 ./ss explain --last          # 解释上一轮决策
 ```
 
 说明：
-- 未指定 `--persona` 时自动发现 `./personas/*.soulseedpersona`
-- 推荐主路径：`./ss new <name>` + `./ss <name>`
+- 未指定 `--persona` 时按名字解析：先查 `./personas/<name>.soulseedpersona`，再查 `./personas/defaults/<name>.soulseedpersona`，故可直接 `./ss Alpha`、`./ss Beta` 使用内置人格。
+- 推荐主路径：`./ss new <name>` + `./ss <name>`；名字不能与内置人格同名（Alpha、Beta 已保留，创建会报错提示）。
 - 验收请使用隔离 QA persona：`npm run acceptance`
 
 ---
@@ -44,7 +46,7 @@ npm run build
 ./ss new <name> [--out <personaPath>] [--template friend|peer|intimate|neutral] [--model <model>] [--quick]
 ```
 
-交互式创建新 persona 包，采集模板、世界观、使命、价值观、风格等。`--quick` 按模板默认值快速创建，跳过交互。
+交互式创建新 persona 包，采集模板、世界观、使命、价值观、风格等。`--quick` 按模板默认值快速创建，跳过交互。名字不能与内置人格同名（若 `personas/defaults/<name>.soulseedpersona` 已存在，如 Alpha、Beta，会报错并提示使用 `./ss <name>` 或换名）。
 
 #### `init`（兼容入口）
 

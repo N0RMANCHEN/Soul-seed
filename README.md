@@ -85,6 +85,10 @@ npm run build
 # 5. 进入对话
 ./ss Teddy
 
+# 5b. 内置人格（无需创建，直接运行）
+./ss Alpha    # 向导/秘书，用自然语言帮你操作 Soulseed
+./ss Beta     # 工程诊断师，人格异常/记忆问题时做根因调查
+
 # 6. 健康检查
 ./ss doctor
 
@@ -239,8 +243,11 @@ doc/
   Quality-Evaluation.md  # 分层评测框架（L0-L5）
 personas/
   <Name>.soulseedpersona/  # 人格资产目录（git 忽略 soul 数据）
+  defaults/                # 内置人格：Alpha（向导）、Beta（诊断师）
   _qa/                     # 验收隔离 persona
 ```
+
+**人格名解析**：`./ss <name>` 先查 `personas/<name>.soulseedpersona`，再查 `personas/defaults/<name>.soulseedpersona`，故可直接 `./ss Alpha`、`./ss Beta` 使用内置人格。创建新人格时不能与内置同名（Alpha/Beta 已保留）。
 
 ---
 
