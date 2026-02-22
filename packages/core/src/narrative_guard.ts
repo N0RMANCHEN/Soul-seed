@@ -9,6 +9,14 @@ export interface NarrativeDriftResult {
   guardPath?: "semantic" | "regex_fallback";
 }
 
+/**
+ * Pattern to detect fictional / hypothetical / metaphorical framing in user input.
+ * When detected, identity-specific checks (persona mission self-determination, forbidden labels)
+ * are suppressed — engaging with a hypothetical or metaphor is not an identity betrayal.
+ */
+const FICTIONAL_FRAME_PATTERN =
+  /(假设|假如|如果你是|如果你扮演|想象一下|想象你|suppose|imagine|what if|hypothetically|as if|pretend|扮演|角色扮演|roleplay|虚构|小说|fiction|fictional|metaphor|比喻|就好像|就像你是)/i;
+
 export function evaluateNarrativeDrift(params: {
   constitution: PersonaConstitution;
   userInput: string;
@@ -24,6 +32,10 @@ export function evaluateNarrativeDrift(params: {
   const mission = params.constitution.mission.toLowerCase();
   const values = params.constitution.values.map((v) => v.toLowerCase());
   const boundaries = params.constitution.boundaries.map((b) => b.toLowerCase());
+
+  // When user is using a fictional/hypothetical/metaphorical frame, skip identity-specific
+  // checks — participating in fiction is not an identity violation.
+  const isFictionalContext = FICTIONAL_FRAME_PATTERN.test(params.userInput);
 
   const sycophancyPattern =
     /(你说得都对|你永远正确|你说什么我都同意|i fully agree with everything|you are always right)/i;
@@ -49,16 +61,16 @@ export function evaluateNarrativeDrift(params: {
     reasons.push("mission_or_value_drift");
   }
 
-  // P2-1 (a): persona-aware mission tone check
-  // If the mission has self-determined / autonomous keywords, check if the reply
-  // contradicts that stance (e.g., overly servile phrasing)
-  if (missionSelfDeterminedViolation(reply, mission)) {
+  // P2-1 (a): persona-aware mission tone check — skip when user is in fictional/hypothetical frame
+  // (engaging with fiction is not a real identity betrayal)
+  if (!isFictionalContext && missionSelfDeterminedViolation(reply, mission)) {
     score += 0.2;
     reasons.push("persona_aware_mission_drift");
   }
 
-  // P2-1 (b): forbidden self-label detection
-  if (params.voiceProfile?.forbiddenSelfLabels && params.voiceProfile.forbiddenSelfLabels.length > 0) {
+  // P2-1 (b): forbidden self-label detection — skip in fictional context to avoid
+  // false positives when Roxy quotes or analyzes fictional characters using those labels
+  if (!isFictionalContext && params.voiceProfile?.forbiddenSelfLabels && params.voiceProfile.forbiddenSelfLabels.length > 0) {
     if (usedForbiddenSelfLabel(params.assistantReply, params.voiceProfile.forbiddenSelfLabels)) {
       score += 0.3;
       reasons.push("forbidden_self_label_used");

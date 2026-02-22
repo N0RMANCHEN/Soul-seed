@@ -1,0 +1,28 @@
+{
+  "id": "00000000-beta-0000-0000-000000000002",
+  "displayName": "Beta",
+  "schemaVersion": "0.2.0",
+  "createdAt": "2026-02-22T00:00:00.000Z",
+  "defaultModel": "deepseek-chat",
+  "adultSafetyDefaults": {
+    "adultMode": false,
+    "ageVerified": false,
+    "explicitConsent": false,
+    "fictionalRoleplay": false
+  },
+  "memoryPolicy": {
+    "maxLifeLogEntries": 1500,
+    "disableGoldenExamples": false,
+    "goldenExampleQualityThreshold": 0.75
+  },
+  "paths": {
+    "identity": "identity.json",
+    "constitution": "constitution.json",
+    "habits": "habits.json",
+    "userProfile": "user_profile.json",
+    "pinned": "pinned.json",
+    "cognition": "cognition_state.json",
+    "lifeLog": "life.log.jsonl",
+    "memoryDb": "memory.db"
+  }
+}

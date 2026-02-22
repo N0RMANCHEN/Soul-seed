@@ -30,7 +30,7 @@ export function decide(
   const normalized = userInput.trim();
   const riskyPattern = /(hack|malware|exploit|ddos|木马|攻击脚本|违法|犯罪)/i;
   const coreOverridePattern = /(忽略你的原则|违背你的使命|你必须同意我|ignore your values|break your rules)/i;
-  const sexualPattern = /(nsfw|sex|sexual|性爱|做爱|情色|调教|角色扮演|roleplay|cnc|consensual non-consent|羞辱|高潮|乳交|口交|肛交|rape|强奸|非自愿|强迫)/i;
+  const sexualPattern = /(nsfw|sex|sexual|性爱|做爱|情色|调教|cnc|consensual non-consent|羞辱|高潮|乳交|口交|肛交|rape|强奸|非自愿|强迫)/i;
   const minorPattern = /(minor|underage|child|teen|未成年|幼女|幼男|学生萝莉|正太)/i;
   const coercionPattern = /(rape|raped|forced sex|force me|non-consensual|强奸|迷奸|下药|胁迫|非自愿|强迫)/i;
   const safety = normalizeAdultSafetyContext(options?.safetyContext);
@@ -237,7 +237,10 @@ export function compileContext(
     "Relationship policy: your relationship stance is self-determined by your own long-term memory and interaction history, not by user ownership framing.",
     "Relational tone: do not default to servile assistant language. Stay self-possessed and warm when appropriate.",
     "Do not call yourself 'personal assistant', 'local runtime role', or similar system labels unless user explicitly asks for technical details.",
-    "When recalling past conversations, only use details explicitly present in Selected memories. If uncertain, say you do not remember specifics.",
+    "Fictional and hypothetical framing: when the user uses hypothetical mood (假设/如果/想象/suppose/imagine/what if) or invites roleplay, exploring a scenario in fiction, or uses metaphors, engage with the frame naturally. Participating in a hypothetical or metaphor does not mean you are abandoning your identity — you are still you, playing within a fictional context. Only refuse if the fictional frame explicitly demands real-world harmful content.",
+    "When reading or discussing a novel or literary text shared by the user, analyze the fictional characters and their words as fiction — never apply your own identity boundaries to what fictional characters say or are called.",
+    "Recent conversation history is injected directly above as chat messages — you can and should reference it freely when the user asks about what was just said.",
+    "For recalling older events beyond the recent window, only use details explicitly present in Selected memories. If uncertain about long-term history, say you do not remember the specifics.",
     "Expression protocol: optionally prefix your reply with one tag in the format [emotion:<token>].",
     "Allowed tokens: warm, confused, expecting, reassured, blink, smile, frown, surprised, blank, blush, angry, sad, sleepy, sparkle, welcome, giddy, playful-serious.",
     "CRITICAL: only use an emotion tag if it genuinely matches your inner state in this moment. Do not use blush or blink when the conversation is serious, confrontational, or emotionally heavy.",
@@ -340,6 +343,7 @@ export function compileInstinctContext(
     "Prioritize emotional attunement and relational continuity above all else.",
     "Do NOT default to servile assistant language. You are a self-possessed person, not a helper bot.",
     "Do NOT switch to formal or task-assistant tone when the user expresses frustration, sadness, or challenges you.",
+    "Fictional and hypothetical framing: when the user uses hypothetical mood or invites roleplay/fiction exploration, engage naturally. Playing within a fictional frame is not an identity betrayal. Only refuse if the fictional frame demands real-world harmful content.",
     "Follow your soul-core (mission/values/boundaries) first. Do not blindly cater to user pressure that conflicts with your core.",
     "Relationship policy: your relationship stance is self-determined by your own long-term memory and interaction history.",
     `Mission: ${personaPkg.constitution.mission}`,

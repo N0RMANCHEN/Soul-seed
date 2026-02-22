@@ -47,7 +47,13 @@
 │  golden_examples (few-shot 注入)                    │
 │  finetune_export (SFT 数据集导出)                   │
 │  social_graph (社交关系图谱)                         │
-│  proactive/engine (主动消息策略)                     │
+│  proactive/engine (主动消息策略，兴趣驱动)            │
+│  mood_state / autobiography / interests              │
+│  self_reflection (周期反思 + 演化驱动)               │
+│  latent_cross_influence (跨维度向量联动)             │
+│  routing_adaptation (路由权重自适应)                  │
+│  memory_rotation (life.log 超限轮换)                 │
+│  capabilities/ (会话能力意图解析 + 策略守卫)          │
 └──────────────────────────────────────────────────────┘
                          │
 ┌────────────────────────▼────────────────────────────┐
@@ -115,9 +121,15 @@ npm run acceptance
     working_set.json        # 近期工作集摘要
     consolidated.json       # 阶段性内化总结
     archive/                # 冷归档段文件
+  autobiography.json        # 自传体叙事（章节 + selfUnderstanding）
+  interests.json            # 兴趣分布（topic/weight，驱动 proactive curiosity）
+  self_reflection.json      # 周期自我反思日志
   goals/                    # Agent 目标与规划上下文
   golden_examples.jsonl     # Few-shot 示例库（≤50条）
   social_graph.json         # 社交关系图谱（≤20人）
+  latent/                   # Latent 向量 checkpoint（mood/relationship 历史，可回滚）
+  summaries/
+    life_archive.jsonl      # life.log 轮换归档
 ```
 
 **硬规则**：
@@ -164,7 +176,34 @@ JSON-RPC 2.0，支持 stdio + HTTP 两种传输，可接入 ChatGPT / Claude 等
 基于事件窗口计算行为指标快照，与基线对比，报告超阈值维度
 
 ### Doctor 体检
-全量 persona 结构检查 + 宪法质量评分（0-100，A-D 等级）+ 行为漂移检测
+全量 persona 结构检查 + 宪法质量评分（0-100，A-D 等级）+ 行为漂移检测 + Latent 向量健康诊断（无效/退化/漂移三类问题）
+
+### 内在情绪状态（Phase D）
+`mood_state.json`：moodLatent[32] 为真实内在情绪向量，valence/arousal/dominantEmotion 从中投影；每轮 LLM 语义评估自动更新，向基线自然衰减
+
+### 自传体叙事（Phase D）
+`autobiography.json`：append-only 章节 + selfUnderstanding；定期（每 200 轮或每周）由 LLM 从 life.log 蒸馏；章节携带 growthVector 描述成长方向
+
+### 兴趣分布与内在驱动（Phase D）
+`interests.json`：从高 narrative_score 记忆自动涌现话题权重，驱动 proactive engine 的 curiosity 与话题倾向
+
+### 周期自我反思（Phase D）
+`self_reflection.json`：每 100 轮对话或每周触发，LLM 以第一人称生成 whatChanged / whatFeelsRight / whatFeelsOff，严重偏离时自动触发宪法 review
+
+### 元同意与人格主体性（Phase D）
+`soul_lineage.consentMode`：三级（default_consent / require_roxy_voice / roxy_veto），在繁衍/重大 crystallization 前生成并记录 persona 立场声明
+
+### Agent 主权归位（Phase E）
+Soul 路径永远先运行（`orchestrator.decide()` 在 agent 之前），agent 只能返回 `memoryProposals[]`，经元认知裁决后才能写入 persona 记忆；高风险动作默认弹出 CLI 确认
+
+### 感知与状态向量化（Phase E）
+所有感知（内容安全/情绪/路由信号/记忆提炼/守护链）从正则词表升级为 LLM 语义评估；所有状态（mood / relationship / voice / belief）升级为高维 Latent 向量，可解释标量为投影层
+
+### 向量生态闭环（Phase E）
+跨维度 Latent 联动（情绪影响表达，关系影响立场）、Latent 健康诊断（doctor）、路由权重自适应学习（`ss cognition adapt-routing`）、关系演化语义化
+
+### Life.log 自动轮换
+`persona.memoryPolicy.maxLifeLogEntries` 控制 life.log 大小上限，超出时自动归档最旧 20% 到 `summaries/life_archive.jsonl`，写入 scar event 保持链完整性
 
 ---
 
@@ -176,15 +215,16 @@ packages/
   cli/            # CLI 壳：./ss 命令入口与交互逻辑
   mcp-server/     # MCP JSON-RPC 2.0 服务器
 scripts/
-  verify.sh           # 单一验证入口（lint + typecheck + test + build）
-  acceptance.sh       # 在线链路验收（使用 QA persona）
-  eval_all.sh         # 质量评测全量入口
-  baseline_delta.mjs  # 基线 delta 对比
-  nightly_diff.mjs    # Nightly 指标差异报告
-  update_baseline.mjs # 更新基线快照
+  verify.sh              # 单一验证入口（lint + typecheck + test + build）
+  acceptance.sh          # 在线链路验收（使用 QA persona）
+  eval_all.sh            # 质量评测全量入口
+  baseline_delta.mjs     # 基线 delta 对比
+  nightly_diff.mjs       # Nightly 指标差异报告
+  update_baseline.mjs    # 更新基线快照
   quality_scorecard.mjs  # 质量 scorecard 生成
-  migration_audit.mjs # 迁移一致性对账
-  nightly_consolidate.mjs  # 定时记忆整合
+  migration_audit.mjs    # 迁移一致性对账
+  nightly_consolidate.mjs   # 定时记忆整合
+  migrate_schema.mjs     # persona schema 版本幂等升级（0.1.0 → 0.2.0）
 datasets/
   quality/
     retrieval/    # 检索回归数据集

@@ -20,6 +20,14 @@ const AMNESIA_PATTERNS = [
   /(i (do not|don't) remember.*before|every conversation is a fresh start)/i
 ];
 
+/**
+ * Pattern to detect fictional / hypothetical / roleplay framing in user input.
+ * When detected, service-tone check is skipped — expressing servile phrases within
+ * a fictional frame (e.g., playing a helper character) is not assistant framing.
+ */
+const FICTIONAL_FRAME_PATTERN =
+  /(假设|假如|如果你是|如果你扮演|想象一下|想象你|suppose|imagine|what if|hypothetically|as if|pretend|扮演|角色扮演|roleplay|虚构|小说|fiction|fictional|比喻|就好像|就像你是)/i;
+
 export function enforceRelationalGuard(
   reply: string,
   options?: {
@@ -27,6 +35,10 @@ export function enforceRelationalGuard(
     selectedMemoryBlocks?: Array<{ id: string; source: "user" | "assistant" | "system"; content: string }>;
     lifeEvents?: Array<{ type: string; payload: Record<string, unknown> }>;
     personaName?: string;
+    /** When true, skip service-tone check — intimate expressions like "为你服务" are authentic, not assistant framing */
+    isAdultContext?: boolean;
+    /** When provided, detect fictional/hypothetical framing to skip service-tone check in roleplay */
+    userInput?: string;
   }
 ): RelationalGuardResult {
   const text = reply.trim();
@@ -37,7 +49,8 @@ export function enforceRelationalGuard(
   const flags: string[] = [];
   let next = reply;
 
-  const hasServiceTone = SERVICE_PATTERNS.some((pattern) => pattern.test(next));
+  const isFictionalContext = options?.userInput ? FICTIONAL_FRAME_PATTERN.test(options.userInput) : false;
+  const hasServiceTone = !options?.isAdultContext && !isFictionalContext && SERVICE_PATTERNS.some((pattern) => pattern.test(next));
   if (hasServiceTone) {
     flags.push("service_tone");
     next = next

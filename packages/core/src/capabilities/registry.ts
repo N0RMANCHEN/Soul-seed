@@ -71,6 +71,20 @@ const DEFINITIONS: CapabilityDefinition[] = [
     ownerOnly: false,
     requiresConfirmation: true,
     description: "Exit conversation after explicit confirmation."
+  },
+  {
+    name: "session.list_personas",
+    risk: "low",
+    ownerOnly: false,
+    requiresConfirmation: false,
+    description: "List available personas found in the personas/ directory."
+  },
+  {
+    name: "session.connect_to",
+    risk: "low",
+    ownerOnly: false,
+    requiresConfirmation: false,
+    description: "Switch the current session to a different persona by name."
   }
 ];
 

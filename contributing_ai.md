@@ -161,6 +161,19 @@ trace/日志禁止输出绝对路径与用户长段原文（可摘要/哈希/计
 - 新增命令：同步更新 `doc/CLI.md`。
 - 改动 `ss chat` 主循环或会话内命令：运行 `npm run acceptance` 验证。
 
+### 5.10 Capabilities system（改动会话能力系统必须）
+
+- 新增会话能力：在 `capabilities/registry.ts` 注册（含 risk / ownerOnly / requiresConfirmation）。
+- 新增自然语言触发规则：在 `capabilities/intent_resolver.ts` 添加对应 Pattern/匹配逻辑。
+- 新增后补集成测试：至少验证正向触发 + 非触发不误匹配。
+- 高风险能力（risk="high"）必须有 owner auth 或显式确认机制。
+
+### 5.11 Latent 向量相关改动（改动 latent 系统必须）
+
+- 新增 latent 向量维度或类型：在 `types.ts` 定义并在 `doctor.ts` 的 `checkLatentHealth` 中添加验证逻辑。
+- 改动 latent 更新路径：必须保持"LLM评估 → 元认知裁决 → normalize commit"三阶段协议，禁止规则或外部系统直接覆写。
+- 改动跨维度联动（`latent_cross_influence.ts`）：更新后确认联动系数仍在 ≤0.05 上界内，补对应单元测试。
+
 ---
 
 ## 6. 关键文件映射（快速定位）
@@ -194,6 +207,18 @@ trace/日志禁止输出绝对路径与用户长段原文（可摘要/哈希/计
 | DecisionTrace schema | `packages/core/src/decision_trace.ts` |
 | DecisionTrace 类型 | `packages/core/src/types.ts` |
 | Doctor 体检 | `packages/core/src/doctor.ts` |
+| 内在情绪状态 | `packages/core/src/mood_state.ts` |
+| 自传体叙事 | `packages/core/src/autobiography.ts` |
+| 兴趣分布（内在驱动） | `packages/core/src/interests.ts` |
+| 周期自我反思 | `packages/core/src/self_reflection.ts` |
+| 内容安全语义评估 | `packages/core/src/content_safety_semantic.ts` |
+| Agent 记忆提案协议 | `packages/core/src/agent_memory_proposal.ts` |
+| 表达/信念向量持久化 | `packages/core/src/expression_belief_state.ts` |
+| 跨维度 Latent 联动 | `packages/core/src/latent_cross_influence.ts` |
+| 路由权重自适应 | `packages/core/src/routing_adaptation.ts` |
+| Life.log 自动轮换 | `packages/core/src/memory_rotation.ts` |
+| 会话能力注册表 | `packages/core/src/capabilities/registry.ts` |
+| 会话能力意图解析 | `packages/core/src/capabilities/intent_resolver.ts` |
 | CLI 主入口 | `packages/cli/src/index.ts` |
 | MCP 工具注册 | `packages/mcp-server/src/tool_registry.ts` |
 | MCP 工具定义 | `packages/mcp-server/src/tool_definitions.ts` |

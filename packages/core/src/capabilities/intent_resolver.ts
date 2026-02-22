@@ -52,6 +52,17 @@ const PROACTIVE_TUNE_PATTERN = /^\/proactive\s+(on|off)(?:\s+\d+)?$/i;
 const MODE_UPDATE_STANDALONE_PATTERN =
   /^(strict_memory_grounding|adult_mode|age_verified|explicit_consent|fictional_roleplay)\s+(on|off|true|false|1|0)(?:\s+confirmed=(true|false))?$/i;
 
+const LIST_PERSONAS_HINTS: RegExp[] = [
+  /^\/personas$/i,
+  /(?:有哪些|列出|查看|显示|看看).*(?:人格|角色|persona)/,
+  /(?:list|show|view).*persona/i,
+  /persona.*(?:list|available)/i
+];
+
+// Patterns: /connect <name>, 切换到 <name>, 连接到 <name>, switch to <name>
+const CONNECT_TO_PATTERN =
+  /^(?:\/connect\s+|切换到\s*|连接到\s*|switch\s+to\s+|connect\s+to\s+)(.+)$/i;
+
 export function resolveCapabilityIntent(inputRaw: string): CapabilityIntentResolution {
   const input = inputRaw.trim();
   if (!input) {
@@ -86,6 +97,20 @@ export function resolveCapabilityIntent(inputRaw: string): CapabilityIntentResol
 
   if (EXIT_HINTS.some((pattern) => pattern.test(input))) {
     return buildResolution("session.exit", {}, "rule:exit", 0.99);
+  }
+
+  if (LIST_PERSONAS_HINTS.some((pattern) => pattern.test(input))) {
+    return buildResolution("session.list_personas", {}, "rule:list_personas", 0.97);
+  }
+
+  const connectMatch = CONNECT_TO_PATTERN.exec(input);
+  if (connectMatch) {
+    return buildResolution(
+      "session.connect_to",
+      { targetName: connectMatch[1].trim() },
+      "rule:connect_to",
+      0.97
+    );
   }
 
   const fetchUrl = extractUrlFromIntent(input);

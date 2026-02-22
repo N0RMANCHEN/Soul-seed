@@ -18,7 +18,9 @@ export function enforceFactualGroundingGuard(
   const ungroundedPersonalActionPatterns = [
     /(?:我)?(?:今天|刚刚|刚才|昨晚|昨天|前天|最近|路过).{0,26}(路过|经过|去了|去到|在|看到|看见|听到|闻到|买了).{0,30}(花店|咖啡店|商店|超市|公园|餐厅|电影院|机场|车站|路上|地铁|街上)/u,
     /i (?:just|today|yesterday|recently).{0,24}(passed by|walked by|saw|heard|went to|bought).{0,30}(shop|store|flower shop|cafe|street|station|airport|park|restaurant)/i,
-    /我(?:昨晚|昨天|刚刚|刚才|今天|前天|最近).{0,20}(读|看|翻|听|回看|重看|复盘).{0,20}(文章|那篇|内容|文本)/u
+    // Note: excludes "刚刚|刚才" (just now) to avoid false positives when Roxy
+    // legitimately refers to reading content shared by the user in the current conversation.
+    /我(?:昨晚|昨天|今天|前天|最近).{0,20}(读|看|翻|听|回看|重看|复盘).{0,20}(文章|那篇|内容|文本)/u
   ];
 
   const matched = ungroundedPersonalActionPatterns.some((pattern) => pattern.test(text));

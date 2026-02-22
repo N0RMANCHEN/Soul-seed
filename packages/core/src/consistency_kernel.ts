@@ -26,7 +26,9 @@ export function runConsistencyKernel(input: ConsistencyCheckInput): ConsistencyC
     selectedMemories: input.selectedMemories ?? [],
     selectedMemoryBlocks: input.selectedMemoryBlocks ?? [],
     lifeEvents: input.lifeEvents ?? [],
-    personaName: input.personaName
+    personaName: input.personaName,
+    isAdultContext: input.isAdultContext,
+    userInput: input.userInput
   });
   if (relational.corrected) {
     text = relational.text;

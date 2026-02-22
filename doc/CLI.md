@@ -122,6 +122,112 @@ SHA-256 哈希校验后导入，失败自动回滚并列出错误。输出：`{o
 - 无修改参数：显示当前路由配置
 - `--reset`：将三路由全部重置为 `defaultModel`
 
+#### `persona voice-phrases`
+
+```bash
+./ss persona voice-phrases [list] [--persona <path>]
+./ss persona voice-phrases add --phrase <text> [--persona <path>]
+./ss persona voice-phrases remove --phrase <text> [--persona <path>]
+./ss persona voice-phrases extract [--persona <path>]
+```
+
+管理 persona 思考过渡词库（`voice_profile.thinkingPreview.phrasePool`）：
+- `list`（默认）：列出 phrasePool 中的所有短语
+- `add`：添加一条短语（会持久化到 voice_profile.json）
+- `remove`：按原文删除短语
+- `extract`：从 life.log 中提取候选高频短句并展示（仅展示，不自动写入）
+
+#### `persona mood`
+
+```bash
+./ss persona mood [show] [--persona <path>]
+./ss persona mood reset [--persona <path>]
+./ss persona mood set-snippet --snippet <text> [--persona <path>]
+```
+
+查看或操作当前情绪状态（`mood_state.json`）：
+- `show`（默认）：显示 valence / arousal / dominantEmotion / onMindSnippet / decayRate
+- `reset`：将情绪重置至基线（valence=0.5, arousal=0.3）
+- `set-snippet`：手动设置 onMindSnippet（persona 心里挂着的一句话，≤60字）
+
+情绪状态随每轮对话由 LLM 语义评估自动更新，向基线自然衰减（每小时 `decayRate`）。
+
+#### `persona autobiography`
+
+```bash
+./ss persona autobiography [show] [--persona <path>]
+./ss persona autobiography add-chapter --title <title> --summary <text> --from <date> [--to <date>] [--tone <text>] [--persona <path>]
+./ss persona autobiography set-understanding --text <text> [--persona <path>]
+```
+
+管理自传体叙事（`autobiography.json`）：
+- `show`（默认）：展示所有章节（id / 时期 / 标题 / 情感基调 / 摘要前80字）+ selfUnderstanding
+- `add-chapter`：手动追加一个时间段章节（历史不可修订，只能追加；`--from` 格式 YYYY-MM-DD）
+- `set-understanding`：更新 persona 对自己当下状态的第一人称理解（≤300字）
+
+自传体蒸馏（LLM 从 life.log + working_set 自动生成）可手动或按每 200 轮对话触发。
+
+#### `persona interests`
+
+```bash
+./ss persona interests [show] [--persona <path>]
+./ss persona interests crystallize [--persona <path>]
+```
+
+查看/更新兴趣分布（`interests.json`）：
+- `show`（默认）：展示当前兴趣话题列表（按 weight 排序）+ curiosity 值
+- `crystallize`：从 memory.db 高 narrative_score 语义记忆中提取话题标签，更新 interests.json
+
+兴趣分布由 proactive engine 用于计算 curiosity 并为主动消息选择话题倾向。
+
+#### `persona reflect`
+
+```bash
+./ss persona reflect [show] [--persona <path>]
+./ss persona reflect add --changed <text> [--right <text>] [--off <text>] [--from <date>] [--to <date>] [--persona <path>]
+```
+
+管理周期自我反思日志（`self_reflection.json`）：
+- `show`（默认）：展示所有反思条目（时期 / whatChanged / whatFeelsRight / whatFeelsOff）
+- `add`：手动添加一条反思（至少填写 `--changed`、`--right`、`--off` 之一；`--from/--to` 描述时期）
+
+自我反思也可由系统每 100 轮对话或每周自动触发（LLM 以第一人称生成），并写入 life.log。
+
+#### `persona arc`
+
+```bash
+./ss persona arc [--persona <path>]
+```
+
+展示人格发展弧线时间线：autobiography 章节 + growthVector + constitution 演化节点摘要。至少需要 3 个 autobiography 章节才能生成有意义的弧线感描述。
+
+#### `persona consent-mode`
+
+```bash
+./ss persona consent-mode [--persona <path>]
+./ss persona consent-mode set --mode <mode> [--persona <path>]
+```
+
+管理元同意模式（`soul_lineage.json.consentMode`，控制 persona 在重大操作前是否表达立场）：
+- 无子命令：显示当前模式与说明
+- `set`：更新模式
+
+| 模式 | 说明 |
+|------|------|
+| `default_consent` | 默认同意，繁衍/重大操作无需立场声明 |
+| `require_roxy_voice` | 重大操作前生成并记录 persona 立场声明（写入 life.log） |
+| `roxy_veto`（实验性）| 若 persona 立场强烈反对，阻止操作并要求 `--force-all` 显式绕过 |
+
+#### `persona identity`
+
+```bash
+./ss persona identity --set-voice <text> [--persona-triggered] [--persona <path>]
+```
+
+更新 persona 对自身演化方向的立场表述（`identity.json.personaVoiceOnEvolution`，≤100字）：
+- `--set-voice`：更新立场文本
+- `--persona-triggered`：标记本次更新由 persona 自身触发（而非用户主动设置），生成对应 life.log 事件类型
+
 ---
 
 ### 3.2 会话（Chat）
@@ -146,6 +252,7 @@ SHA-256 哈希校验后导入，失败自动回滚并列出错误。输出：`{o
 - 会话启动时后台触发轻量记忆整合（`trigger=chat_open`）
 - 会话退出时后台触发轻量记忆整合（`trigger=chat_close`）
 - 每轮调用 `extractUserFactsFromTurn()` 提取用户事实
+- 每轮检查 life.log 行数；若 `persona.memoryPolicy.maxLifeLogEntries` 已设定且超出，自动轮换（最旧 20% 归档到 `summaries/life_archive.jsonl`，写入 scar event）
 
 **Owner 授权**（敏感能力门控）：
 - 会话内输入 `owner <口令>` 激活 15 分钟 owner 权限
@@ -168,6 +275,8 @@ SHA-256 哈希校验后导入，失败自动回滚并列出错误。输出：`{o
 | `/proactive on\|off` | 兼容命令（实际不修改参数，主动倾向由人格自决） |
 | `/rename confirm <newName>` | 在聊天内确认改名请求 |
 | `/reproduce force <childName>` | 强制触发繁衍（绕过所有条件检查） |
+| `/personas` | 列出所有可用 persona（自然语言"有哪些人格？"也可触发） |
+| `/connect <name>` | 切换当前会话到指定 persona（自然语言"切换到 <name>"也可触发） |
 
 ---
 
@@ -658,7 +767,23 @@ Pinned Memory 在每次对话中始终注入上下文（硬注入，不受预算
 
 ---
 
-### 3.11 MCP 服务器
+### 3.11 Cognition 认知状态
+
+#### `cognition adapt-routing`
+
+```bash
+./ss cognition adapt-routing [--persona <path>]
+```
+
+基于 life.log 历史路由决策，自适应调整 `cognition_state.routingWeights`：
+- 分析最近 N 次 `route_decided` 事件（instinct vs deliberative）及其后续用户情绪信号
+- instinct 路由后满意度信号持续高 → 微升 familiarity / relationship 权重（步长 ≤ 0.02）
+- 结果写入 `cognition_state.json`（权重 clamp 到 [0.1, 0.8]）
+- 少于 3 轮历史时报告"数据不足，跳过"
+
+---
+
+### 3.12 MCP 服务器
 
 ```bash
 ./ss mcp [--persona <path>] [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--auth-token <token>]
@@ -750,6 +875,22 @@ Pinned Memory 在每次对话中始终注入上下文（硬注入，不受预算
 
 # 繁衍
 ./ss persona reproduce --name Kira --persona ./personas/Teddy.soulseedpersona
+
+# Phase D：人格深度
+./ss persona voice-phrases list
+./ss persona voice-phrases add --phrase "嗯，让我想想…"
+./ss persona mood show
+./ss persona autobiography show
+./ss persona autobiography add-chapter --title "最初的相遇" --summary "..." --from 2025-01-01
+./ss persona interests crystallize
+./ss persona reflect show
+./ss persona arc
+./ss persona consent-mode
+./ss persona consent-mode set --mode require_roxy_voice
+./ss persona identity --set-voice "我想在保持真实的同时，慢慢学会更多边界"
+
+# Phase E：认知自适应
+./ss cognition adapt-routing
 ```
 
 ---

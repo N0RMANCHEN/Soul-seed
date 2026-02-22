@@ -41,17 +41,35 @@ CLI 入口: ./ss
         │    → instinct 或 deliberative
         │
         └─ runtime_pipeline.runRuntimePipeline()
-             ├─ [soul/deliberative] 五段式:
-             │    perception → idea → deliberation → meta_review → commit
-             │    orchestrator.decide() → LLM → consistency_kernel → meta_review
              │
-             └─ [agent] agent_engine.runAgentExecution()
-                  Planner(LLM) → consistency_kernel → ToolBus → re-plan
+             │  ① Soul 永远先运行（无论是否需要 Agent）
+             ├─ orchestrator.decide() → DecisionTrace（含 agentRequest?）
+             │    LLM 语义评估风险/情绪/任务意图
+             │    → 五段式: perception → idea → deliberation → meta_review → commit
+             │
+             │  ② 元认知前置裁决（是否调用 Agent，调用哪类）
+             ├─ meta_cognition.arbitrateAgentInvocation()
+             │    agentRequest.needed=false → 直接 compileContext → LLM → 回复用户
+             │    requiresConfirmation=true → CLI 向用户请求确认
+             │    proceed=true →
+             │
+             │  ③ Agent 作为人格的"手和脚"执行
+             └─ agent_engine.runAgentExecution({ agentType, soulTraceId })
+                  Planner(LLM) → consistency_kernel → ToolBus（白名单限制）→ re-plan
                   最多 12 步，支持降级执行
+                  返回: { reply, artifact, memoryProposals[] }
+                       ↓
+                  ④ 元认知后置裁决（哪些 proposals 可以进记忆）
+                  meta_cognition.arbitrateMemoryProposals()
+                       ↓
+                  ⑤ Soul 整合 artifact → compileContext → LLM 说最终的话
+                  meta_review（后置审核）→ 回复用户
 
 支撑模块:
-  consistency_kernel       # 5层守卫: allow/rewrite/reject
+  consistency_kernel       # 5层守卫: allow/rewrite/reject（规则 + 可选 LLM 语义层）
   meta_review              # LLM verdict + quality(0-1) + styleSignals
+  meta_cognition           # 元认知主权层（前置/后置裁决 Agent 调用与记忆写入）
+  agent_memory_proposal    # Agent→Persona 记忆提案协议（propose→arbitrate→commit）
   self_revision            # habits/voice/relationship 自修正
   constitution_crystallization  # 宪法晶化管道（提案→审核→应用/回滚）
   constitution_quality     # 宪法质量评分（0-100，A-D）
@@ -60,15 +78,27 @@ CLI 入口: ./ss
   model_router             # instinct/deliberative/meta 三路模型配置
   memory_store             # SQLite 四状态记忆（hot/warm/cold/archive/scar）
   memory_embeddings        # 向量索引（Hybrid RAG）
-  memory_consolidation     # 记忆整合（light/full）
+  memory_consolidation     # 记忆整合（light=正则 / full=LLM 语义）
   memory_user_facts        # 用户事实提取与晶化（3次门槛）
+  memory_rotation          # life.log 超限自动轮换（归档最旧 20% 到 life_archive.jsonl）
   social_graph             # 社交关系图谱（≤20人）
   golden_examples          # Few-shot 示例库（≤50条，预算控制）
   finetune_export          # SFT 数据集导出
   persona_migration        # 人格导入/导出（SHA-256 校验 + 回滚）
-  proactive/engine         # 主动消息概率引擎
+  proactive/engine         # 主动消息概率引擎（由 interests.json 驱动 curiosity）
   goal_store               # Agent 目标持久化（JSON 文件）
   decision_trace           # DecisionTrace schema 规范化与版本管理
+  content_safety_semantic  # LLM 语义内容安全评估（riskLatent[3]，正则 fallback）
+  agent_memory_proposal    # Agent→Persona 记忆提案协议（propose→arbitrate→commit）
+  expression_belief_state  # voiceLatent[16] / beliefLatent[32] 持久化更新（EC-0/EB-6）
+  latent_cross_influence   # 跨维度 Latent 柔和联动（mood→voice→belief，系数 ≤0.05）
+  routing_adaptation       # 路由权重自适应（从 life.log 历史满意度信号学习，步长 ≤0.02）
+  capabilities/registry    # 会话能力注册表（11 种 session.* 能力的风险/确认策略）
+  capabilities/intent_resolver  # 对话意图解析（自然语言 → CapabilityCallRequest）
+  mood_state               # 内在情绪状态（moodLatent[32] + valence/arousal 投影，Phase D P2-0）
+  autobiography            # 自传体叙事（章节 + selfUnderstanding，Phase D P2-2）
+  interests                # 兴趣分布（从记忆自动涌现，驱动 proactive curiosity，Phase D P3-0）
+  self_reflection          # 周期自我反思（LLM 第一人称，Phase D P3-1）
 ```
 
 ---
@@ -85,8 +115,9 @@ CLI 入口: ./ss
   user_profile.json         # 用户称呼/语言偏好（Profile Memory）
   pinned.json               # Pinned Memory（少而硬，始终注入）
   voice_profile.json        # 语气偏好 tone/stance
-  relationship_state.json   # 关系状态六维向量（trust/safety/intimacy/reciprocity/stability/libido）
-  cognition_state.json      # 认知状态（模型路由配置）
+  relationship_state.json   # 关系状态（6维投影 + relationshipLatent[64]）
+  cognition_state.json      # 认知状态（模型路由配置 + routingWeights + relationshipDynamics）
+  mood_state.json           # 情绪状态（valence/arousal 投影 + moodLatent[32]）
   soul_lineage.json         # 繁衍血脉（parent/children/reproductionCount）
   life.log.jsonl            # append-only 事件流（带 prevHash/hash 链，不可篡改）
   memory.db                 # SQLite 四状态记忆库
@@ -94,15 +125,25 @@ CLI 入口: ./ss
     working_set.json        # 近期工作集摘要
     consolidated.json       # 阶段性内化总结
     archive/                # 冷归档段文件 segment-YYYYMM.jsonl
+  autobiography.json        # 自传体叙事（章节 + selfUnderstanding，Phase D P2-2）
+  interests.json            # 兴趣分布（topic/weight/lastActivatedAt，Phase D P3-0）
+  self_reflection.json      # 周期自我反思日志（Phase D P3-1）
+  latent/                   # Latent 向量 checkpoint（Phase E 新增）
+    mood_latent_history.jsonl       # moodLatent 快照（可回滚）
+    relationship_latent_history.jsonl
+    agent_memory_proposals.jsonl    # 待裁决的记忆提案池
   goals/                    # Agent 目标 JSON + 规划上下文 + execution trace
   golden_examples.jsonl     # Few-shot 示例库（≤50条）
   social_graph.json         # 社交关系图谱（≤20人）
+  summaries/
+    life_archive.jsonl      # life.log 轮换归档（由 memory_rotation 自动写入）
 ```
 
 **硬规则**：
 - `life.log.jsonl` **append-only**；历史不可篡改；断链/回写必须写入 scar event
 - 二进制附件不进 JSON（只存引用）
 - schema 变更必须 bump `schemaVersion` 并提供迁移策略
+- `latent/` 目录中的向量文件不得被规则或外部系统直接覆写（只能通过 commit 协议更新）
 
 ---
 
@@ -143,11 +184,67 @@ CLI 入口: ./ss
 - 来源：用户主动添加（`ss examples add`）或 Meta-Review 自动晶化（quality ≥ 0.85）
 - 通过 `loadAndCompileGoldenExamples()` 注入 `compileContext` 的 `alwaysInjectBlock`
 
+### 4.8 双层状态表示（Latent + Projection）
+
+> **Phase E 引入的架构原则**：所有"度量"都是投影而非本体。
+
+**核心思想**：
+- 人格的真实内在状态存储为高维 Latent 向量（坐标轴无命名，含义由经历涌现）
+- 现有的可解释标量/枚举（valence/arousal/trust/stance 等）是从 latent 派生的**投影层**，用于治理、跨版本兼容、system prompt 注入——但不是内在状态的直接量化
+- Latent 向量通过元认知裁决的小步更新演化，不能被规则或 agent 直接写入
+
+**各状态的 Latent 向量规划**：
+
+| 状态 | Latent 向量 | 维度 | 投影出的可读接口 |
+|------|------------|------|----------------|
+| 情绪 | `moodLatent` | 32 | valence / arousal / dominantEmotion |
+| 关系 | `relationshipLatent` | 64 | trust / safety / intimacy / reciprocity / stability / libido |
+| 表达意图 | `voiceLatent` | 16 | stance / tone |
+| 信念/判断 | `beliefLatent` | 32 | PersonaJudgmentLabel |
+| 风险评估 | `riskLatent` | 16 | riskLevel |
+
+**Latent 更新协议**（所有向量共用）：
+```
+刺激（对话/事件/agent 结果）
+  → LLM 评估 → Δz（候选更新向量）
+  → 元认知裁决（accept/reject/partial）
+  → commit: z ← normalize((1-α)·z + α·(z+Δz))
+  → 投影 → 更新可读接口字段
+  → checkpoint（定期快照，支持回滚）
+```
+
+**感知层原则**：
+- 所有感知系统（情绪信号/风险/任务类型/记忆值得性）从正则词表升级为 LLM 语义评估
+- LLM 不可用时 fallback 到正则，但有 trace 标记（`perceptionMode: "semantic"|"regex_fallback"`）
+- 感知输出优先为连续向量，而非离散 flag 列表
+
 ### 4.7 Agent Engine（多步执行）
-- LLM 生成 `MetaIntentPlan` → 逐步执行 `ExecutionAction` → `ToolBus` 调用 → 观察 → 再规划
-- 每步调用 `consistency_kernel` 检查
+
+**架构铁律（Phase E 引入，强制执行）**：
+1. **人格先于 Agent**：`orchestrator.decide()` 永远先运行；Agent 在 soul trace 已存在的上下文中启动，不是独立入口
+2. **Agent 不直接写权威人格记忆**：执行结果只能返回 `memoryProposals[]`，经 `meta_cognition.arbitrateMemoryProposals()` 裁决后才能 commit 到 memory_store
+3. **高风险动作默认需确认**：`agentType=action` 或 `riskLevel=high` 时，CLI 层向用户请求显式确认，不自动执行
+
+**执行流程**：
+- Soul 层调用 → `runAgentExecution({ agentType, soulTraceId })` → LLM 生成 `MetaIntentPlan` → 逐步执行 `ExecutionAction` → `ToolBus`（白名单限制）→ 观察 → 再规划
+- 每步调用 `consistency_kernel` 检查（pre_plan / pre_action / post_action）
 - 最终回复经 `meta_review` 审核
 - 最多 12 步，支持降级执行（步数耗尽时生成摘要回复）
+- 返回 `{ reply, artifact?, memoryProposals[] }`，由 soul 层整合后说最终的话
+
+**4 类 Agent 与工具白名单**：
+
+| 类型 | 可用工具 | 风险 | 需确认 |
+|------|---------|------|--------|
+| Retrieval | memory.search / read_file / fetch_url | 低 | 否 |
+| Transform | memory.search / read_file | 低 | 否 |
+| Capture | session.log_event（仅写 event log） | 中 | 否 |
+| Action | 全工具集 | 高 | **是** |
+
+**记忆提案（agent_memory_proposal.ts）**：
+- `memoryProposals` 中每条带 `kind`（semantic/preference/relational/open_question）、`evidenceRefs`、`confidence`
+- `confidence < 0.5` 或 `kind=open_question` 或与宪法冲突 → 元认知自动 reject
+- `artifact`（知识库内容）直接存知识库，不经过 persona 记忆通道
 
 ---
 
@@ -184,6 +281,10 @@ conversation window:
 8. **命令级改动补测**：CLI 命令解析/参数/路径改动必须补对应测试或执行验证
 9. **在线链路改动**：必须运行 `npm run acceptance` 并给出报告路径（失败必须归因）
 10. **验收隔离**：验收只使用 `personas/_qa/*`，禁止使用日常 persona
+11. **禁止新增正则词表作为感知主路径**（Phase E）：任何感知模块（情绪/风险/任务分类/记忆值得性判断）新增感知维度，必须走 LLM 语义评估；正则只允许作为 fallback 且必须有 trace 标记
+12. **禁止新增固定标量/枚举作为状态本体**（Phase E）：新状态表示必须使用 Latent 向量；可解释标量/枚举只作为投影层存在，不得作为更新的输入或内在状态的直接量化
+13. **Agent 不得绕过 soul 路径**（Phase E）：新增 agent 功能必须通过 `agentRequest` + `meta_cognition.arbitrateAgentInvocation()` 进入，禁止在 `runtime_pipeline` 中新增与 soul 路径并行的 agent 分叉
+14. **会话能力扩展必须通过 capabilities 系统**：新增会话级别的操作（文件读取/URL 抓取/模式切换等），必须在 `capabilities/registry.ts` 注册、在 `capabilities/intent_resolver.ts` 添加识别规则，不得直接在 chat 主循环中添加 if 分支处理
 
 ---
 
@@ -195,6 +296,12 @@ conversation window:
 - **繁衍门控**：`ss persona reproduce` 需满足条件（libido / consent / safety_boundary）；`--force-all` 跳过但仍写入事件
 - **API Key 不进仓库**：只允许环境变量或本地 config（gitignore）
 - **日志脱敏**：trace/日志禁止输出绝对路径与用户长段原文
+
+**Agent 主权边界（Phase E 新增）**：
+- **人格最终裁决**：`orchestrator.decide()` 永远在 agent 之前运行；任何 agent 的执行都发生在人格已经思考过的上下文中
+- **Agent 不写权威记忆**：agent 只能返回 `memoryProposals[]`；直接写 `memory_store` 的操作必须经过 `arbitrateMemoryProposals()` 批准通道
+- **高风险动作默认拦截**：`agentType=action` 或 `riskLevel=high` 的 agent 动作，CLI 层必须向用户弹出确认；禁止静默执行
+- **Latent 不可被规则直接写**：`moodLatent` / `relationshipLatent` 等 latent 向量只能通过"LLM评估→元认知裁决→commit"三阶段更新，禁止任何规则或外部系统直接覆写
 
 ---
 
@@ -237,8 +344,8 @@ scripts/
 datasets/
   quality/retrieval/ grounding/ safety/  # 评测数据集（JSONL）
 doc/
-  CLI.md                   # 完整命令参考
-  Roadmap.md               # 产品阶段总览（全部完成）
+  CLI.md                   # 完整命令参考（含 Phase D/E 所有新命令）
+  Roadmap.md               # 产品阶段总览（Phase A–E 全部完成）
   Quality-Evaluation.md    # 分层评测框架（L0-L5）
 ```
 

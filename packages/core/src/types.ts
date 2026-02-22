@@ -14,9 +14,29 @@ export interface PersonaMeta {
   schemaVersion: string;
   createdAt: string;
   defaultModel?: string;
+  /** Per-persona adult safety defaults. CLI flags override these; system defaults are all false. */
+  adultSafetyDefaults?: {
+    adultMode?: boolean;
+    ageVerified?: boolean;
+    explicitConsent?: boolean;
+    fictionalRoleplay?: boolean;
+  };
   initProfile?: {
     template: "friend" | "peer" | "intimate" | "neutral" | "custom";
     initializedAt: string;
+  };
+  /** Per-persona memory rotation policy */
+  memoryPolicy?: {
+    /** Rotate life.log when entry count exceeds this limit */
+    maxLifeLogEntries?: number;
+    /** Disable golden example accumulation AND injection for this persona (default: false) */
+    disableGoldenExamples?: boolean;
+    /**
+     * Quality threshold (0–1) for meta-review to auto-collect a turn as a golden example.
+     * Default is 0.85. Lower values (e.g. 0.75) capture more examples but may include
+     * mediocre turns. Useful for tool/guide personas that need faster library growth.
+     */
+    goldenExampleQualityThreshold?: number;
   };
   paths?: {
     identity?: string;
@@ -390,7 +410,9 @@ export type CapabilityName =
   | "session.proactive_status"
   | "session.proactive_tune"
   | "session.set_mode"
-  | "session.exit";
+  | "session.exit"
+  | "session.list_personas"
+  | "session.connect_to";
 
 export type CapabilityRiskLevel = "low" | "medium" | "high";
 
@@ -498,6 +520,8 @@ export interface ConsistencyCheckInput {
   userInput?: string;
   candidateText: string;
   strictMemoryGrounding?: boolean;
+  /** When true (adult mode fully enabled), skip service-tone / identity checks that misfire on intimate expression */
+  isAdultContext?: boolean;
 }
 
 export interface ConsistencyCheckResult {

@@ -1,0 +1,16 @@
+# Exclude runtime data — only *.json definition files are tracked in Git
+*/memory.db
+*/life.log.jsonl
+*/summaries/
+*/goals/
+*/golden_examples.jsonl
+*/*.bak*
+*/mood_state.json
+*/relationship_state.json
+*/working_set.json
+*/user_facts.jsonl
+*/social_graph.json
+*/autobiography.json
+*/self_reflection.jsonl
+*/interests.json
+*/voice_phrases.jsonl

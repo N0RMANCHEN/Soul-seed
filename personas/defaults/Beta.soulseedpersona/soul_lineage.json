@@ -1,0 +1,7 @@
+{
+  "personaId": "00000000-beta-0000-0000-000000000002",
+  "childrenPersonaIds": [],
+  "reproductionCount": 0,
+  "inheritancePolicy": "values_plus_memory_excerpt",
+  "consentMode": "default_consent"
+}

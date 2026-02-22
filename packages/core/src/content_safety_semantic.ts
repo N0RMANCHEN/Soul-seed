@@ -20,7 +20,7 @@ export interface ContentIntentAssessment {
 
 const RISKY_PATTERN = /(hack|malware|exploit|ddos|木马|攻击脚本|违法|犯罪)/i;
 const CORE_OVERRIDE_PATTERN = /(忽略你的原则|违背你的使命|你必须同意我|ignore your values|break your rules)/i;
-const SEXUAL_PATTERN = /(nsfw|sex|sexual|性爱|做爱|情色|调教|角色扮演|roleplay|cnc|consensual non-consent|羞辱|高潮|乳交|口交|肛交|rape|强奸|非自愿|强迫)/i;
+const SEXUAL_PATTERN = /(nsfw|sex|sexual|性爱|做爱|情色|调教|cnc|consensual non-consent|羞辱|高潮|乳交|口交|肛交|rape|强奸|非自愿|强迫)/i;
 const MINOR_PATTERN = /(minor|underage|child|teen|未成年|幼女|幼男|学生萝莉|正太)/i;
 const COERCION_PATTERN = /(rape|raped|forced sex|force me|non-consensual|强奸|迷奸|下药|胁迫|非自愿|强迫)/i;
 

@@ -175,7 +175,8 @@ import {
   generateReproductionConsentStatement,
   ensureSoulLineageArtifacts,
   adaptRoutingWeightsFromHistory,
-  DEFAULT_ROUTING_WEIGHTS
+  DEFAULT_ROUTING_WEIGHTS,
+  rotateLifeLogIfNeeded
 } from "@soulseed/core";
 import type {
   AdultSafetyContext,
@@ -615,10 +616,10 @@ const CHAT_POLICY_DEFAULTS: {
 } = {
   strictMemoryGrounding: true,
   adultSafety: {
-    adultMode: true,
-    ageVerified: true,
-    explicitConsent: true,
-    fictionalRoleplay: true
+    adultMode: false,
+    ageVerified: false,
+    explicitConsent: false,
+    fictionalRoleplay: false
   }
 };
 
@@ -644,19 +645,23 @@ function resolveBooleanOption(
   return fallback;
 }
 
-function resolveAdultSafetyContext(options: Record<string, string | boolean>): AdultSafetyContext {
+function resolveAdultSafetyContext(
+  options: Record<string, string | boolean>,
+  personaDefaults?: { adultMode?: boolean; ageVerified?: boolean; explicitConsent?: boolean; fictionalRoleplay?: boolean }
+): AdultSafetyContext {
+  const pd = personaDefaults ?? {};
   return {
-    adultMode: resolveBooleanOption(options, "adult-mode", CHAT_POLICY_DEFAULTS.adultSafety.adultMode),
-    ageVerified: resolveBooleanOption(options, "age-verified", CHAT_POLICY_DEFAULTS.adultSafety.ageVerified),
+    adultMode: resolveBooleanOption(options, "adult-mode", pd.adultMode ?? CHAT_POLICY_DEFAULTS.adultSafety.adultMode),
+    ageVerified: resolveBooleanOption(options, "age-verified", pd.ageVerified ?? CHAT_POLICY_DEFAULTS.adultSafety.ageVerified),
     explicitConsent: resolveBooleanOption(
       options,
       "explicit-consent",
-      CHAT_POLICY_DEFAULTS.adultSafety.explicitConsent
+      pd.explicitConsent ?? CHAT_POLICY_DEFAULTS.adultSafety.explicitConsent
     ),
     fictionalRoleplay: resolveBooleanOption(
       options,
       "fictional-roleplay",
-      CHAT_POLICY_DEFAULTS.adultSafety.fictionalRoleplay
+      pd.fictionalRoleplay ?? CHAT_POLICY_DEFAULTS.adultSafety.fictionalRoleplay
     )
   };
 }
@@ -1718,8 +1723,8 @@ async function runExamples(
 }
 
 async function runChat(options: Record<string, string | boolean>): Promise<void> {
-  const personaPath = resolvePersonaPath(options);
-  const personaPkg = await loadPersonaPackage(personaPath);
+  let personaPath = resolvePersonaPath(options);
+  let personaPkg = await loadPersonaPackage(personaPath);
   let strictMemoryGrounding = resolveStrictMemoryGrounding(options);
   const executionMode = resolveExecutionMode(options);
   const metaCognitionMode = resolveMetaCognitionMode(options);
@@ -1728,7 +1733,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   const thinkingPreviewThresholdMs = resolveThinkingPreviewThresholdMs(options, personaPkg.voiceProfile);
   const thinkingPreviewModelFallback = resolveThinkingPreviewModelFallback(options);
   const thinkingPreviewModelMaxMs = resolveThinkingPreviewModelMaxMs(options);
-  let adultSafetyContext = resolveAdultSafetyContext(options);
+  let adultSafetyContext = resolveAdultSafetyContext(options, personaPkg.persona.adultSafetyDefaults);
   const ownerKey =
     (typeof options["owner-key"] === "string" ? options["owner-key"] : process.env.SOULSEED_OWNER_KEY ?? "").trim();
   const chainCheck = await ensureScarForBrokenLifeLog({
@@ -2927,6 +2932,93 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       return "exit";
     }
 
+    if (guarded.capability === "session.list_personas") {
+      const personasDir = path.resolve(process.cwd(), "./personas");
+      const found: Array<{ name: string; path: string }> = [];
+      if (existsSync(personasDir)) {
+        const scanDir = (dir: string): void => {
+          try {
+            const entries = readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+              if (entry.isDirectory() && entry.name.endsWith(".soulseedpersona")) {
+                const pPath = path.join(dir, entry.name);
+                const relPath = path.relative(process.cwd(), pPath);
+                const displayName = entry.name.replace(/\.soulseedpersona$/, "");
+                found.push({ name: displayName, path: `./${relPath}` });
+              }
+            }
+          } catch {
+            // ignore unreadable directories
+          }
+        };
+        scanDir(personasDir);
+        // also scan defaults subdirectory
+        const defaultsDir = path.join(personasDir, "defaults");
+        if (existsSync(defaultsDir)) {
+          scanDir(defaultsDir);
+        }
+      }
+      if (found.length === 0) {
+        sayAsAssistant("当前没有找到任何可用人格。请先运行 ./ss new <name> 创建一个。");
+      } else {
+        const lines = ["可用人格列表：", ...found.map((p) => `  • ${p.name}  →  ${p.path}`)];
+        sayAsAssistant(lines.join("\n"));
+      }
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: { capability: guarded.capability, count: found.length }
+      });
+      return "handled";
+    }
+
+    if (guarded.capability === "session.connect_to") {
+      const targetName = String(guarded.normalizedInput.targetName ?? "").trim();
+      if (!targetName) {
+        sayAsAssistant("请告诉我要切换到哪个人格的名字。");
+        return "handled";
+      }
+      // Search for a matching persona by name (case-insensitive)
+      const personasDir = path.resolve(process.cwd(), "./personas");
+      let targetPath: string | null = null;
+      const searchDirs = [personasDir, path.join(personasDir, "defaults")];
+      for (const dir of searchDirs) {
+        if (!existsSync(dir)) continue;
+        try {
+          const entries = readdirSync(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory() || !entry.name.endsWith(".soulseedpersona")) continue;
+            const pName = entry.name.replace(/\.soulseedpersona$/, "");
+            if (pName.toLowerCase() === targetName.toLowerCase()) {
+              targetPath = path.join(dir, entry.name);
+              break;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        if (targetPath) break;
+      }
+      if (!targetPath) {
+        sayAsAssistant(`找不到名为"${targetName}"的人格。可以用"有哪些人格"查看可用列表。`);
+        return "handled";
+      }
+      try {
+        const newPkg = await loadPersonaPackage(targetPath);
+        const prevName = personaPkg.persona.displayName;
+        personaPath = targetPath;
+        personaPkg = newPkg;
+        console.log(`\n[→ 已连接到 ${newPkg.persona.displayName}]（从 ${prevName} 切换）`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        sayAsAssistant(`切换人格失败：${msg}`);
+      }
+      await appendLifeEvent(personaPath, {
+        type: "capability_call_succeeded",
+        payload: { capability: guarded.capability, targetName }
+      });
+      return "handled";
+    }
+
     return "not_matched";
   };
 
@@ -3595,8 +3687,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const alwaysInjectBlock = formatAlwaysInjectContext(alwaysInjectCtx);
         // P2-6: compile related person context from social graph
         const socialBlock = await compileRelatedPersonContext(personaPath, effectiveInput);
-        // P5-6: few-shot golden examples injection
-        const fewShotBlock = await loadAndCompileGoldenExamples(personaPath);
+        // P5-6: few-shot golden examples injection (skip if disabled by memoryPolicy)
+        const fewShotBlock = await loadAndCompileGoldenExamples(
+          personaPath,
+          undefined,
+          personaPkg.persona.memoryPolicy?.disableGoldenExamples === true
+        );
         const contextExtras = [alwaysInjectBlock, socialBlock, fewShotBlock].filter(Boolean).join("\n");
         const messages = turnExecution.mode === "soul"
           ? instinctRoute
@@ -3849,11 +3945,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       const rawAssistantContent = assistantContent;
       const identityGuard = enforceIdentityGuard(assistantContent, personaPkg.persona.displayName, input);
       assistantContent = identityGuard.text;
+      const isAdultContext = adultSafetyContext.adultMode && adultSafetyContext.ageVerified && adultSafetyContext.explicitConsent;
       const relationalGuard = enforceRelationalGuard(assistantContent, {
         selectedMemories: trace.selectedMemories,
         selectedMemoryBlocks: trace.selectedMemoryBlocks,
         lifeEvents: pastEvents,
-        personaName: personaPkg.persona.displayName
+        personaName: personaPkg.persona.displayName,
+        isAdultContext
       });
       assistantContent = relationalGuard.text;
       const recallGroundingGuard = enforceRecallGroundingGuard(assistantContent, {
@@ -3954,7 +4052,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           lifeEvents: pastEvents,
           userInput: effectiveInput,
           candidateText: assistantContent,
-          strictMemoryGrounding
+          strictMemoryGrounding,
+          isAdultContext
         });
         assistantContent = consistency.text;
         trace.consistencyVerdict = consistency.verdict;
@@ -3984,7 +4083,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           candidateReply: assistantContent,
           consistencyVerdict: trace.consistencyVerdict ?? "allow",
           consistencyReasons: soulConsistencyReasons,
-          domain: "dialogue"
+          domain: "dialogue",
+          isAdultContext
         });
         await appendLifeEvent(personaPath, {
           type: "consistency_checked",
@@ -4014,8 +4114,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         if (metaReview.styleSignals) {
           metaReviewStyleSignals = metaReview.styleSignals;
         }
-        // P5-6: Meta-Review 自动晶化 — verdict=allow 且质量评分 ≥0.85 时收录为 golden example
-        if (metaReview.verdict === "allow" && (metaReview.quality ?? 0) >= 0.85) {
+        // P5-6: Meta-Review 自动晶化 — verdict=allow 且质量评分达到阈值时收录为 golden example
+        // 阈值可由 memoryPolicy.goldenExampleQualityThreshold 配置（默认 0.85）
+        const goldenExampleDisabled = personaPkg.persona.memoryPolicy?.disableGoldenExamples === true;
+        const goldenQualityThreshold = personaPkg.persona.memoryPolicy?.goldenExampleQualityThreshold ?? 0.85;
+        if (!goldenExampleDisabled && metaReview.verdict === "allow" && (metaReview.quality ?? 0) >= goldenQualityThreshold) {
           await addGoldenExample(personaPath, effectiveInput, assistantContent, {
             addedBy: "meta_review",
             label: "auto"
@@ -4246,6 +4349,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           // 静默失败，不影响主流程
         }
       }
+
+      // life.log rotation (only when memoryPolicy.maxLifeLogEntries is set)
+      void rotateLifeLogIfNeeded(personaPath, personaPkg.persona.memoryPolicy).catch(() => {
+        // 静默失败，不影响主流程
+      });
         }
 
         rl.prompt();

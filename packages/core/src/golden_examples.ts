@@ -168,12 +168,14 @@ export function compileGoldenExamplesBlock(
 
 /**
  * Load golden examples from persona and compile the few-shot block.
- * Returns empty string if no examples or all expired.
+ * Returns empty string if no examples, all expired, or disabled via policy.
  */
 export async function loadAndCompileGoldenExamples(
   rootPath: string,
-  budgetChars = DEFAULT_FEWSHOT_BUDGET_CHARS
+  budgetChars = DEFAULT_FEWSHOT_BUDGET_CHARS,
+  disabled = false
 ): Promise<string> {
+  if (disabled) return "";
   const examples = await listGoldenExamples(rootPath);
   return compileGoldenExamplesBlock(examples, budgetChars);
 }
