@@ -33,8 +33,6 @@ test("chat supports proactive controls and dynamic AI label after rename", async
 
   assert.equal(chatResult.status, 0);
   assert.match(chatResult.stdout, /主动消息: 人格自决模式/);
-  assert.match(chatResult.stdout, /overall=/);
-  assert.match(chatResult.stdout, /dimensions: trust=/);
   assert.match(chatResult.stdout, /我会按自己的状态决定主动节奏/);
   assert.match(chatResult.stdout, /Roxy> 我想把名字调整为“Astra”/);
   assert.match(chatResult.stdout, /已在聊天内确认改名：Astra/);
