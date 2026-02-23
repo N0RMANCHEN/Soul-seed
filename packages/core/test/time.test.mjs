@@ -14,7 +14,9 @@ test("formatSystemLocalIso returns ISO-8601 with local timezone offset", () => {
   const sign = match[1] === "+" ? 1 : -1;
   const offsetFromText = sign * (Number(match[2]) * 60 + Number(match[3]));
   const expected = -sample.getTimezoneOffset();
-  assert.equal(offsetFromText, expected);
+  // In UTC, "-00:00" and "+00:00" are semantically identical; normalize signed zero.
+  const normalizeZero = (value) => (Object.is(value, -0) ? 0 : value);
+  assert.equal(normalizeZero(offsetFromText), normalizeZero(expected));
 });
 
 test("getSystemTimeZone returns a string or null", () => {
