@@ -33,7 +33,11 @@ test("persona name as root command starts chat directly", async () => {
   });
   assert.equal(initResult.status, 0);
 
-  const chatResult = await runInteractive([cliPath, "Teddy", "--persona", personaPath], ["/exit", "确认退出"]);
+  const chatResult = await runInteractive(
+    [cliPath, "Teddy", "--persona", personaPath],
+    ["/exit", "确认退出"],
+    { intervalMs: 220 }
+  );
   assert.equal(chatResult.status, 0);
   assert.match(chatResult.stdout, /Teddy>/);
 });
@@ -43,7 +47,8 @@ test("persona alias can create missing persona after confirmation", async () => 
   const personaPath = path.join(tmpDir, "Nova.soulseedpersona");
   const chatResult = await runInteractive(
     [cliPath, "Nova", "--quick", "--persona", personaPath],
-    ["y", "/exit", "确认退出"]
+    ["y", "/exit", "确认退出"],
+    { intervalMs: 220 }
   );
   assert.equal(chatResult.status, 0);
   assert.match(chatResult.stdout, /是否现在创建并进入聊天/);
@@ -53,6 +58,7 @@ test("persona alias can create missing persona after confirmation", async () => 
 
 function runInteractive(args, lines, options = {}) {
   const intervalMs = Number.isFinite(options.intervalMs) ? Math.max(20, Math.floor(options.intervalMs)) : 80;
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? Math.max(3000, Math.floor(options.timeoutMs)) : 15000;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
       env: {
@@ -75,6 +81,7 @@ function runInteractive(args, lines, options = {}) {
     });
 
     let index = 0;
+    let settled = false;
     const timer = setInterval(() => {
       if (index >= lines.length) {
         clearInterval(timer);
@@ -85,13 +92,23 @@ function runInteractive(args, lines, options = {}) {
       }
       index += 1;
     }, intervalMs);
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      try {
+        child.kill("SIGTERM");
+      } catch {}
+    }, timeoutMs);
 
     child.on("error", (error) => {
+      settled = true;
       clearInterval(timer);
+      clearTimeout(timeout);
       reject(error);
     });
     child.on("close", (status) => {
+      settled = true;
       clearInterval(timer);
+      clearTimeout(timeout);
       resolve({
         status,
         stdout,

@@ -103,6 +103,27 @@ describe("social graph", () => {
     assert.equal(ctx, "");
   });
 
+  it("compileRelatedPersonContext resolves third-person pronoun from recent mention", async () => {
+    await addSocialPerson(tmpDir, {
+      name: "小雨",
+      relationship: "friend",
+      facts: ["喜欢写作"]
+    });
+    const now = new Date().toISOString();
+    const ctx = await compileRelatedPersonContext(tmpDir, "她最近怎么样？", {
+      lifeEvents: [
+        {
+          ts: now,
+          type: "user_message",
+          payload: { text: "昨天我和小雨聊到很晚" },
+          prevHash: "GENESIS",
+          hash: "e1"
+        }
+      ]
+    });
+    assert.ok(ctx.includes("小雨"));
+  });
+
   it("validateSocialGraph detects over-limit persons", () => {
     const graph = createEmptySocialGraph();
     for (let i = 0; i <= MAX_SOCIAL_PERSONS; i++) {

@@ -1198,9 +1198,9 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 
 function normalizeBudget(input?: Partial<RecallBudget>): RecallBudget {
   const candidateMax = clampIntWithFallback(input?.candidateMax, DEFAULT_BUDGET.candidateMax, 1, 300);
-  const rerankMax = clampIntWithFallback(input?.rerankMax, DEFAULT_BUDGET.rerankMax, 1, 30);
-  const injectMax = clampIntWithFallback(input?.injectMax, DEFAULT_BUDGET.injectMax, 1, 8);
-  const injectCharMax = clampIntWithFallback(input?.injectCharMax, DEFAULT_BUDGET.injectCharMax, 200, 2200);
+  const rerankMax = clampIntWithFallback(input?.rerankMax, DEFAULT_BUDGET.rerankMax, 1, 40);
+  const injectMax = clampIntWithFallback(input?.injectMax, DEFAULT_BUDGET.injectMax, 1, 12);
+  const injectCharMax = clampIntWithFallback(input?.injectCharMax, DEFAULT_BUDGET.injectCharMax, 200, 3600);
   return {
     candidateMax,
     rerankMax: Math.max(injectMax, rerankMax),

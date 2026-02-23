@@ -630,9 +630,7 @@ async function runSqlite(dbPath: string, sql: string): Promise<string> {
       const { stdout } = await execFileAsync("sqlite3", [dbPath, wrappedSql], {
         maxBuffer: 1024 * 1024
       });
-      // Filter out the "wal" echo from journal_mode pragma
-      const lines = stdout.trim().split("\n").filter((l) => l !== "wal" && l !== "WAL");
-      return lines.join("\n").trim();
+      return stripPragmaEchoLines(stdout);
     } catch (error) {
       lastError = error;
       if (isSqliteBusy(error) && attempt < RETRY_DELAYS_MS.length) {
@@ -644,4 +642,38 @@ async function runSqlite(dbPath: string, sql: string): Promise<string> {
   }
   const message = lastError instanceof Error ? lastError.message : String(lastError);
   throw new Error(`sqlite3 command failed: ${message}`);
+}
+
+/**
+ * sqlite3 may echo PRAGMA results before actual query output:
+ * - PRAGMA busy_timeout=5000; => "5000"
+ * - PRAGMA journal_mode=WAL;  => "wal"
+ * Keep query output stable by removing only the leading pragma echoes.
+ */
+function stripPragmaEchoLines(stdout: string): string {
+  const lines = stdout.split("\n");
+
+  const firstNonEmptyIndex = (start: number): number => {
+    for (let i = start; i < lines.length; i += 1) {
+      if (lines[i] && lines[i]!.trim().length > 0) {
+        return i;
+      }
+    }
+    return -1;
+  };
+
+  let idx = firstNonEmptyIndex(0);
+  if (idx >= 0 && lines[idx]!.trim() === "5000") {
+    lines.splice(idx, 1);
+  }
+
+  idx = firstNonEmptyIndex(0);
+  if (idx >= 0) {
+    const token = lines[idx]!.trim().toLowerCase();
+    if (token === "wal") {
+      lines.splice(idx, 1);
+    }
+  }
+
+  return lines.join("\n").trim();
 }

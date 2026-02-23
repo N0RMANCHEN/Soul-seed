@@ -24,8 +24,8 @@ const VALENCE_TO_TONE_COEFF = 0.04;
 const AROUSAL_TO_STANCE_COEFF = 0.035;
 const INTIMACY_TO_STANCE_COEFF = 0.04;
 const LOW_VALENCE_TO_EPISTEMIC_COEFF = 0.025;
-/** P0-15: Threshold below which valence (∈[-1,1]) is considered "low" (below neutral) */
-const LOW_VALENCE_THRESHOLD = -0.2;
+/** Threshold below which valence (∈[0,1]) is considered "low" */
+const LOW_VALENCE_THRESHOLD = 0.35;
 
 export interface LatentCrossInfluenceInput {
   moodLatent: number[];
@@ -62,14 +62,14 @@ export function applyLatentCrossInfluence(
     return { voiceLatent: params.voiceLatent, beliefLatent: params.beliefLatent, appliedInfluences: ["skipped_invalid_dims"] };
   }
 
-  // P0-15: valence ∈ [-1, 1]; arousal/intimacy ∈ [0, 1]
+  // valence/arousal/intimacy ∈ [0, 1]
   const valence = clampValence(moodLatent[0]);
   const arousal = clamp01(moodLatent[1]);
   const intimacy = clamp01(relationshipLatent[2]);
 
-  // 1. moodLatent[0] (valence) ABOVE NEUTRAL → voiceLatent[1] (tone warmth) slight increase
-  if (valence > 0.0) {
-    const influence = Math.min(MAX_CROSS_INFLUENCE_PER_CALL, valence * VALENCE_TO_TONE_COEFF);
+  // 1. moodLatent[0] (valence) ABOVE NEUTRAL(0.5) → voiceLatent[1] (tone warmth) slight increase
+  if (valence > 0.5) {
+    const influence = Math.min(MAX_CROSS_INFLUENCE_PER_CALL, (valence - 0.5) * VALENCE_TO_TONE_COEFF);
     voiceLatent[1] = clamp01(voiceLatent[1] + influence);
     appliedInfluences.push("valence→tone_warmth");
   }
@@ -88,7 +88,7 @@ export function applyLatentCrossInfluence(
     appliedInfluences.push("intimacy→stance_intensity");
   }
 
-  // 4. moodLatent[0] (valence) SUSTAINED LOW (below neutral) → beliefLatent[0] (epistemic confidence) slight decrease
+  // 4. moodLatent[0] (valence) SUSTAINED LOW → beliefLatent[0] (epistemic confidence) slight decrease
   if (valence < LOW_VALENCE_THRESHOLD) {
     const influence = Math.min(MAX_CROSS_INFLUENCE_PER_CALL, (LOW_VALENCE_THRESHOLD - valence) * LOW_VALENCE_TO_EPISTEMIC_COEFF);
     beliefLatent[0] = clamp01(beliefLatent[0] - influence);
@@ -102,7 +102,6 @@ function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
 
-/** P0-15: valence is in [-1, 1] */
 function clampValence(v: number): number {
-  return Math.max(-1, Math.min(1, v ?? 0));
+  return Math.max(0, Math.min(1, v ?? 0.5));
 }

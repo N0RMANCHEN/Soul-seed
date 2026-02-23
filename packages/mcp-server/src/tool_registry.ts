@@ -67,9 +67,6 @@ const WRITE_TOOLS = new Set([
   "runtime.goal.resume"
 ]);
 
-/** P0-16: Check env flag once at module load time. */
-const MCP_WRITES_ENABLED = process.env.SOULSEED_MCP_ALLOW_WRITES === "true";
-
 function errorResult(message: string): CallToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify({ error: message }) }],
@@ -80,6 +77,8 @@ function errorResult(message: string): CallToolResult {
 export interface ToolRegistryOptions {
   personaPath: string;
   personaPkg: PersonaPackage;
+  /** Optional override for write-tool mode; defaults to SOULSEED_MCP_ALLOW_WRITES env flag. */
+  allowWrites?: boolean;
   budgetOverrides?: Partial<Record<string, Partial<ToolBudget>>>;
   auditLogger?: (event: {
     toolName: string;
@@ -100,15 +99,16 @@ export class ToolRegistry {
   private ownerAuthExpiresAtMs = 0;
   private strictMemoryGrounding = true;
   private adultSafety = {
-    adultMode: true,
-    ageVerified: true,
-    explicitConsent: true,
-    fictionalRoleplay: true
+    adultMode: false,
+    ageVerified: false,
+    explicitConsent: false,
+    fictionalRoleplay: false
   };
   private curiosity = 0.22;
   private annoyanceBias = 0;
   private readonly effectiveBudget: Record<string, ToolBudget>;
   private readonly auditLogger?: ToolRegistryOptions["auditLogger"];
+  private readonly allowWrites: boolean;
 
   constructor(opts: ToolRegistryOptions) {
     this.personaPath = opts.personaPath;
@@ -127,6 +127,7 @@ export class ToolRegistry {
       }
     }
     this.auditLogger = opts.auditLogger;
+    this.allowWrites = opts.allowWrites ?? (process.env.SOULSEED_MCP_ALLOW_WRITES === "true");
   }
 
   async dispatch(toolName: string, args: Record<string, unknown>): Promise<CallToolResult> {
@@ -147,7 +148,7 @@ export class ToolRegistry {
     }
 
     // P0-16: Block write tools unless SOULSEED_MCP_ALLOW_WRITES=true
-    if (isWrite && !MCP_WRITES_ENABLED) {
+    if (isWrite && !this.allowWrites) {
       const reason = "write_tools_disabled";
       await appendLifeEvent(this.personaPath, {
         type: "mcp_tool_rejected",
@@ -519,5 +520,8 @@ export class ToolRegistry {
 }
 
 export function createTestRegistry(opts: ToolRegistryOptions): ToolRegistry {
-  return new ToolRegistry(opts);
+  return new ToolRegistry({
+    ...opts,
+    allowWrites: opts.allowWrites ?? true
+  });
 }

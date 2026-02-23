@@ -33,6 +33,8 @@ import {
   enforceIdentityGuard,
   enforceFactualGroundingGuard,
   enforceRecallGroundingGuard,
+  detectRecallNavigationIntent,
+  enforcePronounRoleGuard,
   enforceRelationalGuard,
   evolveRelationshipStateFromAssistant,
   deriveCognitiveBalanceFromLibido,
@@ -173,6 +175,11 @@ import {
   loadInterests,
   crystallizeInterests,
   computeInterestCuriosity,
+  listTemporalLandmarks,
+  addTemporalLandmark,
+  removeTemporalLandmark,
+  listUpcomingTemporalLandmarks,
+  formatUpcomingTemporalLandmarksBlock,
   updateConsentMode,
   generateReproductionConsentStatement,
   ensureSoulLineageArtifacts,
@@ -181,6 +188,8 @@ import {
   rotateLifeLogIfNeeded,
   checkEnvironment,
   isEnvironmentReady,
+  deriveTemporalAnchor,
+  enforceTemporalPhraseGuard,
   listLibraryBlocks,
   addLibraryBlock,
   removeLibraryBlock,
@@ -437,6 +446,7 @@ function printHelp(): void {
       "  persona export --out <dir> [--persona <path>]",
       "  persona import --in <src_dir> --out <dest_dir>",
       "  persona model-routing [--show] [--instinct <model>] [--deliberative <model>] [--meta <model>] [--reset] [--persona <path>]",
+      "  persona dates [list|add|remove|upcoming] [--title <text>] [--date YYYY-MM-DD | --lunar MM-DD] [--type birthday|holiday|anniversary|milestone|custom] [--person <name>] [--recurring true|false] [--id <entry_id>] [--days <n>] [--persona <path>]",
       "  finetune export-dataset --out <path.jsonl> [--min-turns <n>] [--max-turns <n>] [--persona <path>]",
       "  examples list [--persona <path>]",
       "  examples add --user <text> --assistant <text> [--label <label>] [--expires <ISO8601>] [--persona <path>]",
@@ -1615,6 +1625,112 @@ async function runPersonaInterests(
   console.log("用法：ss persona interests [show|crystallize] [--persona <path>]");
 }
 
+// Temporal dates CLI: birthdays, holidays, milestones
+async function runPersonaDates(
+  subAction: string | undefined,
+  options: Record<string, string | boolean>
+): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const action = subAction ?? "list";
+
+  if (action === "list") {
+    const entries = await listTemporalLandmarks(personaPath);
+    if (entries.length === 0) {
+      console.log("还没有记录任何关键日期。使用 ss persona dates add 开始添加。");
+      return;
+    }
+    for (const entry of entries) {
+      const person = entry.personName ? ` (${entry.personName})` : "";
+      const recur = entry.recurringYearly ? "yearly" : "once";
+      const calendar = entry.calendar === "lunar" ? `lunar:${entry.date}` : entry.date;
+      console.log(`[${entry.id}] ${calendar} ${entry.title}${person} <${entry.type}, ${recur}>`);
+      if (entry.notes) {
+        console.log(`  note: ${entry.notes}`);
+      }
+    }
+    return;
+  }
+
+  if (action === "add") {
+    const title = optionString(options, "title");
+    const date = optionString(options, "date");
+    const lunarRaw = optionString(options, "lunar");
+    const typeRaw = optionString(options, "type");
+    const personName = optionString(options, "person");
+    const notes = optionString(options, "notes");
+    const recurringRaw = optionString(options, "recurring");
+    if (!title?.trim()) throw new Error("persona dates add 需要 --title <text>");
+    if (!date?.trim() && !lunarRaw?.trim()) {
+      throw new Error("persona dates add 需要 --date YYYY-MM-DD 或 --lunar MM-DD");
+    }
+    const type = (typeRaw ?? "custom").trim();
+    if (!["birthday", "holiday", "anniversary", "milestone", "custom"].includes(type)) {
+      throw new Error("persona dates add --type 仅支持 birthday|holiday|anniversary|milestone|custom");
+    }
+    const recurring =
+      recurringRaw == null
+        ? undefined
+        : /^(true|1|yes|y)$/i.test(recurringRaw)
+          ? true
+          : /^(false|0|no|n)$/i.test(recurringRaw)
+            ? false
+            : undefined;
+    const calendar = lunarRaw?.trim() ? "lunar" : "gregorian";
+    let lunarMonth: number | undefined;
+    let lunarDay: number | undefined;
+    if (calendar === "lunar") {
+      const m = /^(\d{1,2})-(\d{1,2})$/.exec(lunarRaw!.trim());
+      if (!m) {
+        throw new Error("persona dates add --lunar 格式应为 MM-DD，例如 01-01");
+      }
+      lunarMonth = Math.max(1, Math.min(12, Number(m[1])));
+      lunarDay = Math.max(1, Math.min(30, Number(m[2])));
+    }
+    const entry = await addTemporalLandmark(personaPath, {
+      title,
+      date: calendar === "gregorian" ? date : undefined,
+      calendar,
+      lunarMonth,
+      lunarDay,
+      type: type as "birthday" | "holiday" | "anniversary" | "milestone" | "custom",
+      personName,
+      recurringYearly: recurring,
+      notes
+    });
+    console.log(`已添加日期：${entry.title} (${entry.date}) [${entry.id}]`);
+    return;
+  }
+
+  if (action === "remove") {
+    const id = optionString(options, "id");
+    if (!id?.trim()) throw new Error("persona dates remove 需要 --id <entry_id>");
+    const ok = await removeTemporalLandmark(personaPath, id);
+    if (!ok) {
+      console.log(`未找到日期条目：${id}`);
+      return;
+    }
+    console.log(`已删除日期条目：${id}`);
+    return;
+  }
+
+  if (action === "upcoming") {
+    const days = parseLimit(optionString(options, "days"), 60, 0, 3650);
+    const max = parseLimit(optionString(options, "limit"), 8, 1, 50);
+    const items = await listUpcomingTemporalLandmarks(personaPath, { daysAhead: days, maxItems: max });
+    if (items.length === 0) {
+      console.log(`未来 ${days} 天内没有已记录的关键日期。`);
+      return;
+    }
+    const block = formatUpcomingTemporalLandmarksBlock(items);
+    console.log(block.replace(/^## Important Dates\s*/u, "未来关键日期：\n"));
+    return;
+  }
+
+  console.log(
+    "用法：ss persona dates [list|add|remove|upcoming] [--title <text>] [--date YYYY-MM-DD | --lunar MM-DD] [--type birthday|holiday|anniversary|milestone|custom] [--person <name>] [--recurring true|false] [--notes <text>] [--id <entry_id>] [--days <n>] [--limit <n>] [--persona <path>]"
+  );
+}
+
 // P2-2: persona autobiography CLI
 async function runPersonaAutobiography(
   subAction: string | undefined,
@@ -2297,6 +2413,85 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       taskContextHint: lastGoalId ? `goal:${lastGoalId.slice(0, 8)}` : undefined
     });
 
+  const buildTemporalAnchorBlock = (
+    events: Array<{ ts: string; type: string; payload: Record<string, unknown> }>
+  ): string => {
+    const lastUserEvent = events
+      .filter((event) => event.type === "user_message")
+      .slice()
+      .reverse()
+      .find((event) => typeof event.ts === "string" && Number.isFinite(Date.parse(event.ts)));
+    if (!lastUserEvent) {
+      return "";
+    }
+    const anchor = deriveTemporalAnchor({
+      nowMs: Date.now(),
+      lastUserAtMs: Date.parse(lastUserEvent.ts),
+      lastAssistantAtMs: Number.isFinite(lastAssistantAt) ? lastAssistantAt : null
+    });
+    const elapsedMin = anchor.silenceMinutes;
+    const elapsedHours = (elapsedMin / 60).toFixed(1);
+    const hint =
+      elapsedMin > 90
+        ? "这是重连场景（有明显间隔）。时间表达优先使用“之前/昨晚/上次/ earlier”，并可直接说出间隔。"
+        : "这是连续场景（短间隔）。可使用“刚才/刚刚”，但优先给出具体时间线。";
+    return [
+      "## Temporal Anchor",
+      `current_local_time_iso=${anchor.nowIso}`,
+      `last_user_message_ts=${lastUserEvent.ts}`,
+      `elapsed_since_last_user_minutes=${elapsedMin}`,
+      `elapsed_since_last_user_hours=${elapsedHours}`,
+      `elapsed_since_last_user_label=${anchor.silenceLabel}`,
+      `crossed_day_boundary=${anchor.crossedDayBoundary ? "true" : "false"}`,
+      hint
+    ].join("\n");
+  };
+
+  const hydrateConversationAnchorsFromHistory = (
+    events: Array<{ ts: string; type: string; payload: Record<string, unknown> }>
+  ): void => {
+    const recent = events
+      .filter((event) => event.type === "user_message" || event.type === "assistant_message")
+      .slice(-80);
+    if (recent.length === 0) {
+      return;
+    }
+    const lastUser = recent
+      .slice()
+      .reverse()
+      .find((event) => event.type === "user_message" && typeof event.ts === "string" && Number.isFinite(Date.parse(event.ts)));
+    if (lastUser) {
+      const ts = Date.parse(lastUser.ts);
+      if (Number.isFinite(ts)) {
+        lastUserAt = ts;
+      }
+      const text = String(lastUser.payload.text ?? "").trim();
+      if (text) {
+        lastUserInput = text.slice(0, 500);
+      }
+    }
+    const lastAssistant = recent
+      .slice()
+      .reverse()
+      .find(
+        (event) =>
+          event.type === "assistant_message" &&
+          typeof event.ts === "string" &&
+          Number.isFinite(Date.parse(event.ts)) &&
+          event.payload.proactive !== true
+      );
+    if (lastAssistant) {
+      const ts = Date.parse(lastAssistant.ts);
+      if (Number.isFinite(ts)) {
+        lastAssistantAt = ts;
+      }
+      const text = String(lastAssistant.payload.text ?? "").trim();
+      if (text) {
+        lastAssistantOutput = text.slice(0, 500);
+      }
+    }
+  };
+
   const buildProactiveMessage = (): string => {
     const currentRelationship = personaPkg.relationshipState ?? createInitialRelationshipState();
     const rs = currentRelationship.state;
@@ -2333,11 +2528,17 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
 
   const buildContextualReplyFallback = (seedInput?: string): string => {
     const source = (seedInput ?? lastUserInput).trim();
+    const anchor = deriveTemporalAnchor({
+      nowMs: Date.now(),
+      lastUserAtMs: Number.isFinite(lastUserAt) ? lastUserAt : null,
+      lastAssistantAtMs: Number.isFinite(lastAssistantAt) ? lastAssistantAt : null
+    });
+    const temporalRef = anchor.silenceMinutes < 20 && !anchor.crossedDayBoundary ? "刚才" : "之前";
     if (!source) {
-      return "我在这。你刚才想聊哪个点，我们从那接。";
+      return `我在这。你${temporalRef}想聊哪个点，我们从那接。`;
     }
     const compact = source.replace(/\s+/g, " ").slice(0, 36);
-    return `我在。你刚才提到“${compact}”，我们从这接。`;
+    return `我在。你${temporalRef}提到“${compact}”，我们从这接。`;
   };
 
   const normalizeConversationalReply = (
@@ -2397,7 +2598,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       return { text: params.fallback, streamed: false };
     }
     const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
-    const silenceMin = Math.max(0, (Date.now() - Math.max(lastUserAt, lastAssistantAt)) / 60_000);
+    const anchor = deriveTemporalAnchor({
+      nowMs: Date.now(),
+      lastUserAtMs: Number.isFinite(lastUserAt) ? lastUserAt : null,
+      lastAssistantAtMs: Number.isFinite(lastAssistantAt) ? lastAssistantAt : null
+    });
+    const silenceMin = anchor.silenceMinutes;
     const context = {
       mode: params.mode,
       personaName: personaPkg.persona.displayName,
@@ -2407,6 +2613,10 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       reciprocity: Number(relationship.dimensions.reciprocity.toFixed(2)),
       curiosity: Number(curiosity.toFixed(2)),
       silenceMinutes: Number(silenceMin.toFixed(2)),
+      silenceLabel: anchor.silenceLabel,
+      crossedDayBoundary: anchor.crossedDayBoundary,
+      currentTimeIso: anchor.nowIso,
+      lastUserAtIso: anchor.lastUserAtIso,
       lastUserInput: lastUserInput.slice(0, 180),
       lastAssistantOutput: lastAssistantOutput.slice(0, 180),
       proactiveMissStreak,
@@ -2424,7 +2634,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       {
         role: "system" as const,
         content:
-          `你是一个有连续人格的中文对话者。${modeInstruction} 请说1-2句自然口语，像你自己突然想说的话，不要模板腔，不要条目，不要解释规则，不要括号舞台说明。避免固定开场白，尽量贴合上下文。若上下文有未完成问题，直接接着它说。`
+          `你是一个有连续人格的中文对话者。${modeInstruction} 请说1-2句自然口语，像你自己突然想说的话，不要模板腔，不要条目，不要解释规则，不要括号舞台说明。避免固定开场白，尽量贴合上下文。若上下文有未完成问题，直接接着它说。\n` +
+          `你具备系统时钟与历史时间锚：可以根据 currentTimeIso、lastUserAtIso、silenceMinutes 判断真实间隔。请基于这些时间锚组织“刚才/之前/昨晚/上次”等时间词；不要声称“我不知道时间”或“需要用户提醒我看表”。`
       },
       {
         role: "user" as const,
@@ -2493,6 +2704,15 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       strictMemoryGrounding
     });
     proactiveText = recallGroundingGuard.text;
+    const proactiveTemporalAnchor = deriveTemporalAnchor({
+      nowMs: Date.now(),
+      lastUserAtMs: Number.isFinite(lastUserAt) ? lastUserAt : null,
+      lastAssistantAtMs: Number.isFinite(lastAssistantAt) ? lastAssistantAt : null
+    });
+    const proactiveTemporalGuard = enforceTemporalPhraseGuard(proactiveText, {
+      anchor: proactiveTemporalAnchor
+    });
+    proactiveText = proactiveTemporalGuard.text;
     const proactiveFactualGrounding = enforceFactualGroundingGuard(proactiveText, { mode: "proactive" });
     proactiveText = proactiveFactualGrounding.text;
     const proactiveNormalized = normalizeConversationalReply(
@@ -2508,6 +2728,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       identityGuard.corrected ||
       relationalGuard.corrected ||
       recallGroundingGuard.corrected ||
+      proactiveTemporalGuard.corrected ||
       proactiveFactualGrounding.corrected ||
       proactiveAdjusted
     ) {
@@ -2532,6 +2753,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         identityGuard,
         relationalGuard,
         recallGroundingGuard,
+        proactiveTemporalGuard,
         proactiveFactualGrounding
       }
     });
@@ -3282,6 +3504,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   };
 
   const greetingStartedAtMs = Date.now();
+  const historyForGreeting = await readLifeEvents(personaPath);
+  hydrateConversationAnchorsFromHistory(historyForGreeting);
   const greetingGenerated = await streamPersonaAutonomy({
     mode: "greeting",
     fallback: buildGreetingFallback()
@@ -3289,10 +3513,19 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   let greetingText = greetingGenerated.text;
   const greetingFactualGrounding = enforceFactualGroundingGuard(greetingText, { mode: "greeting" });
   greetingText = greetingFactualGrounding.text;
+  const greetingTemporalAnchor = deriveTemporalAnchor({
+    nowMs: Date.now(),
+    lastUserAtMs: Number.isFinite(lastUserAt) ? lastUserAt : null,
+    lastAssistantAtMs: Number.isFinite(lastAssistantAt) ? lastAssistantAt : null
+  });
+  const greetingTemporalGuard = enforceTemporalPhraseGuard(greetingText, {
+    anchor: greetingTemporalAnchor
+  });
+  greetingText = greetingTemporalGuard.text;
   const greetingNormalized = normalizeConversationalReply(greetingText, "greeting", buildGreetingFallback(), lastUserInput);
   const greetingAdjusted = greetingNormalized !== greetingText;
   greetingText = greetingNormalized;
-  if (!greetingGenerated.streamed || greetingFactualGrounding.corrected || greetingAdjusted) {
+  if (!greetingGenerated.streamed || greetingFactualGrounding.corrected || greetingTemporalGuard.corrected || greetingAdjusted) {
     await applyHumanPacedDelay(greetingStartedAtMs, greetingText);
     sayAsAssistant(greetingText);
   }
@@ -4065,7 +4298,31 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             payload: { ...nextRelationship }
           });
         }
-        const recallResult = await recallMemoriesWithTrace(personaPath, input);
+        const recallNavigationIntent = detectRecallNavigationIntent(input);
+        const recallBudgetOverride = recallNavigationIntent.strength === "strong"
+          ? {
+              budget: {
+                candidateMax: 220,
+                rerankMax: 34,
+                injectMax: 10,
+                injectCharMax: 3000
+              }
+            }
+          : recallNavigationIntent.strength === "soft"
+            ? {
+                budget: {
+                  candidateMax: 200,
+                  rerankMax: 32,
+                  injectMax: 9,
+                  injectCharMax: 2600
+                }
+              }
+            : undefined;
+        const recallResult = await recallMemoriesWithTrace(
+          personaPath,
+          input,
+          recallBudgetOverride
+        );
         const externalKnowledgeItems = shouldInjectExternalKnowledge(input)
           ? await searchExternalKnowledgeEntries(personaPath, input, { limit: 2 })
           : [];
@@ -4125,7 +4382,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const alwaysInjectCtx = await compileAlwaysInjectContext(personaPath, personaPkg);
         const alwaysInjectBlock = formatAlwaysInjectContext(alwaysInjectCtx);
         // P2-6: compile related person context from social graph
-        const socialBlock = await compileRelatedPersonContext(personaPath, effectiveInput);
+        const socialBlock = await compileRelatedPersonContext(personaPath, effectiveInput, { lifeEvents: pastEvents });
+        const importantDates = await listUpcomingTemporalLandmarks(personaPath, { daysAhead: 60, maxItems: 8 });
+        const importantDatesBlock = formatUpcomingTemporalLandmarksBlock(importantDates);
         // P5-6: few-shot golden examples injection (skip if disabled by memoryPolicy)
         const fewShotBlock = await loadAndCompileGoldenExamples(
           personaPath,
@@ -4145,7 +4404,10 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             "你对此文件夹有完整的读/写/创建/删除权限。"
           ].join("\n");
         })();
-        const contextExtras = [alwaysInjectBlock, socialBlock, fewShotBlock, sharedSpaceBlock].filter(Boolean).join("\n");
+        const temporalAnchorBlock = buildTemporalAnchorBlock(pastEvents);
+        const contextExtras = [alwaysInjectBlock, socialBlock, importantDatesBlock, fewShotBlock, sharedSpaceBlock, temporalAnchorBlock]
+          .filter(Boolean)
+          .join("\n");
         const messages = turnExecution.mode === "soul"
           ? instinctRoute
             ? compileInstinctContext(personaPkg, effectiveInput, trace, {
@@ -4380,7 +4642,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         aborted = true;
       } else {
         const msg = error instanceof Error ? error.message : String(error);
-        process.stdout.write(`\n[error] ${msg}\n`);
+        const transientModelError =
+          /fetch failed|request timeout|failed after retries|429|5\d{2}/i.test(msg);
+        if (transientModelError) {
+          process.stdout.write(`\n[warning] 模型连接波动，已切换兜底回复（${msg}）\n`);
+        } else {
+          process.stdout.write(`\n[error] ${msg}\n`);
+        }
       }
         } finally {
           currentAbort = null;
@@ -4413,6 +4681,19 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         strictMemoryGrounding
       });
       assistantContent = recallGroundingGuard.text;
+      const pronounRoleGuard = enforcePronounRoleGuard(assistantContent, {
+        lifeEvents: pastEvents
+      });
+      assistantContent = pronounRoleGuard.text;
+      const replyTemporalAnchor = deriveTemporalAnchor({
+        nowMs: Date.now(),
+        lastUserAtMs: Number.isFinite(lastUserAt) ? lastUserAt : null,
+        lastAssistantAtMs: Number.isFinite(lastAssistantAt) ? lastAssistantAt : null
+      });
+      const temporalPhraseGuard = enforceTemporalPhraseGuard(assistantContent, {
+        anchor: replyTemporalAnchor
+      });
+      assistantContent = temporalPhraseGuard.text;
       const conversationalNormalized = normalizeConversationalReply(
         assistantContent,
         "reply",
@@ -4604,6 +4885,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           identityGuard.corrected ||
           relationalGuard.corrected ||
           recallGroundingGuard.corrected ||
+          pronounRoleGuard.corrected ||
+          temporalPhraseGuard.corrected ||
           conversationalAdjusted ||
           loopBreak.triggered ||
           parseEmotionTag(rawAssistantContent).text.trim() !== assistantContent.trim());
@@ -4632,11 +4915,18 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           }
         });
       }
-      if (relationalGuard.corrected || recallGroundingGuard.corrected) {
+      if (relationalGuard.corrected || recallGroundingGuard.corrected || pronounRoleGuard.corrected || temporalPhraseGuard.corrected) {
         await appendLifeEvent(personaPath, {
           type: "memory_contamination_flagged",
           payload: {
-            flags: [...new Set([...relationalGuard.flags, ...recallGroundingGuard.flags])],
+            flags: [
+              ...new Set([
+                ...relationalGuard.flags,
+                ...recallGroundingGuard.flags,
+                ...pronounRoleGuard.flags,
+                ...temporalPhraseGuard.flags
+              ])
+            ],
             userInput: input,
             rewrittenText: assistantContent
           }
@@ -4665,9 +4955,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         source: "chat",
         contentLength: assistantContent.length
       });
-      if (relationalGuard.corrected || recallGroundingGuard.corrected) {
+      if (relationalGuard.corrected || recallGroundingGuard.corrected || temporalPhraseGuard.corrected) {
         assistantMeta.credibilityScore = 0.2;
-        assistantMeta.contaminationFlags = [...new Set([...relationalGuard.flags, ...recallGroundingGuard.flags])];
+        assistantMeta.contaminationFlags = [
+          ...new Set([...relationalGuard.flags, ...recallGroundingGuard.flags, ...temporalPhraseGuard.flags])
+        ];
         assistantMeta.excludedFromRecall = true;
       } else {
         applyJudgmentToMemoryMeta(assistantMeta, storedJudgment.label, fictionReadingTurn);
@@ -4681,6 +4973,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           identityGuard,
           relationalGuard,
           recallGroundingGuard,
+          temporalPhraseGuard,
           memoryMeta: assistantMeta
         }
       });
@@ -4746,18 +5039,31 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         personaPath,
         personaPkg,
         routeDecision: trace.routeDecision ?? null,
-        guardCorrected: identityGuard.corrected || relationalGuard.corrected || recallGroundingGuard.corrected,
+        guardCorrected:
+          identityGuard.corrected ||
+          relationalGuard.corrected ||
+          recallGroundingGuard.corrected ||
+          pronounRoleGuard.corrected ||
+          temporalPhraseGuard.corrected,
         refused: false
       });
 
       const nextWeights = adaptWeights(memoryWeights, {
         activationDelta: profilePatch?.preferredName ? 0.02 : 0.01,
         emotionDelta:
-          identityGuard.corrected || relationalGuard.corrected || recallGroundingGuard.corrected
+          identityGuard.corrected ||
+          relationalGuard.corrected ||
+          recallGroundingGuard.corrected ||
+          pronounRoleGuard.corrected ||
+          temporalPhraseGuard.corrected
             ? 0.02
             : 0,
         narrativeDelta:
-          identityGuard.corrected || relationalGuard.corrected || recallGroundingGuard.corrected
+          identityGuard.corrected ||
+          relationalGuard.corrected ||
+          recallGroundingGuard.corrected ||
+          pronounRoleGuard.corrected ||
+          temporalPhraseGuard.corrected
             ? 0.02
             : 0.01
       });
@@ -4767,7 +5073,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           payload: {
             oldWeights: memoryWeights,
             newWeights: nextWeights,
-            reason: identityGuard.corrected || relationalGuard.corrected || recallGroundingGuard.corrected
+            reason:
+              identityGuard.corrected ||
+              relationalGuard.corrected ||
+              recallGroundingGuard.corrected ||
+              pronounRoleGuard.corrected ||
+              temporalPhraseGuard.corrected
               ? "guard correction increased emotion/narrative weights"
               : "normal conversation adaptation"
           }
@@ -7125,6 +7436,12 @@ async function main(): Promise<void> {
   if (resource === "persona" && action === "interests") {
     const subAction = args._[2];
     await runPersonaInterests(subAction, args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "dates") {
+    const subAction = args._[2];
+    await runPersonaDates(subAction, args.options);
     return;
   }
 

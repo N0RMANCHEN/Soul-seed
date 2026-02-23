@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { appendLifeEvent } from "./persona.js";
+import type { LifeEvent } from "./types.js";
 
 export const SOCIAL_GRAPH_FILENAME = "social_graph.json";
 export const MAX_SOCIAL_PERSONS = 20;
@@ -165,7 +166,7 @@ export async function searchSocialPersons(
 export async function compileRelatedPersonContext(
   rootPath: string,
   userInput: string,
-  options?: { maxPersons?: number }
+  options?: { maxPersons?: number; lifeEvents?: LifeEvent[] }
 ): Promise<string> {
   const graph = await loadSocialGraph(rootPath);
   if (graph.persons.length === 0) return "";
@@ -174,9 +175,15 @@ export async function compileRelatedPersonContext(
   const inputLower = userInput.toLowerCase();
 
   // Find persons mentioned in the input
-  const mentioned = graph.persons
+  const namedMentions = graph.persons
     .filter((p) => inputLower.includes(p.name.toLowerCase()))
     .slice(0, maxPersons);
+
+  // If no explicit name is mentioned, try pronoun back-reference from recent turns.
+  // This avoids losing context when user says “她/他/ta” after naming someone earlier.
+  const mentioned = namedMentions.length > 0
+    ? namedMentions
+    : resolvePronounBackReferences(graph.persons, userInput, options?.lifeEvents ?? [], maxPersons);
 
   if (mentioned.length === 0) return "";
 
@@ -271,4 +278,47 @@ function normalizePerson(raw: unknown): SocialPerson {
 
 function generateId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+function resolvePronounBackReferences(
+  persons: SocialPerson[],
+  userInput: string,
+  lifeEvents: LifeEvent[],
+  maxPersons: number
+): SocialPerson[] {
+  if (!hasThirdPersonCue(userInput)) {
+    return [];
+  }
+
+  const byName = new Map<string, SocialPerson>();
+  for (const person of persons) {
+    byName.set(person.name.toLowerCase(), person);
+  }
+
+  const recentTexts = lifeEvents
+    .filter((event) => event.type === "user_message" || event.type === "assistant_message")
+    .slice(-12)
+    .reverse()
+    .map((event) => String(event.payload.text ?? "").trim().toLowerCase())
+    .filter((text) => text.length > 0);
+
+  const hits: SocialPerson[] = [];
+  const seen = new Set<string>();
+  for (const text of recentTexts) {
+    for (const [name, person] of byName.entries()) {
+      if (!text.includes(name) || seen.has(person.id)) {
+        continue;
+      }
+      seen.add(person.id);
+      hits.push(person);
+      if (hits.length >= maxPersons) {
+        return hits;
+      }
+    }
+  }
+  return hits;
+}
+
+function hasThirdPersonCue(text: string): boolean {
+  return /(她|他|ta|她们|他们|that person|the girl|the boy|那个人)/iu.test(text);
 }

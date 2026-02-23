@@ -1614,17 +1614,23 @@ async function inspectArchiveReferenceHealth(rootPath: string): Promise<DoctorIs
     return issues;
   }
 
-  const segmentsRaw = await runMemoryStoreSql(
-    rootPath,
-    [
-      "SELECT json_object(",
-      "'segmentKey', segment_key,",
-      "'checksum', checksum,",
-      "'payloadJson', payload_json",
-      ")",
-      "FROM archive_segments;"
-    ].join("\n")
-  );
+  let segmentsRaw = "";
+  try {
+    segmentsRaw = await runMemoryStoreSql(
+      rootPath,
+      [
+        "SELECT json_object(",
+        "'segmentKey', segment_key,",
+        "'checksum', checksum,",
+        "'payloadJson', payload_json",
+        ")",
+        "FROM archive_segments;"
+      ].join("\n")
+    );
+  } catch {
+    // Schema-health checks already report missing tables; keep doctor resilient.
+    return issues;
+  }
   const segmentMap = new Map<string, { checksum: string; payloadJson: string }>();
   for (const line of segmentsRaw.split("\n")) {
     if (!line.trim()) {

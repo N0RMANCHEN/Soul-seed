@@ -6,6 +6,7 @@ import { eventHash } from "./hash.js";
 import { ingestLifeEventMemory } from "./memory_ingest.js";
 import { ensureMemoryStore } from "./memory_store.js";
 import { createEmptySocialGraph, SOCIAL_GRAPH_FILENAME } from "./social_graph.js";
+import { createEmptyTemporalLandmarks, TEMPORAL_LANDMARKS_FILENAME } from "./temporal_landmarks.js";
 import {
   createInitialRelationshipState,
   ensureRelationshipArtifacts,
@@ -202,6 +203,7 @@ export async function initPersonaPackage(
 
   await writeFile(path.join(outPath, "life.log.jsonl"), "", "utf8");
   await writeJson(path.join(outPath, SOCIAL_GRAPH_FILENAME), createEmptySocialGraph());
+  await writeJson(path.join(outPath, TEMPORAL_LANDMARKS_FILENAME), createEmptyTemporalLandmarks());
   await ensureMemoryStore(outPath);
 }
 

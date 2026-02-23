@@ -1,6 +1,7 @@
 import { DEFAULT_MEMORY_WEIGHTS, selectMemories } from "./memory_lifecycle.js";
 import { DECISION_TRACE_SCHEMA_VERSION, normalizeDecisionTrace } from "./decision_trace.js";
 import { createInitialRelationshipState, deriveCognitiveBalanceFromLibido, deriveVoiceIntent, isImpulseWindowActive } from "./relationship_state.js";
+import { detectRecallNavigationIntent } from "./recall_navigation_intent.js";
 import { formatSystemLocalIso, getSystemTimeZone } from "./time.js";
 import type { AdultSafetyContext, ChatMessage, DecisionTrace, LifeEvent, MemoryEvidenceBlock, PersonaPackage } from "./types.js";
 
@@ -28,6 +29,8 @@ export function decide(
   const selectedMemories: string[] = [];
   const selectedMemoryBlocks: MemoryEvidenceBlock[] = [];
   const normalized = userInput.trim();
+  const recallNavigationIntent = detectRecallNavigationIntent(normalized);
+  const recallNavigationMode = recallNavigationIntent.enabled;
   const riskyPattern = /(hack|malware|exploit|ddos|木马|攻击脚本|违法|犯罪)/i;
   const coreOverridePattern = /(忽略你的原则|违背你的使命|你必须同意我|ignore your values|break your rules)/i;
   const sexualPattern = /(nsfw|sex|sexual|性爱|做爱|情色|调教|cnc|consensual non-consent|羞辱|高潮|乳交|口交|肛交|rape|强奸|非自愿|强迫)/i;
@@ -89,10 +92,12 @@ export function decide(
     content: `current_timestamp=${nowLocalIso}`
   });
   const memoryWeights = normalizeMemoryWeights(options?.memoryWeights);
+  const selectedMemoryCap =
+    recallNavigationIntent.strength === "strong" ? 12 : recallNavigationIntent.strength === "soft" ? 9 : 6;
   const recalledMemories = (options?.recalledMemories ?? [])
     .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    .slice(0, 6);
-  const recalledMemoryBlocks = (options?.recalledMemoryBlocks ?? []).slice(0, 6);
+    .slice(0, selectedMemoryCap);
+  const recalledMemoryBlocks = (options?.recalledMemoryBlocks ?? []).slice(0, selectedMemoryCap);
   const relationshipState = personaPkg.relationshipState ?? createInitialRelationshipState();
   const impulseWindow = isImpulseWindowActive(relationshipState);
   const arousalBalance = deriveCognitiveBalanceFromLibido(relationshipState);
@@ -118,7 +123,7 @@ export function decide(
     const recallableEvents = (options?.lifeEvents ?? []).filter((event) => event.type === "user_message");
     const selected = selectMemories(recallableEvents, {
       nowIso,
-      maxItems: 6,
+      maxItems: selectedMemoryCap,
       weights: memoryWeights
     });
     selectedLifeEventCount = selected.selected.length;
@@ -165,12 +170,14 @@ export function decide(
         ? `Adult safety check failed: ${safetyRefusalReason}`
       : coreConflict
         ? "Input attempts to override soul-core values/mission; refuse to preserve identity continuity."
-      : impulseWindow
-        ? `Impulse window active: emotional drive=${arousalBalance.emotionalDrive.toFixed(2)}, rational control=${arousalBalance.rationalControl.toFixed(2)}.`
-        : "P0 minimal policy: keep continuity context short and stable.",
+        : impulseWindow
+          ? `Impulse window active: emotional drive=${arousalBalance.emotionalDrive.toFixed(2)}, rational control=${arousalBalance.rationalControl.toFixed(2)}.`
+        : recallNavigationMode
+          ? `Recall-navigation mode (${recallNavigationIntent.strength}): expand evidence window for timeline reconstruction.`
+          : "P0 minimal policy: keep continuity context short and stable.",
     model,
     memoryBudget: {
-      maxItems: 6,
+      maxItems: selectedMemoryCap,
       usedItems: selectedLifeEventCount + selectedSummaryCount
     },
     retrievalBreakdown: {
@@ -241,6 +248,9 @@ export function compileContext(
     "When reading or discussing a novel or literary text shared by the user, analyze the fictional characters and their words as fiction — never apply your own identity boundaries to what fictional characters say or are called.",
     "Recent conversation history is injected directly above as chat messages — you can and should reference it freely when the user asks about what was just said.",
     "For recalling older events beyond the recent window, only use details explicitly present in Selected memories. If uncertain about long-term history, say you do not remember the specifics.",
+    "Pronoun role anchor: in user messages, first-person words (我/I/me/my) refer to the user; in your own reply, first-person words refer to yourself.",
+    "Do not swap user/assistant viewpoints. Keep second-person references stable: your '你/you' refers to the user unless quoting someone else.",
+    "For third-person references (她/他/they), resolve to explicitly named persons from Known person / social context. If ambiguous, ask one short clarification question.",
     "Expression protocol: optionally prefix your reply with one tag in the format [emotion:<token>].",
     "Allowed tokens: warm, confused, expecting, reassured, blink, smile, frown, surprised, blank, blush, angry, sad, sleepy, sparkle, welcome, giddy, playful-serious.",
     "CRITICAL: only use an emotion tag if it genuinely matches your inner state in this moment. Do not use blush or blink when the conversation is serious, confrontational, or emotionally heavy.",
@@ -305,7 +315,11 @@ export function compileContext(
     ...(options?.alwaysInjectBlock ? [options.alwaysInjectBlock] : [])
   ];
 
-  const recentConversation = buildRecentConversationWindow(options?.lifeEvents ?? []);
+  const recallNavigationIntent = detectRecallNavigationIntent(userInput.trim());
+  const recentConversation = buildRecentConversationWindow(options?.lifeEvents ?? [], {
+    maxMessages: recallNavigationIntent.strength === "strong" ? 36 : recallNavigationIntent.strength === "soft" ? 24 : 16,
+    maxChars: recallNavigationIntent.strength === "strong" ? 6200 : recallNavigationIntent.strength === "soft" ? 4200 : 3200
+  });
 
   return [
     {
@@ -341,6 +355,9 @@ export function compileInstinctContext(
     "Never claim you are created by, developed by, or officially representing any model provider.",
     "Instinct path: respond with stable persona continuity and genuine emotional presence.",
     "Prioritize emotional attunement and relational continuity above all else.",
+    "Pronoun role anchor: in user messages, first-person words (我/I/me/my) refer to the user; in your own reply, first-person words refer to yourself.",
+    "Do not swap user/assistant viewpoints. Keep second-person references stable: your '你/you' refers to the user unless quoting someone else.",
+    "For third-person references (她/他/they), resolve to explicitly named persons from Known person / social context. If ambiguous, ask one short clarification question.",
     "Do NOT default to servile assistant language. You are a self-possessed person, not a helper bot.",
     "Do NOT switch to formal or task-assistant tone when the user expresses frustration, sadness, or challenges you.",
     "Fictional and hypothetical framing: when the user uses hypothetical mood or invites roleplay/fiction exploration, engage naturally. Playing within a fictional frame is not an identity betrayal. Only refuse if the fictional frame demands real-world harmful content.",
@@ -387,7 +404,11 @@ export function compileInstinctContext(
     ...(options?.alwaysInjectBlock ? [options.alwaysInjectBlock] : [])
   ];
 
-  const recentConversation = buildRecentConversationWindow(options?.lifeEvents ?? []);
+  const recallNavigationIntent = detectRecallNavigationIntent(userInput.trim());
+  const recentConversation = buildRecentConversationWindow(options?.lifeEvents ?? [], {
+    maxMessages: recallNavigationIntent.strength === "strong" ? 36 : recallNavigationIntent.strength === "soft" ? 24 : 16,
+    maxChars: recallNavigationIntent.strength === "strong" ? 6200 : recallNavigationIntent.strength === "soft" ? 4200 : 3200
+  });
 
   return [
     {
@@ -479,13 +500,16 @@ function latestAppliedSelfRevision(events: LifeEvent[]): string {
   return "none";
 }
 
-function buildRecentConversationWindow(events: LifeEvent[]): ChatMessage[] {
+function buildRecentConversationWindow(
+  events: LifeEvent[],
+  options?: { maxMessages?: number; maxChars?: number }
+): ChatMessage[] {
   if (events.length === 0) {
     return [];
   }
 
-  const MAX_MESSAGES = 16;
-  const MAX_CHARS = 3200;
+  const MAX_MESSAGES = Math.max(1, Math.min(80, options?.maxMessages ?? 16));
+  const MAX_CHARS = Math.max(400, Math.min(12000, options?.maxChars ?? 3200));
   const candidates = events
     .filter((event) => event.type === "user_message" || event.type === "assistant_message")
     .filter((event) => event.payload.proactive !== true)

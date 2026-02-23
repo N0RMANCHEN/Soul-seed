@@ -45,3 +45,44 @@ test("keeps recall assertions when grounded by memory evidence", () => {
   assert.equal(result.reason, null);
   assert.match(result.text, /你之前提到过/);
 });
+
+test("rewrites immediate-time cue when matched memory is stale", () => {
+  const oldTs = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+  const result = enforceRecallGroundingGuard("不是昨天，是刚才。你说“我先热个饭，虽然都九点半了”。", {
+    lifeEvents: [
+      {
+        ts: oldTs,
+        type: "user_message",
+        payload: { text: "我先热个饭，虽然都九点半了" },
+        prevHash: "GENESIS",
+        hash: "h1"
+      }
+    ],
+    strictMemoryGrounding: true
+  });
+
+  assert.equal(result.corrected, true);
+  assert.equal(result.flags.includes("temporal_deictic_mismatch"), true);
+  assert.match(result.text, /之前/);
+  assert.doesNotMatch(result.text, /刚才/);
+});
+
+test("keeps immediate-time cue when matched memory is recent", () => {
+  const recentTs = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const result = enforceRecallGroundingGuard("你刚才说“我先热个饭，虽然都九点半了”这句我记得。", {
+    lifeEvents: [
+      {
+        ts: recentTs,
+        type: "user_message",
+        payload: { text: "我先热个饭，虽然都九点半了" },
+        prevHash: "GENESIS",
+        hash: "h2"
+      }
+    ],
+    strictMemoryGrounding: true
+  });
+
+  assert.equal(result.corrected, false);
+  assert.equal(result.reason, null);
+  assert.match(result.text, /刚才/);
+});

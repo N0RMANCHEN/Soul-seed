@@ -31,6 +31,18 @@ async function getFreePort() {
   });
 }
 
+async function getFreePortOrSkip(t) {
+  try {
+    return await getFreePort();
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "EPERM") {
+      t.skip("sandbox disallows localhost bind (EPERM)");
+      return null;
+    }
+    throw error;
+  }
+}
+
 function waitForOutput(child, pattern, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
     let buffer = "";
@@ -104,7 +116,8 @@ test("HTTP transport supports initialize + tools/list + tools/call", { timeout: 
   const personaPath = path.join(tmp, "HttpPersona.soulseedpersona");
   await initPersonaPackage(personaPath, "HttpPersona");
 
-  const port = await getFreePort();
+  const port = await getFreePortOrSkip(t);
+  if (!port) return;
   const child = spawn(process.execPath, [MCP_SERVER_PATH], {
     stdio: ["ignore", "pipe", "pipe"],
     env: {
@@ -178,7 +191,8 @@ test("HTTP transport returns 401 when MCP_AUTH_TOKEN is configured and missing",
   const personaPath = path.join(tmp, "HttpAuthPersona.soulseedpersona");
   await initPersonaPackage(personaPath, "HttpAuthPersona");
 
-  const port = await getFreePort();
+  const port = await getFreePortOrSkip(t);
+  if (!port) return;
   const child = spawn(process.execPath, [MCP_SERVER_PATH], {
     stdio: ["ignore", "pipe", "pipe"],
     env: {

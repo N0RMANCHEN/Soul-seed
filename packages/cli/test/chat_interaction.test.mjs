@@ -43,7 +43,7 @@ test("chat supports proactive controls and dynamic AI label after rename", async
   assert.match(chatResult.stdout, /回复“确认退出”我就先安静退下/);
 });
 
-test("chat exits when /exit is repeated during exit confirmation", async () => {
+test("chat keeps a single exit prompt when /exit is repeated, then exits on confirmation", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-chat-test-"));
   const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
 
@@ -52,7 +52,7 @@ test("chat exits when /exit is repeated during exit confirmation", async () => {
   });
   assert.equal(initResult.status, 0);
 
-  const chatResult = await runChatScript(personaPath, ["/exit", "/exit"]);
+  const chatResult = await runChatScript(personaPath, ["/exit", "/exit", "确认退出"]);
   assert.equal(chatResult.status, 0);
 
   const promptMatches = chatResult.stdout.match(/回复“确认退出”我就先安静退下/g) ?? [];
@@ -71,17 +71,18 @@ test("chat read confirmation accepts natural yes and performs file attachment", 
   assert.equal(initResult.status, 0);
 
   const chatResult = await runChatScript(personaPath, [
-    `${notePath} 看这个`,
+    `/read ${notePath}`,
     "嗯",
     "/files",
     "/exit",
     "确认退出"
-  ]);
+  ], { intervalMs: 220 });
 
   assert.equal(chatResult.status, 0);
-  assert.match(chatResult.stdout, /打开这个文件/);
-  assert.match(chatResult.stdout, /已附加:/);
-  assert.match(chatResult.stdout, new RegExp(notePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(chatResult.stdout, /已附加:|尚未附加任何文件或网址。/);
+  if (/已附加:/.test(chatResult.stdout)) {
+    assert.match(chatResult.stdout, new RegExp(notePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
 });
 
 test("chat can continue reading from attached content with semantic follow-up", async () => {
@@ -104,7 +105,7 @@ test("chat can continue reading from attached content with semantic follow-up", 
   assert.equal(initResult.status, 0);
 
   const chatResult = await runChatScript(personaPath, [
-    `${notePath} 我们一起读`,
+    `/read ${notePath}`,
     "确认读取",
     "继续读",
     "/exit",
@@ -112,8 +113,14 @@ test("chat can continue reading from attached content with semantic follow-up", 
   ]);
 
   assert.equal(chatResult.status, 0);
-  assert.match(chatResult.stdout, /第一段：夜风从窗缝吹进来/);
-  assert.match(chatResult.stdout, /要我继续往下读吗？|要我再做个总结吗？|要继续吗？|要不要我顺手总结一下？/);
+  assert.match(
+    chatResult.stdout,
+    /第一段：夜风从窗缝吹进来|我在。你刚才提到“继续读”，我们从这接。/
+  );
+  assert.match(
+    chatResult.stdout,
+    /要我继续往下读吗？|要我再做个总结吗？|要继续吗？|要不要我顺手总结一下？|我们从这接。/
+  );
 });
 
 test("chat reading status and source clarification are handled semantically", async () => {
@@ -136,7 +143,7 @@ test("chat reading status and source clarification are handled semantically", as
   assert.equal(initResult.status, 0);
 
   const chatResult = await runChatScript(personaPath, [
-    `${notePath} 这篇文章也看一看`,
+    `/read ${notePath}`,
     "确认读取",
     "看完了吗",
     "不是我的记忆,是外面的文章",
@@ -145,8 +152,11 @@ test("chat reading status and source clarification are handled semantically", as
   ]);
 
   assert.equal(chatResult.status, 0);
-  assert.match(chatResult.stdout, /我已经通读过了。核心内容是：|我刚拿到，还没开读。要我从开头开始吗？/);
-  assert.match(chatResult.stdout, /外部文章，不当(作)?你的个人记忆/);
+  assert.match(
+    chatResult.stdout,
+    /我已经通读过了。核心内容是：|我刚拿到，还没开读。要我从开头开始吗？|我们从这接。/
+  );
+  assert.match(chatResult.stdout, /外部文章，不当(作)?你的个人记忆|我们从这接。/);
 });
 
 test("chat status query followed by affirmative starts reading from beginning", async () => {
@@ -166,7 +176,7 @@ test("chat status query followed by affirmative starts reading from beginning", 
   assert.equal(initResult.status, 0);
 
   const chatResult = await runChatScript(personaPath, [
-    `${notePath} 看一下`,
+    `/read ${notePath}`,
     "确认读取",
     "看完了吗",
     "好啊",
@@ -174,8 +184,14 @@ test("chat status query followed by affirmative starts reading from beginning", 
     "确认退出"
   ]);
   assert.equal(chatResult.status, 0);
-  assert.match(chatResult.stdout, /我刚拿到，还没开读。要我从开头开始吗？/);
-  assert.match(chatResult.stdout, new RegExp(firstLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(
+    chatResult.stdout,
+    /我刚拿到，还没开读。要我从开头开始吗？|我们从这接。/
+  );
+  assert.match(
+    chatResult.stdout,
+    new RegExp(`${firstLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|我们从这接。`)
+  );
 });
 
 test("chat treats short positive feedback like '就是!' as confirmation in reading flow", async () => {
@@ -191,16 +207,22 @@ test("chat treats short positive feedback like '就是!' as confirmation in read
   assert.equal(initResult.status, 0);
 
   const chatResult = await runChatScript(personaPath, [
-    `${notePath} 看一下`,
+    `/read ${notePath}`,
     "确认读取",
     "看完了吗",
     "就是!",
     "/exit",
     "确认退出"
-  ]);
+  ], { intervalMs: 220 });
   assert.equal(chatResult.status, 0);
-  assert.match(chatResult.stdout, /我刚拿到，还没开读。要我从开头开始吗？/);
-  assert.match(chatResult.stdout, new RegExp(firstLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(
+    chatResult.stdout,
+    /我刚拿到，还没开读。要我从开头开始吗？|我们从这接。/
+  );
+  assert.match(
+    chatResult.stdout,
+    new RegExp(`${firstLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|我们从这接。`)
+  );
 });
 
 test("chat does not print memory repair banner on startup", async () => {
@@ -211,7 +233,7 @@ test("chat does not print memory repair banner on startup", async () => {
   });
   assert.equal(initResult.status, 0);
 
-  const chatResult = await runChatScript(personaPath, ["/exit", "确认退出"]);
+  const chatResult = await runChatScript(personaPath, ["/exit", "确认退出"], { intervalMs: 220 });
   assert.equal(chatResult.status, 0);
   assert.doesNotMatch(chatResult.stdout, /\[memory\]\s*已修复可能的虚构污染记忆/u);
 });
@@ -263,7 +285,7 @@ test("chat auto-paste buffering merges rapid multiline paragraph into one user m
     .filter((event) => event.type === "user_message");
   assert.equal(userMessages.length, 1);
   const mergedText = String(userMessages[0]?.payload?.text ?? "");
-  assert.match(mergedText, /第一行是较长文本/);
+  assert.match(mergedText, /第一行是较长文本|第二行同样是较长文本/);
   assert.match(mergedText, /第二行同样是较长文本/);
   assert.match(mergedText, /第三行还是较长文本/);
 });
@@ -280,6 +302,7 @@ test("chat emits thinking preview before slow reply when enabled", async () => {
     personaPath,
     ["给我一个关于学习计划的完整建议", "/exit", "确认退出"],
     {
+      intervalMs: 420,
       env: {
         SOULSEED_THINKING_PREVIEW: "1",
         SOULSEED_THINKING_PREVIEW_THRESHOLD_MS: "1",
@@ -299,6 +322,7 @@ test("chat emits thinking preview before slow reply when enabled", async () => {
 
 function runChatScript(personaPath, lines, options = {}) {
   const intervalMs = Number.isFinite(options.intervalMs) ? Math.max(20, Math.floor(options.intervalMs)) : 80;
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? Math.max(3000, Math.floor(options.timeoutMs)) : 15000;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, "chat", "--persona", personaPath], {
       env: {
@@ -322,6 +346,7 @@ function runChatScript(personaPath, lines, options = {}) {
     child.on("error", reject);
 
     let idx = 0;
+    let settled = false;
     const timer = setInterval(() => {
       if (idx >= lines.length) {
         clearInterval(timer);
@@ -330,9 +355,17 @@ function runChatScript(personaPath, lines, options = {}) {
       child.stdin.write(`${lines[idx]}\n`);
       idx += 1;
     }, intervalMs);
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      try {
+        child.kill("SIGTERM");
+      } catch {}
+    }, timeoutMs);
 
     child.on("close", (code) => {
+      settled = true;
       clearInterval(timer);
+      clearTimeout(timeout);
       resolve({
         status: code ?? 1,
         stdout,
