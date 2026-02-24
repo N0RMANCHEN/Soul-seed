@@ -34,7 +34,10 @@ import {
   enforceIdentityGuard,
   enforceFactualGroundingGuard,
   enforceRecallGroundingGuard,
-  detectRecallNavigationIntent,
+  deriveRecallBudgetPolicy,
+  composeDegradedPersonaReply,
+  buildTurnLatencySummary,
+  projectConversationSignals,
   enforcePronounRoleGuard,
   enforceRelationalGuard,
   evolveRelationshipStateFromAssistant,
@@ -784,6 +787,7 @@ function compactDecisionTrace(trace: DecisionTrace): Record<string, unknown> {
     selectedMemoryEvidenceCount: (trace.selectedMemoryBlocks ?? []).length,
     selectedMemoryEvidenceDigest: evidenceDigest,
     memoryBudget: trace.memoryBudget,
+    recallBudgetPolicy: trace.recallBudgetPolicy ?? null,
     retrievalBreakdown: trace.retrievalBreakdown,
     memoryWeights: trace.memoryWeights,
     voiceIntent: trace.voiceIntent ?? null,
@@ -795,7 +799,9 @@ function compactDecisionTrace(trace: DecisionTrace): Record<string, unknown> {
     planVersion: trace.planVersion ?? null,
     consistencyVerdict: trace.consistencyVerdict ?? null,
     consistencyRuleHits: trace.consistencyRuleHits ?? null,
-    consistencyTraceId: trace.consistencyTraceId ?? null
+    consistencyTraceId: trace.consistencyTraceId ?? null,
+    latencyBreakdown: trace.latencyBreakdown ?? null,
+    latencyTotalMs: trace.latencyTotalMs ?? null
   };
 }
 
@@ -2168,6 +2174,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   let proactiveTimer: NodeJS.Timeout | null = null;
   let proactiveCooldownUntilMs = 0;
   let proactiveMissStreak = 0;
+  let proactiveRecentEmitCount = 0;
   let lastThinkingPreviewTurnRef = "";
   let lastThinkingPreviewAtMs = 0;
   let lastThinkingPreviewText = "";
@@ -2534,6 +2541,16 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     return 1;
   };
 
+  const computeTopicAffinity = (left: string, right: string): number => {
+    const l = (left.toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) ?? []).slice(0, 24);
+    const r = new Set((right.toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) ?? []).slice(0, 24));
+    if (l.length === 0 || r.size === 0) {
+      return 0.5;
+    }
+    const overlap = l.filter((token) => r.has(token)).length;
+    return Math.max(0, Math.min(1, overlap / Math.max(1, Math.min(l.length, r.size))));
+  };
+
   const buildProactiveSnapshot = () =>
     computeProactiveStateSnapshot({
       relationshipState: personaPkg.relationshipState,
@@ -2543,7 +2560,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       quietHoursStart: proactiveQuietStart,
       quietHoursEnd: proactiveQuietEnd,
       hasPendingGoal: lastGoalId !== undefined,
-      taskContextHint: lastGoalId ? `goal:${lastGoalId.slice(0, 8)}` : undefined
+      taskContextHint: lastGoalId ? `goal:${lastGoalId.slice(0, 8)}` : undefined,
+      topicAffinity: computeTopicAffinity(lastUserInput, lastAssistantOutput),
+      recentEmissionCount: proactiveRecentEmitCount
     });
 
   const buildTemporalAnchorBlock = (
@@ -2729,12 +2748,24 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     fallback: string;
     emitTokens?: boolean;
   }): Promise<{ text: string; streamed: boolean }> => {
+    const temporalAnchor = deriveTemporalAnchor({
+      nowMs: Date.now(),
+      lastUserAtMs: Number.isFinite(lastUserAt) ? lastUserAt : null,
+      lastAssistantAtMs: Number.isFinite(lastAssistantAt) ? lastAssistantAt : null
+    });
+    const degradedReply = composeDegradedPersonaReply({
+      mode: params.mode,
+      relationshipState: personaPkg.relationshipState,
+      lastUserInput,
+      lastAssistantOutput,
+      temporalHint: temporalAnchor.silenceMinutes < 20 ? "just_now" : "earlier"
+    });
     if (params.mode === "greeting" && !lastUserInput.trim()) {
-      return { text: params.fallback, streamed: false };
+      return { text: degradedReply || params.fallback, streamed: false };
     }
     const apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
     if (!apiKey || apiKey === "test-key") {
-      return { text: params.fallback, streamed: false };
+      return { text: degradedReply || params.fallback, streamed: false };
     }
     const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
     const anchor = deriveTemporalAnchor({
@@ -2807,14 +2838,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
       );
     } catch {
-      return { text: params.fallback, streamed: false };
+      return { text: degradedReply || params.fallback, streamed: false };
     }
     const normalized = normalizeConversationalReply(content, params.mode, params.fallback, lastUserInput);
     if (!normalized) {
-      return { text: params.fallback, streamed: false };
+      return { text: degradedReply || params.fallback, streamed: false };
     }
     if ((params.mode === "greeting" || params.mode === "proactive") && hasUngroundedTemporalRecall(normalized, lastUserInput)) {
-      return { text: params.fallback, streamed: false };
+      return { text: degradedReply || params.fallback, streamed: false };
     }
     return { text: normalized, streamed: true };
   };
@@ -2877,6 +2908,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     lastAssistantOutput = proactiveText;
     lastAssistantAt = Date.now();
     proactiveCooldownUntilMs = Date.now() + 60_000;
+    proactiveRecentEmitCount = Math.min(6, proactiveRecentEmitCount + 1);
     await appendLifeEvent(personaPath, {
       type: "assistant_message",
       payload: {
@@ -2982,6 +3014,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             proactiveMissStreak = 0;
           } else {
             proactiveMissStreak += 1;
+            proactiveRecentEmitCount = Math.max(0, proactiveRecentEmitCount - 1);
           }
         })
         .catch((error: unknown) => {
@@ -4384,6 +4417,15 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
 
         const turnRef = createHash("sha256").update(`${turnStartedAtMs}|${input}`, "utf8").digest("hex").slice(0, 12);
         await emitThinkingPreviewIfNeeded(input, turnRef);
+        const latencyStartedAtMs = Date.now();
+        const latencyBreakdown: Partial<Record<"routing" | "recall" | "planning" | "llm_primary" | "llm_meta" | "guard" | "rewrite" | "emit", number>> = {};
+        const addLatency = (
+          stage: "routing" | "recall" | "planning" | "llm_primary" | "llm_meta" | "guard" | "rewrite" | "emit",
+          startedAtMs: number
+        ): void => {
+          const elapsed = Math.max(0, Date.now() - startedAtMs);
+          latencyBreakdown[stage] = Math.max(0, Number(latencyBreakdown[stage] ?? 0) + elapsed);
+        };
 
         const profilePatch = extractProfileUpdate(input);
         if (profilePatch) {
@@ -4438,34 +4480,26 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             payload: { ...nextRelationship }
           });
         }
-        const recallNavigationIntent = detectRecallNavigationIntent(input);
-        const recallBudgetOverride = recallNavigationIntent.strength === "strong"
-          ? {
-              budget: {
-                candidateMax: 220,
-                rerankMax: 34,
-                injectMax: 10,
-                injectCharMax: 3000
-              }
-            }
-          : recallNavigationIntent.strength === "soft"
-            ? {
-                budget: {
-                  candidateMax: 200,
-                  rerankMax: 32,
-                  injectMax: 9,
-                  injectCharMax: 2600
-                }
-              }
-            : undefined;
+        const routingStartedAtMs = Date.now();
+        const recallProjection = projectConversationSignals(input);
+        const recallBudgetPolicy = deriveRecallBudgetPolicy({
+          userInput: input,
+          projection: recallProjection,
+          hasPendingGoal: Boolean(lastGoalId)
+        });
+        addLatency("routing", routingStartedAtMs);
+        const recallStartedAtMs = Date.now();
         const recallResult = await recallMemoriesWithTrace(
           personaPath,
           input,
-          recallBudgetOverride
+          {
+            budget: recallBudgetPolicy.budget
+          }
         );
         const externalKnowledgeItems = shouldInjectExternalKnowledge(input)
           ? await searchExternalKnowledgeEntries(personaPath, input, { limit: 2 })
           : [];
+        addLatency("recall", recallStartedAtMs);
         const externalKnowledgeMemories = externalKnowledgeItems.map(
           (item) => `external=${item.summary.slice(0, 120)} @${item.sourceUri}`
         );
@@ -4491,6 +4525,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
         const executionInput =
           goalAssist.kind === "resume" ? goalAssist.resumeInput : effectiveInput;
+        const planningStartedAtMs = Date.now();
         const turnExecution = await executeTurnProtocol({
           rootPath: personaPath,
           personaPkg,
@@ -4506,6 +4541,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           goalId: goalAssist.kind === "resume" ? goalAssist.goalId : undefined,
           mode: executionMode
         });
+        addLatency("planning", planningStartedAtMs);
         const trace: DecisionTrace = turnExecution.trace ?? {
           version: "1.0",
           timestamp: new Date().toISOString(),
@@ -4516,6 +4552,10 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           reason: "fallback trace",
           model,
           executionMode: executionMode === "agent" ? "agent" : "soul"
+        };
+        trace.recallBudgetPolicy = {
+          profile: recallBudgetPolicy.profile,
+          reasonCodes: recallBudgetPolicy.reasonCodes
         };
         const instinctRoute = trace.routeDecision === "instinct";
         const responseAdapter = getAdapterForRoute(instinctRoute ? "instinct" : "deliberative");
@@ -4645,9 +4685,17 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
 
         if (trace.refuse) {
       const refusal = "这个请求我不能协助。我可以帮你改成安全合法的方案。";
+      const emitStartedAtMs = Date.now();
       sayAsAssistant(refusal);
+      addLatency("emit", emitStartedAtMs);
       lastAssistantOutput = refusal;
       lastAssistantAt = Date.now();
+      const refusalLatency = buildTurnLatencySummary({
+        breakdown: latencyBreakdown,
+        totalMs: Date.now() - latencyStartedAtMs
+      });
+      trace.latencyBreakdown = refusalLatency.breakdown;
+      trace.latencyTotalMs = refusalLatency.totalMs;
       await appendLifeEvent(personaPath, {
         type: "conflict_logged",
         payload: {
@@ -4656,6 +4704,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           riskLevel: trace.riskLevel,
           userInput: input,
           decidedAt: trace.timestamp,
+          latencyBreakdown: refusalLatency.breakdown,
+          latencyTotalMs: refusalLatency.totalMs,
           memoryMeta: buildMemoryMeta({
             tier: classifyMemoryTier({
               userInput: input,
@@ -4759,6 +4809,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         let assistantContent = "";
         let aborted = false;
         let streamed = false;
+        const llmPrimaryStartedAtMs = Date.now();
 
         try {
       if (turnExecution.mode === "agent") {
@@ -4792,32 +4843,52 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
 
         assistantContent = result.content;
       }
+      addLatency("llm_primary", llmPrimaryStartedAtMs);
         } catch (error: unknown) {
+      addLatency("llm_primary", llmPrimaryStartedAtMs);
       if (error instanceof Error && error.name === "AbortError") {
         aborted = true;
       } else {
         const msg = error instanceof Error ? error.message : String(error);
-        const transientModelError =
-          /fetch failed|request timeout|failed after retries|429|5\d{2}/i.test(msg);
-        if (transientModelError) {
-          sayAsAssistant(`我这边模型连接有点波动，已切到兜底回复（${msg}）。`);
-        } else {
-          sayAsAssistant(`我这次回复失败了：${msg}`);
-        }
+        const fallbackReply = composeDegradedPersonaReply({
+          mode: "reply",
+          relationshipState: personaPkg.relationshipState,
+          lastUserInput: input,
+          lastAssistantOutput,
+          temporalHint: "just_now"
+        });
+        assistantContent = fallbackReply;
+        await appendLifeEvent(personaPath, {
+          type: "conflict_logged",
+          payload: {
+            category: "model_runtime_fallback",
+            reason: msg,
+            route: trace.routeDecision ?? null
+          }
+        });
       }
         } finally {
           currentAbort = null;
         }
 
         if (aborted) {
+      const abortedLatency = buildTurnLatencySummary({
+        breakdown: latencyBreakdown,
+        totalMs: Date.now() - latencyStartedAtMs
+      });
+      trace.latencyBreakdown = abortedLatency.breakdown;
+      trace.latencyTotalMs = abortedLatency.totalMs;
       await appendLifeEvent(personaPath, {
         type: "assistant_aborted",
         payload: {
-          partial: assistantContent
+          partial: assistantContent,
+          latencyBreakdown: abortedLatency.breakdown,
+          latencyTotalMs: abortedLatency.totalMs
         }
       });
         } else {
       const rawAssistantContent = assistantContent;
+      const guardStartedAtMs = Date.now();
       const identityGuard = enforceIdentityGuard(assistantContent, personaPkg.persona.displayName, input);
       assistantContent = identityGuard.text;
       const isAdultContext = adultSafetyContext.adultMode && adultSafetyContext.ageVerified && adultSafetyContext.explicitConsent;
@@ -4869,8 +4940,10 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       if (loopBreak.triggered) {
         assistantContent = loopBreak.rewritten;
       }
+      addLatency("guard", guardStartedAtMs);
       let metaTraceId: string | undefined;
       if (metaCognitionMode !== "off" && !instinctRoute) {
+        const llmMetaStartedAtMs = Date.now();
         try {
           const metaPlan = planMetaIntent({
             userInput: effectiveInput,
@@ -4929,6 +5002,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             }
           });
         }
+        addLatency("llm_meta", llmMetaStartedAtMs);
       }
       let soulConsistencyReasons: string[] = trace.consistencyRuleHits ?? [];
       if (turnExecution.mode === "soul" && !instinctRoute) {
@@ -4966,6 +5040,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       // 保存本轮 meta-review 风格信号，用于后续 self_revision 替代关键字硬匹配
       let metaReviewStyleSignals: { concise: number; reflective: number; direct: number; warm: number } | undefined;
       if (turnExecution.mode === "soul") {
+        const llmMetaStartedAtMs = Date.now();
         const metaAdapter = getAdapterForRoute("meta");
         const metaReview = await runMetaReviewLlm({
           adapter: metaAdapter,
@@ -5031,10 +5106,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             });
           }
         }
+        addLatency("llm_meta", llmMetaStartedAtMs);
       }
+      const rewriteStartedAtMs = Date.now();
       assistantContent = compactReplyForChatPace(assistantContent, input);
       const compactedEmotion = parseEmotionTag(assistantContent);
       assistantContent = compactedEmotion.text;
+      addLatency("rewrite", rewriteStartedAtMs);
       const resolvedEmotion = compactedEmotion.emotion ?? emotion.emotion ?? inferEmotionFromText(assistantContent);
       const shouldDisplayAssistant = !(loopBreak.triggered && assistantContent.trim().length === 0);
       const shouldReplayOnScreen =
@@ -5049,9 +5127,17 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           loopBreak.triggered ||
           parseEmotionTag(rawAssistantContent).text.trim() !== assistantContent.trim());
       if (shouldReplayOnScreen) {
+        const emitStartedAtMs = Date.now();
         await applyHumanPacedDelay(turnStartedAtMs, assistantContent);
         sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
+        addLatency("emit", emitStartedAtMs);
       }
+      const turnLatencySummary = buildTurnLatencySummary({
+        breakdown: latencyBreakdown,
+        totalMs: Date.now() - latencyStartedAtMs
+      });
+      trace.latencyBreakdown = turnLatencySummary.breakdown;
+      trace.latencyTotalMs = turnLatencySummary.totalMs;
       if (identityGuard.corrected) {
         await appendLifeEvent(personaPath, {
           type: "conflict_logged",
@@ -5133,6 +5219,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           recallGroundingGuard,
           temporalPhraseGuard,
           memoryMeta: assistantMeta
+        }
+      });
+      await appendLifeEvent(personaPath, {
+        type: "turn_latency_profiled",
+        payload: {
+          totalMs: trace.latencyTotalMs ?? null,
+          breakdown: trace.latencyBreakdown ?? null
         }
       });
       lastAssistantOutput = assistantContent;

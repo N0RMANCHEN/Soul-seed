@@ -218,6 +218,29 @@ function normalizePositiveInteger(value: unknown): number | undefined {
   return Math.max(0, Math.floor(parsed));
 }
 
+function normalizeRecallBudgetPolicy(value: unknown): DecisionTrace["recallBudgetPolicy"] {
+  if (!isRecord(value)) return undefined;
+  const profile = typeof value.profile === "string" && value.profile.trim() ? value.profile.trim() : "";
+  if (!profile) return undefined;
+  return {
+    profile,
+    reasonCodes: normalizeStringArray(value.reasonCodes, 16)
+  };
+}
+
+function normalizeLatencyBreakdown(value: unknown): DecisionTrace["latencyBreakdown"] {
+  if (!isRecord(value)) return undefined;
+  const stages = ["routing", "recall", "planning", "llm_primary", "llm_meta", "guard", "rewrite", "emit"] as const;
+  const result: Record<string, number> = {};
+  for (const stage of stages) {
+    const n = Number(value[stage]);
+    if (Number.isFinite(n) && n >= 0) {
+      result[stage] = Math.round(n);
+    }
+  }
+  return Object.keys(result).length > 0 ? (result as DecisionTrace["latencyBreakdown"]) : undefined;
+}
+
 export function isDecisionTraceVersionCompatible(version: unknown): boolean {
   return version === DECISION_TRACE_SCHEMA_VERSION || version === LEGACY_DECISION_TRACE_VERSION;
 }
@@ -275,10 +298,13 @@ export function normalizeDecisionTrace(input: unknown): DecisionTrace {
     modelUsed: typeof input.modelUsed === "string" && input.modelUsed.trim() ? input.modelUsed.trim() : undefined,
     agentRequest: normalizeAgentRequest(input.agentRequest),
     soulTraceId: typeof input.soulTraceId === "string" && input.soulTraceId ? input.soulTraceId : undefined,
+    recallBudgetPolicy: normalizeRecallBudgetPolicy(input.recallBudgetPolicy),
     riskLatent: normalizeRiskLatent(input.riskLatent),
     riskAssessmentPath: (input.riskAssessmentPath === "semantic" || input.riskAssessmentPath === "regex_fallback")
       ? input.riskAssessmentPath
-      : undefined
+      : undefined,
+    latencyBreakdown: normalizeLatencyBreakdown(input.latencyBreakdown),
+    latencyTotalMs: normalizePositiveInteger(input.latencyTotalMs)
   };
 
   return normalized;

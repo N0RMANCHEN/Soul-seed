@@ -349,6 +349,10 @@ export interface DecisionTrace {
     maxItems: number;
     usedItems: number;
   };
+  recallBudgetPolicy?: {
+    profile: string;
+    reasonCodes: string[];
+  };
   retrievalBreakdown?: {
     profile: number;
     pinned: number;
@@ -391,6 +395,8 @@ export interface DecisionTrace {
   };
   /** EA-0: Agent trace 关联的 Soul trace id */
   soulTraceId?: string;
+  latencyBreakdown?: Partial<Record<"routing" | "recall" | "planning" | "llm_primary" | "llm_meta" | "guard" | "rewrite" | "emit", number>>;
+  latencyTotalMs?: number;
 }
 
 export type PersonaJudgmentLabel = "fiction" | "non_fiction" | "mixed" | "uncertain";
@@ -492,6 +498,9 @@ export interface ProactiveStateSnapshot {
   curiosity: number;
   annoyanceBias: number;
   isInQuietHours?: boolean;
+  topicAffinity?: number;
+  frequencyWindowHit?: boolean;
+  gateReasons?: string[];
 }
 
 export interface ProactiveDecisionTrace {
@@ -500,6 +509,9 @@ export interface ProactiveDecisionTrace {
   probability: number;
   reason: string;
   suppressReason?: string; // 未触发时的抑制原因
+  topicAffinity?: number;
+  frequencyWindowHit?: boolean;
+  gateReasons?: string[];
 }
 
 export type GoalStatus = "pending" | "active" | "blocked" | "completed" | "canceled" | "suspended";
@@ -744,7 +756,8 @@ export type LifeEventType =
   | "social_graph_person_added"
   | "social_graph_person_removed"
   | "persona_voice_on_evolution_updated"
-  | "reproduction_consent_statement";
+  | "reproduction_consent_statement"
+  | "turn_latency_profiled";
 
 export type SelfRevisionDomain =
   | "habits"

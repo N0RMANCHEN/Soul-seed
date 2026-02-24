@@ -194,10 +194,15 @@ test("proactive engine snapshot + decision are bounded", () => {
   const snapshot = computeProactiveStateSnapshot({
     curiosity: 0.3,
     annoyanceBias: -0.1,
-    silenceMinutes: 10
+    silenceMinutes: 10,
+    topicAffinity: 0.9,
+    recentEmissionCount: 3
   });
   assert.equal(snapshot.probability >= 0.01 && snapshot.probability <= 0.92, true);
+  assert.equal(Array.isArray(snapshot.gateReasons), true);
+  assert.equal(typeof snapshot.topicAffinity, "number");
 
   const decisionHit = decideProactiveEmission(snapshot, 0);
   assert.equal(decisionHit.emitted, true);
+  assert.equal(typeof decisionHit.frequencyWindowHit, "boolean");
 });

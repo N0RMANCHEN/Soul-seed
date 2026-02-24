@@ -10,6 +10,8 @@ export interface ProactiveEngineInput {
   quietHoursEnd?: number;   // 0-23 静默结束小时（本地时间）
   hasPendingGoal?: boolean; // 是否有未完成目标（用于调整主动消息关联性）
   taskContextHint?: string; // 最近任务上下文提示
+  topicAffinity?: number;   // 与最近话题相关度（0-1）
+  recentEmissionCount?: number; // 最近窗口主动发言次数
 }
 
 function computeIsInQuietHours(start?: number, end?: number): boolean {
@@ -29,6 +31,9 @@ export function computeProactiveStateSnapshot(input: ProactiveEngineInput): Proa
   const dims = relationship.dimensions;
   const arousal = deriveCognitiveBalanceFromLibido(relationship);
   const isInQuietHours = computeIsInQuietHours(input.quietHoursStart, input.quietHoursEnd);
+  const topicAffinity = Math.max(0, Math.min(1, Number(input.topicAffinity ?? 0.5)));
+  const recentEmissionCount = Math.max(0, Math.floor(Number(input.recentEmissionCount ?? 0)));
+  const gateReasons: string[] = [];
   let probabilityRaw =
     0.03 +
     dims.intimacy * 0.12 +
@@ -38,11 +43,22 @@ export function computeProactiveStateSnapshot(input: ProactiveEngineInput): Proa
     (arousal.arousalState === "low" ? 0 : 0.04) +
     Math.min(0.1, Math.max(0, input.silenceMinutes) / 30) +
     input.curiosity * 0.12 +
-    input.annoyanceBias;
+    input.annoyanceBias +
+    (topicAffinity - 0.5) * 0.12;
   if (isInQuietHours) {
+    gateReasons.push("quiet_hours");
     probabilityRaw = 0.005;
   } else if (input.hasPendingGoal) {
     probabilityRaw += 0.05;
+    gateReasons.push("pending_goal");
+  }
+  if (dims.trust < 0.35 || dims.safety < 0.35) {
+    probabilityRaw -= 0.08;
+    gateReasons.push("relationship_guard");
+  }
+  if (recentEmissionCount >= 2) {
+    probabilityRaw -= Math.min(0.12, recentEmissionCount * 0.05);
+    gateReasons.push("frequency_cap");
   }
   const probability = Math.max(0.01, Math.min(0.92, probabilityRaw));
   return {
@@ -50,7 +66,10 @@ export function computeProactiveStateSnapshot(input: ProactiveEngineInput): Proa
     probability,
     curiosity: input.curiosity,
     annoyanceBias: input.annoyanceBias,
-    isInQuietHours
+    isInQuietHours,
+    topicAffinity,
+    frequencyWindowHit: recentEmissionCount >= 2,
+    gateReasons
   };
 }
 
@@ -65,6 +84,9 @@ export function decideProactiveEmission(snapshot: ProactiveStateSnapshot, rand: 
     emitted,
     probability: snapshot.probability,
     reason: emitted ? "probability_sample_hit" : "probability_sample_miss",
-    suppressReason
+    suppressReason,
+    topicAffinity: snapshot.topicAffinity,
+    frequencyWindowHit: snapshot.frequencyWindowHit,
+    gateReasons: snapshot.gateReasons
   };
 }
