@@ -66,3 +66,27 @@ test("normalizeDecisionTrace keeps execution and consistency fields", () => {
   assert.equal(normalized.routeDecision, "deliberative");
   assert.deepEqual(normalized.routeReasonCodes, ["task_like_signal", "moderate_risk_signal"]);
 });
+
+test("normalizeDecisionTrace keeps conversation control fields", () => {
+  const normalized = normalizeDecisionTrace({
+    version: DECISION_TRACE_SCHEMA_VERSION,
+    timestamp: "2026-02-24T00:00:00.000Z",
+    selectedMemories: [],
+    askClarifyingQuestion: false,
+    refuse: false,
+    riskLevel: "low",
+    reason: "control",
+    model: "deepseek-chat",
+    conversationControl: {
+      engagementTier: "NORMAL",
+      topicAction: "maintain",
+      responsePolicy: "normal_response",
+      reasonCodes: ["task_intent_detected"]
+    }
+  });
+
+  assert.equal(normalized.conversationControl?.engagementTier, "NORMAL");
+  assert.equal(normalized.conversationControl?.topicAction, "maintain");
+  assert.equal(normalized.conversationControl?.responsePolicy, "normal_response");
+  assert.deepEqual(normalized.conversationControl?.reasonCodes, ["task_intent_detected"]);
+});

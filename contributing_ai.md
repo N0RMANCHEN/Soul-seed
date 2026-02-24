@@ -73,6 +73,7 @@
 - `./scripts/verify.sh` 通过（单一入口，失败退出非 0）。
 - `npm run h0:check` 通过（当改动涉及 `config/h0/*` 时为必跑项）。
 - 文档联动检查通过：按 `AGENT.md` 的 `Doc Sync Gate` 排查受影响文档；若无需更新，交付中必须说明理由。
+- 涉及信息裁切/意图识别的改动，必须声明四层路由设计（`L1 基向量 -> L2 潜向量 -> L3 元认知 -> L4 正则兜底`），且业务主路径不得走 regex。
 - verify.sh 覆盖：
   - TypeScript 类型检查（三个包）
   - 全量单元测试（`packages/core` + `packages/cli` + `packages/mcp-server`）
@@ -189,13 +190,13 @@
 | 内在情绪状态 | `packages/core/src/mood_state.ts` |
 | 自传体叙事 | `packages/core/src/autobiography.ts` |
 | 兴趣分布（内在驱动） | `packages/core/src/interests.ts` |
-| 会话投入档位控制（Phase F） | `packages/core/src/conversation_control/engagement_controller.ts` |
-| 话题/线程追踪（Phase F） | `packages/core/src/conversation_control/topic_tracker.ts` |
-| 会话外显策略（Phase F） | `packages/core/src/conversation_control/conversation_policy.ts` |
-| 主动意图规划（Phase F） | `packages/core/src/proactive/planner.ts` |
-| 群聊仲裁（Phase F） | `packages/core/src/group_chat/arbitration.ts` |
-| Genome/天赋（Phase F） | `packages/core/src/genome.ts` |
-| Epigenetics/表观学习（Phase F） | `packages/core/src/epigenetics.ts` |
+| 会话控制主模块 | `packages/core/src/conversation_control.ts` |
+| 语义投影层（向量锚点/元认知仲裁） | `packages/core/src/semantic_projection.ts` |
+| 时间线回看意图识别 | `packages/core/src/recall_navigation_intent.ts` |
+| 人称角色守卫 | `packages/core/src/pronoun_role_guard.ts` |
+| 主动交互引擎（当前入口） | `packages/core/src/proactive/engine.ts` |
+| Genome/天赋（规划项） | `doc/Roadmap.md`（`H/P0-4`） |
+| Epigenetics/表观学习（规划项） | `doc/Roadmap.md`（`H/P0-4`） |
 | 周期自我反思 | `packages/core/src/self_reflection.ts` |
 | 内容安全语义评估 | `packages/core/src/content_safety_semantic.ts` |
 | Agent 记忆提案协议 | `packages/core/src/agent_memory_proposal.ts` |

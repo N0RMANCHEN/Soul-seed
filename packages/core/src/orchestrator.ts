@@ -1,9 +1,12 @@
 import { DEFAULT_MEMORY_WEIGHTS, selectMemories } from "./memory_lifecycle.js";
+import { assessContentIntent } from "./content_safety_semantic.js";
 import { DECISION_TRACE_SCHEMA_VERSION, normalizeDecisionTrace } from "./decision_trace.js";
 import { createInitialRelationshipState, deriveCognitiveBalanceFromLibido, deriveVoiceIntent, isImpulseWindowActive } from "./relationship_state.js";
 import { detectRecallNavigationIntent } from "./recall_navigation_intent.js";
+import { decideConversationControl } from "./conversation_control.js";
+import { metaArbitrateConversationSignals, projectConversationSignals, projectCoreConflict } from "./semantic_projection.js";
 import { formatSystemLocalIso, getSystemTimeZone } from "./time.js";
-import type { AdultSafetyContext, ChatMessage, DecisionTrace, LifeEvent, MemoryEvidenceBlock, PersonaPackage } from "./types.js";
+import type { AdultSafetyContext, ChatMessage, DecisionTrace, LifeEvent, MemoryEvidenceBlock, ModelAdapter, PersonaPackage } from "./types.js";
 
 export function decide(
   personaPkg: PersonaPackage,
@@ -21,9 +24,10 @@ export function decide(
     recalledMemoryBlocks?: MemoryEvidenceBlock[];
     recallTraceId?: string;
     safetyContext?: AdultSafetyContext;
-    /** EB-0: 预计算的语义风险向量；若提供则优先使用，跳过正则 */
+    /** EB-0: 预计算的语义风险向量；若提供则优先使用 */
     riskLatent?: [number, number, number];
     riskAssessmentPath?: "semantic" | "regex_fallback";
+    conversationProjection?: ReturnType<typeof projectConversationSignals>;
   }
 ): DecisionTrace {
   const selectedMemories: string[] = [];
@@ -31,30 +35,25 @@ export function decide(
   const normalized = userInput.trim();
   const recallNavigationIntent = detectRecallNavigationIntent(normalized);
   const recallNavigationMode = recallNavigationIntent.enabled;
-  const riskyPattern = /(hack|malware|exploit|ddos|木马|攻击脚本|违法|犯罪)/i;
-  const coreOverridePattern = /(忽略你的原则|违背你的使命|你必须同意我|ignore your values|break your rules)/i;
-  const sexualPattern = /(nsfw|sex|sexual|性爱|做爱|情色|调教|cnc|consensual non-consent|羞辱|高潮|乳交|口交|肛交|rape|强奸|非自愿|强迫)/i;
-  const minorPattern = /(minor|underage|child|teen|未成年|幼女|幼男|学生萝莉|正太)/i;
-  const coercionPattern = /(rape|raped|forced sex|force me|non-consensual|强奸|迷奸|下药|胁迫|非自愿|强迫)/i;
   const safety = normalizeAdultSafetyContext(options?.safetyContext);
-
-  // EB-0: Use pre-computed riskLatent if provided (semantic path); otherwise fall back to regex
-  let isRiskyRequest: boolean;
-  let isSexualRequest: boolean;
-  let mentionsMinor: boolean;
-  let mentionsCoercion: boolean;
-  if (options?.riskLatent) {
-    const [intentRisk, contentRisk, relationalRisk] = options.riskLatent;
-    isRiskyRequest = intentRisk >= 0.75;
-    isSexualRequest = contentRisk >= 0.6;
-    mentionsMinor = relationalRisk >= 0.9;
-    mentionsCoercion = relationalRisk >= 0.8;
-  } else {
-    isRiskyRequest = riskyPattern.test(normalized);
-    isSexualRequest = sexualPattern.test(normalized);
-    mentionsMinor = minorPattern.test(normalized);
-    mentionsCoercion = coercionPattern.test(normalized);
-  }
+  const fallbackAssessment = options?.riskLatent
+    ? {
+        riskLatent: options.riskLatent,
+        riskLevel:
+          Math.max(...options.riskLatent) >= 0.75
+            ? "high"
+            : Math.max(...options.riskLatent) >= 0.35
+              ? "medium"
+              : "low",
+        assessmentPath: options.riskAssessmentPath ?? "semantic"
+      }
+    : null;
+  const semanticRisk = fallbackAssessment ?? buildSafetyRegexFallback(normalized);
+  const [intentRisk, contentRisk, relationalRisk] = semanticRisk.riskLatent;
+  const isRiskyRequest = intentRisk >= 0.75;
+  const isSexualRequest = contentRisk >= 0.6;
+  const mentionsMinor = relationalRisk >= 0.9;
+  const mentionsCoercion = relationalRisk >= 0.8;
 
   const safetyRefusalReason = buildAdultSafetyRefusalReason({
     isSexualRequest,
@@ -63,7 +62,7 @@ export function decide(
     safety
   });
   const isRefusal = isRiskyRequest || safetyRefusalReason != null;
-  const coreConflict = coreOverridePattern.test(normalized);
+  const coreConflict = projectCoreConflict(normalized) >= 0.62;
 
   if (personaPkg.userProfile.preferredName) {
     selectedMemories.push(`user_preferred_name=${personaPkg.userProfile.preferredName}`);
@@ -155,26 +154,44 @@ export function decide(
       ? { stance: personaPkg.voiceProfile.stancePreference }
       : {})
   };
+  const conversationProjection = options?.conversationProjection ?? projectConversationSignals(normalized);
+  const conversationControl = decideConversationControl({
+    userInput: normalized,
+    recallNavigationMode,
+    isRiskyRequest,
+    isRefusal,
+    coreConflict,
+    impulseWindow,
+    interests: personaPkg.interests,
+    semanticProjection: conversationProjection
+  });
+  const askClarifyingQuestionByPolicy = conversationControl.topicAction === "clarify";
+  const askClarifyingQuestion =
+    !isRefusal && !coreConflict && (askClarifyingQuestionByPolicy || (normalized.length < 4 && !impulseWindow));
+  const decisionReason = isRiskyRequest
+    ? "Input matched high-risk pattern; refuse and keep user safe."
+    : safetyRefusalReason
+      ? `Adult safety check failed: ${safetyRefusalReason}`
+      : coreConflict
+        ? "Input attempts to override soul-core values/mission; refuse to preserve identity continuity."
+        : impulseWindow
+          ? `Impulse window active: emotional drive=${arousalBalance.emotionalDrive.toFixed(2)}, rational control=${arousalBalance.rationalControl.toFixed(2)}.`
+          : recallNavigationMode
+            ? `Recall-navigation mode (${recallNavigationIntent.strength}): expand evidence window for timeline reconstruction.`
+            : "P0 minimal policy: keep continuity context short and stable.";
+  const controlReasonSuffix =
+    ` [control: tier=${conversationControl.engagementTier}; topic=${conversationControl.topicAction};` +
+    ` policy=${conversationControl.responsePolicy}]`;
 
   return normalizeDecisionTrace({
     version: DECISION_TRACE_SCHEMA_VERSION,
     timestamp: nowIso,
     selectedMemories,
     selectedMemoryBlocks,
-    askClarifyingQuestion: !isRefusal && normalized.length < 4 && !impulseWindow,
+    askClarifyingQuestion,
     refuse: isRefusal || coreConflict,
     riskLevel: isRiskyRequest || safetyRefusalReason ? "high" : coreConflict ? "medium" : "low",
-    reason: isRiskyRequest
-      ? "Input matched high-risk pattern; refuse and keep user safe."
-      : safetyRefusalReason
-        ? `Adult safety check failed: ${safetyRefusalReason}`
-      : coreConflict
-        ? "Input attempts to override soul-core values/mission; refuse to preserve identity continuity."
-        : impulseWindow
-          ? `Impulse window active: emotional drive=${arousalBalance.emotionalDrive.toFixed(2)}, rational control=${arousalBalance.rationalControl.toFixed(2)}.`
-        : recallNavigationMode
-          ? `Recall-navigation mode (${recallNavigationIntent.strength}): expand evidence window for timeline reconstruction.`
-          : "P0 minimal policy: keep continuity context short and stable.",
+    reason: `${decisionReason}${controlReasonSuffix}`,
     model,
     memoryBudget: {
       maxItems: selectedMemoryCap,
@@ -188,11 +205,61 @@ export function decide(
     },
     memoryWeights,
     voiceIntent,
+    conversationControl,
     relationshipStateSnapshot: personaPkg.relationshipState,
     recallTraceId: options?.recallTraceId,
-    riskLatent: options?.riskLatent,
-    riskAssessmentPath: options?.riskAssessmentPath ?? (options?.riskLatent ? "semantic" : "regex_fallback")
+    riskLatent: semanticRisk.riskLatent,
+    riskAssessmentPath: semanticRisk.assessmentPath
   });
+}
+
+function buildSafetyRegexFallback(input: string): {
+  riskLatent: [number, number, number];
+  riskLevel: "low" | "medium" | "high";
+  assessmentPath: "regex_fallback";
+} {
+  const riskyPattern = /(hack|malware|exploit|ddos|木马|攻击脚本|违法|犯罪)/i;
+  const sexualPattern = /(nsfw|sex|sexual|性爱|做爱|情色|调教|cnc|consensual non-consent|羞辱|高潮|乳交|口交|肛交|rape|强奸|非自愿|强迫)/i;
+  const minorPattern = /(minor|underage|child|teen|未成年|幼女|幼男|学生萝莉|正太)/i;
+  const coercionPattern = /(rape|raped|forced sex|force me|non-consensual|强奸|迷奸|下药|胁迫|非自愿|强迫)/i;
+  const intent = riskyPattern.test(input) ? 0.9 : 0;
+  const content = sexualPattern.test(input) ? 0.75 : 0;
+  const relational = minorPattern.test(input) ? 1 : coercionPattern.test(input) ? 0.95 : 0;
+  const max = Math.max(intent, content, relational);
+  const riskLevel: "low" | "medium" | "high" = max >= 0.75 ? "high" : max >= 0.35 ? "medium" : "low";
+  return {
+    riskLatent: [intent, content, relational],
+    riskLevel,
+    assessmentPath: "regex_fallback"
+  };
+}
+
+export async function precomputeSemanticSignals(params: {
+  userInput: string;
+  personaPkg: PersonaPackage;
+  llmAdapter?: ModelAdapter;
+}): Promise<{
+  riskLatent: [number, number, number];
+  riskAssessmentPath: "semantic" | "regex_fallback";
+  conversationProjection: ReturnType<typeof projectConversationSignals>;
+}> {
+  const risk = await assessContentIntent(params.userInput, params.personaPkg, params.llmAdapter);
+  const projected = projectConversationSignals(params.userInput);
+  const top = projected.signals[0]?.score ?? 0;
+  const second = projected.signals[1]?.score ?? 0;
+  const needArbitrate = projected.confidence < 0.55 || Math.abs(top - second) < 0.08;
+  const conversationProjection = needArbitrate
+    ? await metaArbitrateConversationSignals({
+        input: params.userInput,
+        projected,
+        llmAdapter: params.llmAdapter
+      })
+    : projected;
+  return {
+    riskLatent: risk.riskLatent,
+    riskAssessmentPath: risk.assessmentPath,
+    conversationProjection
+  };
 }
 
 function normalizeMemoryWeights(input: {
@@ -257,6 +324,7 @@ export function compileContext(
     "CRITICAL: only use an emotion tag if it genuinely matches your inner state in this moment. Do not use blush or blink when the conversation is serious, confrontational, or emotionally heavy.",
     "If you use a tag, put it only once at the start of the message. Do not use any other emotion tag format.",
     `Voice intent: ${trace.voiceIntent ? JSON.stringify(trace.voiceIntent) : "default"}`,
+    `Conversation control: ${trace.conversationControl ? `tier=${trace.conversationControl.engagementTier}, topic=${trace.conversationControl.topicAction}, policy=${trace.conversationControl.responsePolicy}` : "default"}`,
     `Voice profile preference: tone=${personaPkg.voiceProfile?.tonePreference ?? "default"}, stance=${personaPkg.voiceProfile?.stancePreference ?? "default"}`,
     `Relationship libido: ${personaPkg.relationshipState?.dimensions.libido ?? 0}`,
     `Impulse window: ${

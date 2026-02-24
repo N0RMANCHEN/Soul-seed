@@ -1,4 +1,4 @@
-import { decide } from "./orchestrator.js";
+import { decide, precomputeSemanticSignals } from "./orchestrator.js";
 import { runAgentExecution, type AgentToolExecutor } from "./agent_engine.js";
 import { DECISION_TRACE_SCHEMA_VERSION, normalizeDecisionTrace } from "./decision_trace.js";
 import { decideDualProcessRoute } from "./dual_process_router.js";
@@ -60,13 +60,21 @@ export async function executeTurnProtocol(params: {
     routeReasonCodes: routeDecision.reasonCodes,
     // EA-0: Soul always runs first; agentRequest is set on the trace to signal whether agent is needed
     runSoul: async () => {
+      const semantic = await precomputeSemanticSignals({
+        userInput: params.userInput,
+        personaPkg: params.personaPkg,
+        llmAdapter: params.plannerAdapter
+      });
       const trace = decide(params.personaPkg, params.userInput, params.model, {
         lifeEvents: params.lifeEvents,
         memoryWeights: params.memoryWeights,
         recalledMemories: params.recalledMemories,
         recalledMemoryBlocks: params.recalledMemoryBlocks,
         recallTraceId: params.recallTraceId,
-        safetyContext: params.safetyContext
+        safetyContext: params.safetyContext,
+        riskLatent: semantic.riskLatent,
+        riskAssessmentPath: semantic.riskAssessmentPath,
+        conversationProjection: semantic.conversationProjection
       });
       trace.executionMode = shouldUseAgent ? "agent" : "soul";
       // EA-0: Populate agentRequest so pipeline knows whether to invoke agent

@@ -162,6 +162,38 @@ function normalizeVoiceIntent(value: unknown): DecisionTrace["voiceIntent"] {
   };
 }
 
+function normalizeConversationControl(value: unknown): DecisionTrace["conversationControl"] {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const engagementTier = value.engagementTier;
+  const topicAction = value.topicAction;
+  const responsePolicy = value.responsePolicy;
+  const validTier =
+    engagementTier === "IGNORE" ||
+    engagementTier === "REACT" ||
+    engagementTier === "LIGHT" ||
+    engagementTier === "NORMAL" ||
+    engagementTier === "DEEP";
+  const validTopicAction = topicAction === "maintain" || topicAction === "clarify" || topicAction === "switch";
+  const validResponsePolicy =
+    responsePolicy === "safety_refusal" ||
+    responsePolicy === "minimal_ack" ||
+    responsePolicy === "reactive_brief" ||
+    responsePolicy === "light_response" ||
+    responsePolicy === "normal_response" ||
+    responsePolicy === "deep_response";
+  if (!validTier || !validTopicAction || !validResponsePolicy) {
+    return undefined;
+  }
+  return {
+    engagementTier,
+    topicAction,
+    responsePolicy,
+    reasonCodes: normalizeStringArray(value.reasonCodes, 16)
+  };
+}
+
 function normalizeExecutionMode(value: unknown): DecisionTrace["executionMode"] {
   return value === "agent" || value === "soul" ? value : undefined;
 }
@@ -223,6 +255,7 @@ export function normalizeDecisionTrace(input: unknown): DecisionTrace {
     retrievalBreakdown: normalizeRetrievalBreakdown(input.retrievalBreakdown),
     memoryWeights: normalizeMemoryWeights(input.memoryWeights),
     voiceIntent: normalizeVoiceIntent(input.voiceIntent),
+    conversationControl: normalizeConversationControl(input.conversationControl),
     relationshipStateSnapshot: isRecord(input.relationshipStateSnapshot)
       ? (input.relationshipStateSnapshot as unknown as DecisionTrace["relationshipStateSnapshot"])
       : undefined,

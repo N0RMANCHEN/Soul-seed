@@ -35,6 +35,8 @@ export * from "./recall_navigation_intent.js";
 export * from "./pronoun_role_guard.js";
 export * from "./factual_grounding_guard.js";
 export * from "./conversation_metrics.js";
+export * from "./conversation_control.js";
+export * from "./semantic_projection.js";
 export * from "./constitution_rules.js";
 export * from "./deepseek.js";
 export * from "./self_revision.js";

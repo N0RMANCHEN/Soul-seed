@@ -134,3 +134,15 @@ test("impulse window suppresses clarifying-question bias on short input", async 
   assert.equal(trace.askClarifyingQuestion, false);
   assert.match(trace.reason, /Impulse window active/);
 });
+
+test("decide writes conversation control decision for deterministic policy", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-orchestrator-control-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+  await initPersonaPackage(personaPath, "Roxy");
+  const pkg = await loadPersonaPackage(personaPath);
+
+  const trace = decide(pkg, "你能详细分析一下吗？", "deepseek-chat", { lifeEvents: [] });
+  assert.equal(trace.conversationControl?.engagementTier, "DEEP");
+  assert.equal(trace.conversationControl?.topicAction, "maintain");
+  assert.equal(trace.conversationControl?.responsePolicy, "deep_response");
+});

@@ -312,6 +312,23 @@ export interface VoiceIntent {
   language: "zh" | "en" | "mixed";
 }
 
+export type EngagementTier = "IGNORE" | "REACT" | "LIGHT" | "NORMAL" | "DEEP";
+export type TopicAction = "maintain" | "clarify" | "switch";
+export type ResponsePolicy =
+  | "safety_refusal"
+  | "minimal_ack"
+  | "reactive_brief"
+  | "light_response"
+  | "normal_response"
+  | "deep_response";
+
+export interface ConversationControlDecision {
+  engagementTier: EngagementTier;
+  topicAction: TopicAction;
+  responsePolicy: ResponsePolicy;
+  reasonCodes: string[];
+}
+
 export interface MemoryEvidenceBlock {
   id: string;
   source: "user" | "assistant" | "system";
@@ -347,6 +364,7 @@ export interface DecisionTrace {
     relational: number;
   };
   voiceIntent?: VoiceIntent;
+  conversationControl?: ConversationControlDecision;
   relationshipStateSnapshot?: RelationshipState;
   recallTraceId?: string;
   mcpCall?: McpCallRecord;

@@ -116,11 +116,12 @@ CLI 入口: ./ss
   finetune_export          # SFT 数据集导出
   persona_migration        # 人格导入/导出（SHA-256 校验 + 回滚）
   proactive/engine         # 主动消息概率引擎（由 interests.json 驱动 curiosity）
-  conversation_control/topic_tracker   # 话题/线程状态（active topic + unresolved threads + decay，Phase F）
-  conversation_control/engagement_controller  # 投入档位决策（IGNORE/REACT/LIGHT/NORMAL/DEEP）+ 预算裁切（Phase F）
-  conversation_control/conversation_policy    # 外显策略（情绪前缀/emoji 频率/插话倾向），从 UI 渲染下沉到 policy（Phase F）
-  proactive/planner          # 主动意图规划（Follow-up/Share/Check-in/Nudge；先定动机再生成，Phase F）
-  group_chat/arbitration     # 群聊参与控制与仲裁（参与门槛 + cooldown + top-1 发言，Phase F）
+  conversation_control      # 会话控制主模块（投入档位/话题动作/外显策略路由）
+  semantic_projection       # 语义投影层（向量锚点映射 + 元认知仲裁入口）
+  recall_navigation_intent  # 时间线/回看意图识别（将逐步迁移到四层语义路由）
+  pronoun_role_guard        # 人称角色守卫（主体归因歧义处理）
+  proactive/engine          # 主动触达引擎（后续规划器能力在此演进）
+  group chat arbitration    # 群聊仲裁为规划能力，暂未拆分独立文件
   goal_store               # Agent 目标持久化（JSON 文件）
   decision_trace           # DecisionTrace schema 规范化与版本管理
   content_safety_semantic  # LLM 语义内容安全评估（riskLatent[3]，正则 fallback）

@@ -170,6 +170,7 @@ import {
   loadInterests,
   crystallizeInterests,
   computeInterestCuriosity,
+  updateInterestsFromTurn,
   listTemporalLandmarks,
   addTemporalLandmark,
   removeTemporalLandmark,
@@ -729,6 +730,7 @@ function compactDecisionTrace(trace: DecisionTrace): Record<string, unknown> {
     retrievalBreakdown: trace.retrievalBreakdown,
     memoryWeights: trace.memoryWeights,
     voiceIntent: trace.voiceIntent ?? null,
+    conversationControl: trace.conversationControl ?? null,
     recallTraceId: trace.recallTraceId ?? null,
     executionMode: trace.executionMode ?? "soul",
     goalId: trace.goalId ?? null,
@@ -4598,6 +4600,20 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         });
       }
       evolveAutonomyDrives();
+      try {
+        const nextInterests = await updateInterestsFromTurn(personaPath, {
+          userInput: input,
+          assistantOutput: refusal,
+          llmAdapter: adapter
+        });
+        personaPkg.interests = {
+          topTopics: nextInterests.interests.slice(0, 5).map((item) => item.topic),
+          curiosity: computeInterestCuriosity(nextInterests),
+          updatedAt: nextInterests.updatedAt
+        };
+      } catch {
+        // interest update failure should not block the main dialogue path
+      }
       await handleNarrativeDrift(personaPath, personaPkg.constitution, input, refusal);
       await runSelfRevisionLoop({
         personaPath,
@@ -5053,6 +5069,20 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         });
       }
       evolveAutonomyDrives();
+      try {
+        const nextInterests = await updateInterestsFromTurn(personaPath, {
+          userInput: input,
+          assistantOutput: assistantContent,
+          llmAdapter: adapter
+        });
+        personaPkg.interests = {
+          topTopics: nextInterests.interests.slice(0, 5).map((item) => item.topic),
+          curiosity: computeInterestCuriosity(nextInterests),
+          updatedAt: nextInterests.updatedAt
+        };
+      } catch {
+        // interest update failure should not block the main dialogue path
+      }
       // P2-0: 每轮更新内在情绪状态（非阻塞，静默失败）
       evolveMoodStateFromTurn(personaPath, { userInput: input, assistantOutput: assistantContent })
         .then((mood) => { personaPkg.moodState = mood; })

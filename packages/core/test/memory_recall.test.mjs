@@ -301,3 +301,50 @@ test("recall query cache records miss and hit", async () => {
   assert.equal(stats.hits >= 1, true);
   assert.equal(stats.entries >= 1, true);
 });
+
+test("subjective emphasis channel prioritizes explicit remember memory in recall", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-memory-recall-emphasis-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+  const dbPath = path.join(personaPath, "memory.db");
+
+  await initPersonaPackage(personaPath, "Roxy");
+  await appendLifeEvent(personaPath, {
+    type: "user_message",
+    payload: {
+      text: "请务必记住：我的暗号是星海。"
+    }
+  });
+  await appendLifeEvent(personaPath, {
+    type: "user_message",
+    payload: {
+      text: "普通记录：暗号可能是微风。",
+      memoryMeta: {
+        tier: "pattern",
+        storageCost: 1,
+        retrievalCost: 1,
+        source: "chat",
+        salienceScore: 0.95,
+        state: "hot"
+      }
+    }
+  });
+
+  const result = await recallMemoriesWithTrace(personaPath, "你记得我的暗号吗？", {
+    budget: { injectMax: 1, injectCharMax: 120 }
+  });
+  assert.equal(result.memories.length, 1);
+  assert.equal(result.memories[0].includes("星海"), true);
+
+  const scoresRaw = sqlite(
+    dbPath,
+    `SELECT scores_json FROM recall_traces WHERE id='${result.traceId}';`
+  );
+  const scores = JSON.parse(scoresRaw);
+  const emphasizedId = sqlite(
+    dbPath,
+    "SELECT id FROM memories WHERE content LIKE '%星海%' ORDER BY created_at DESC LIMIT 1;"
+  );
+  const emphasized = scores.find((item) => item.id === emphasizedId);
+  assert.equal(typeof emphasized?.scoreBreakdown?.emphasisBoost, "number");
+  assert.equal((emphasized?.scoreBreakdown?.emphasisBoost ?? 0) > 0, true);
+});

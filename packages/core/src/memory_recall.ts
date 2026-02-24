@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { searchMemoryVectors } from "./memory_embeddings.js";
 import { classifyMemoryState, scoreMemoryFromStoreRow } from "./memory_lifecycle.js";
 import { ensureMemoryStore, runMemoryStoreSql } from "./memory_store.js";
+import { projectSubjectiveEmphasis } from "./semantic_projection.js";
 import type { MemoryEvidenceBlock } from "./types.js";
 
 export interface RecallBudget {
@@ -25,6 +26,7 @@ export interface RecallTraceItem {
     stateBoost: number;
     keywordScore: number;
     keywordHardBoost: number;
+    emphasisBoost?: number;
     recency: number;
     credibility: number;
     ftsScore: number;
@@ -154,6 +156,7 @@ const TYPE_HALF_LIFE_DAYS: Record<string, number> = {
   relational: 45,
   semantic: 60
 };
+
 
 interface ScoredCandidate {
   row: MemoryRow;
@@ -915,6 +918,7 @@ function scoreRow(
       : 0;
   const ftsScore = keywords.length === 0 ? 0 : keywordScore;
   const vectorScore = clamp01((candidate.vectorScore + 1) / 2);
+  const emphasisBoost = subjectiveEmphasisBoost(row, intents, keywordHits);
   const queryMissPenalty = keywords.length > 0 && keywordHits === 0 ? 0.2 : 0;
   const recency = recencyScore(row.updatedAt);
   const originMultiplier = row.originRole === "assistant" ? 0.88 : row.originRole === "user" ? 1 : 0.92;
@@ -943,6 +947,7 @@ function scoreRow(
       ftsScore * 0.18 +
       vectorScore * 0.18 +
       keywordHardBoost +
+      emphasisBoost +
       recency * 0.05 +
       row.credibilityScore * 0.2
   );
@@ -960,6 +965,7 @@ function scoreRow(
       stateBoost: roundScore(stateBoost),
       keywordScore: roundScore(keywordScore),
       keywordHardBoost: roundScore(keywordHardBoost),
+      emphasisBoost: roundScore(emphasisBoost),
       recency: roundScore(recency),
       credibility: roundScore(row.credibilityScore),
       ftsScore: roundScore(ftsScore),
@@ -971,6 +977,25 @@ function scoreRow(
       queryMissPenalty: roundScore(queryMissPenalty)
     }
   };
+}
+
+function subjectiveEmphasisBoost(row: MemoryRow, intents: string[], keywordHits: number): number {
+  if (row.originRole !== "user") {
+    return 0;
+  }
+  const explicitEmphasis = projectSubjectiveEmphasis(row.content) >= 0.62;
+  const strongIdentityLikeIntent = intents.includes("identity") || intents.includes("preference");
+  const highSignalState = row.salience >= 0.88 && row.activationCount >= 3;
+  if (explicitEmphasis && keywordHits > 0) {
+    return 0.16;
+  }
+  if (explicitEmphasis) {
+    return 0.1;
+  }
+  if (strongIdentityLikeIntent && highSignalState && keywordHits > 0) {
+    return 0.08;
+  }
+  return 0;
 }
 
 function applyInterferencePenalty(

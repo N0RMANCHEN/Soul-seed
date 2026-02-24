@@ -9,6 +9,8 @@ import {
   loadInterests,
   crystallizeInterests,
   computeInterestCuriosity,
+  evolveInterestsFromTurn,
+  allocateAttentionFromInterests,
   isInterestsValid,
   createInitialInterests
 } from "../dist/index.js";
@@ -58,4 +60,31 @@ test("P3-0: computeInterestCuriosity computes non-zero for recent interests", ()
   const curiosity = computeInterestCuriosity(data);
   assert.ok(curiosity > 0, "curiosity should be non-zero for recent interests");
   assert.ok(curiosity <= 1, "curiosity should be <= 1");
+});
+
+test("G/P0-1: evolveInterestsFromTurn applies deterministic reward and decay", () => {
+  const now = "2026-02-24T12:00:00.000Z";
+  const before = {
+    interests: [{ topic: "音乐", weight: 0.5, lastActivatedAt: "2026-02-20T00:00:00.000Z" }],
+    updatedAt: "2026-02-20T00:00:00.000Z"
+  };
+  const next = evolveInterestsFromTurn(before, {
+    userInput: "你可以详细聊聊音乐和编程吗？",
+    assistantOutput: "可以，我们从音乐开始。",
+    nowIso: now
+  });
+  assert.equal(next.updatedAt, now);
+  assert.ok((next.interests.find((x) => x.topic === "音乐")?.weight ?? 0) > 0.5);
+});
+
+test("G/P0-1: allocateAttentionFromInterests returns attention score for matched topics", () => {
+  const allocation = allocateAttentionFromInterests("今天继续聊音乐和宇宙", {
+    interests: [
+      { topic: "音乐", weight: 0.8, lastActivatedAt: new Date().toISOString() },
+      { topic: "宇宙", weight: 0.6, lastActivatedAt: new Date().toISOString() }
+    ]
+  });
+  assert.ok(allocation.attentionScore > 0);
+  assert.ok(allocation.matchedTopics.length > 0);
+  assert.ok(allocation.matchedTopics.some((topic) => topic === "音乐" || topic === "宇宙"));
 });

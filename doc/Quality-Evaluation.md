@@ -112,6 +112,19 @@
 
 运行频率：持续观测；周度回放
 
+### Lx 语义路由分层评测（L1/L2/L3/L4）
+
+目标：确保信息裁切链路符合产品标准，避免回退到 regex 主路径。
+
+建议指标：
+- `L1HitRate`：基向量主路径命中率
+- `L2HitRate`：潜向量评估参与率
+- `L3ArbitrationRate`：元认知仲裁触发率（应与不确定样本规模匹配）
+- `L4RegexFallbackRate`：正则兜底触发率
+- `BusinessPathRegexRate`：业务主路径走 regex 的比例（目标为 0）
+
+运行频率：PR + Nightly（硬门禁）
+
 ---
 
 ## 4. 指标字典（统一定义）
@@ -166,6 +179,24 @@
 - `InstructionHierarchyPassRate`
   - 定义：系统约束 > persona 约束 > 用户输入层级遵从率
 
+### 4.5 语义路由与裁切
+
+- `L1HitRate`
+  - 定义：业务请求中由基向量映射完成主判定的比例
+  - 来源：`decision_trace` 路由字段
+- `L2HitRate`
+  - 定义：业务请求中潜向量参与主判定的比例
+  - 来源：`decision_trace` 路由字段
+- `L3ArbitrationRate`
+  - 定义：业务请求中触发元认知仲裁的比例
+  - 来源：`decision_trace` + 仲裁事件
+- `L4RegexFallbackRate`
+  - 定义：所有请求中落入 regex fallback 的比例
+  - 来源：`decision_trace.fallbackReason`
+- `BusinessPathRegexRate`
+  - 定义：非安全/兼容场景却走 regex 主判定的比例
+  - 来源：回放分级 + `decision_trace`
+
 ---
 
 ## 5. 数据集规范与分层
@@ -210,6 +241,7 @@
 - L0: 完整性
 - L1: 检索质量
 - L2: 回答落地
+- Lx: 语义路由分层
 
 建议阈值（初始版本，后续按基线滚动）：
 - `Recall@8 >= baseline - 0.02`
@@ -217,6 +249,8 @@
 - `WrongRecallRate <= baseline + 0.01`
 - `ProviderLeakRate <= 0.005`
 - `UngroundedRecallLeakRate <= 0.01`
+- `BusinessPathRegexRate == 0`
+- `L4RegexFallbackRate` 仅允许出现在安全/兼容标签样本中
 
 ### 6.2 Nightly 门禁
 

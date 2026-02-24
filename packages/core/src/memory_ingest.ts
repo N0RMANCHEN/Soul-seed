@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ensureMemoryStore, runMemoryStoreSql } from "./memory_store.js";
+import { projectSubjectiveEmphasis } from "./semantic_projection.js";
 import type { LifeEvent } from "./types.js";
 
 export type MemoryType = "episodic" | "semantic" | "relational" | "procedural";
@@ -87,10 +88,18 @@ function extractMemoryCandidates(event: LifeEvent): MemoryCandidate[] {
     return [];
   }
   const meta = event.payload.memoryMeta;
-  const salience = normalizeScore(meta?.salienceScore, 0.3);
-  const state = normalizeState(meta?.state);
   const memoryType = classifyMemoryType(event, text);
   const originRole = classifyOriginRole(event.type);
+  const emphasisDetected = detectUserEmphasis({
+    eventType: event.type,
+    text,
+    tier: meta?.tier
+  });
+  const salienceBase = normalizeScore(meta?.salienceScore, emphasisDetected ? 0.88 : 0.3);
+  const salience = emphasisDetected ? Math.max(0.9, salienceBase) : salienceBase;
+  const state = emphasisDetected ? "hot" : normalizeState(meta?.state);
+  const activationBase = normalizeInteger(meta?.activationCount, 1);
+  const activationCount = emphasisDetected ? Math.max(3, activationBase) : activationBase;
   const defaultCredibility = originRole === "assistant" ? 0.6 : 1;
   const credibilityScore = normalizeScore(meta?.credibilityScore, defaultCredibility);
   const excludedFromRecall = meta?.excludedFromRecall === true;
@@ -107,14 +116,30 @@ function extractMemoryCandidates(event: LifeEvent): MemoryCandidate[] {
       state,
       originRole,
       evidenceLevel,
-      activationCount: normalizeInteger(meta?.activationCount, 1),
+      activationCount,
       lastActivatedAt: normalizeIso(meta?.lastActivatedAt, event.ts),
       emotionScore: normalizeScore(meta?.emotionScore, 0.2),
-      narrativeScore: normalizeScore(meta?.narrativeScore, 0.2),
+      narrativeScore: emphasisDetected
+        ? Math.max(0.75, normalizeScore(meta?.narrativeScore, 0.2))
+        : normalizeScore(meta?.narrativeScore, 0.2),
       credibilityScore,
       excludedFromRecall
     }
   ];
+}
+
+function detectUserEmphasis(input: {
+  eventType: LifeEvent["type"];
+  text: string;
+  tier: unknown;
+}): boolean {
+  if (input.eventType !== "user_message") {
+    return false;
+  }
+  if (input.tier === "highlight") {
+    return true;
+  }
+  return projectSubjectiveEmphasis(input.text) >= 0.62;
 }
 
 function classifyOriginRole(eventType: LifeEvent["type"]): "user" | "assistant" | "system" {

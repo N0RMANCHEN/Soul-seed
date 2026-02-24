@@ -99,3 +99,26 @@ test("ingest persists memory meta signals into memory.db v2 columns", async () =
   );
   assert.equal(row, "7|2026-02-17T00:00:00.000Z|0.6|0.7|0.9|1");
 });
+
+test("ingest reinforces user emphasis into high-priority memory channel", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-memory-ingest-emphasis-"));
+  const personaPath = path.join(tmpDir, "Aster.soulseedpersona");
+  const dbPath = path.join(personaPath, "memory.db");
+
+  await initPersonaPackage(personaPath, "Aster");
+  await appendLifeEvent(personaPath, {
+    type: "user_message",
+    payload: {
+      text: "请务必记住：我对青霜过敏，这个非常重要。"
+    }
+  });
+
+  const row = sqlite(
+    dbPath,
+    "SELECT state || '|' || activation_count || '|' || printf('%.2f', salience) FROM memories ORDER BY created_at DESC LIMIT 1;"
+  );
+  const [state, activationCount, salience] = row.split("|");
+  assert.equal(state, "hot");
+  assert.equal(Number(activationCount) >= 3, true);
+  assert.equal(Number(salience) >= 0.9, true);
+});
