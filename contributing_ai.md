@@ -35,10 +35,12 @@
 
 1. `AGENT.md`
 2. `contributing_ai.md`
-3. `README.md`
-4. `doc/CLI.md`（若涉及 CLI 命令）
-5. 若在排查构建：先看 `./scripts/verify.sh` 与 CI 日志
 
+3. `Soulseed-MindModel-StateLayer-Optimization.md`（MindModel/StateLayer 总体设计与演进）
+4. `Soulseed-MindModel-StateLayer-Genome-ConversationControl-Optimized-v0.4.md`（Genome/兼容/会话控制面总规范）
+5. `README.md`
+6. `doc/CLI.md`（若涉及 CLI 命令）
+7. 若在排查构建：先看 `./scripts/verify.sh` 与 CI 日志
 ---
 
 ## 3. Non-negotiables（铁律）
@@ -80,6 +82,21 @@ trace/日志禁止输出绝对路径与用户长段原文（可摘要/哈希/计
 - 注入优先级必须稳定：Profile > Pinned > WorkingSet > 检索片段 > Few-shot。
 - 变更 Orchestrator/记忆/存储时必须评估连续性影响并补回归用例。
 - `DecisionTrace` schema 一旦发布必须向后兼容或提供迁移（它是回放与回归的基石）。
+
+
+### 3.7a 向后兼容与“行为不换人”（Backward Compatibility Contract）
+
+> 你提到的关键点：**现有的人格已经长期使用，植入 Genome / 会话控制面后不能错乱**。这条原则必须写进仓库铁律。
+
+**强制要求**：
+- **Behavior Parity by Default**：对已存在的 persona，默认启用 `compatMode="legacy"`（或等价开关），保证输出风格/主动打扰频率/表情使用等 **不发生突变**。
+- **seed-from-existing**：当引入新文件/新层（`genome.json` / `epigenetics.json` / `conversation_policy.json` / `topic_state.json` 等）时：
+  - 如果旧系统已有相关参数（哪怕是散落在 `habits.json` / `cognition_state.json` / 旧版 config 里），**必须把旧值当作初始值**；
+  - 若旧系统没有该参数 → 用“保守默认值”生成（不要让人格更外向、更热情、更爱表情）。
+- **迁移必须可回滚、可幂等**：迁移脚本重复跑不会再次改写；回滚点写入 `migration-backups/` 并记录 event（scar/migration）。
+- **禁止 silent semantic drift**：任何“更像人/更克制”的改动都要能被验证：
+  - 通过 DecisionTrace 或 replay fixture 证明：投入档位/emoji policy/主动插话选择是由信号与预算驱动，而不是 prompt 文案；
+  - 增加至少 1 组 legacy persona fixture 覆盖旧 schemaVersion（缺文件/旧字段/旧默认值）。
 
 ### 3.8 安全默认：ToolBus deny-by-default
 
@@ -126,6 +143,19 @@ trace/日志禁止输出绝对路径与用户长段原文（可摘要/哈希/计
 - 若实现 hash 链：必须增加"断链检测"用例（fixture + test）。
 - 增加/变更 schema 必须有 `schemaVersion` 与迁移策略，并提供迁移测试或 fixture。
 - 修改 `memory.db` 结构：必须增加 schema version 校验与升级路径。
+
+
+### 5.3a Compatibility regression（兼容性回归必须）
+
+当你引入 Genome / 会话控制面 / 兴趣-注意力链路时，必须额外完成：
+
+- **旧 persona 目录健康加载**：使用至少 1 份旧版本 persona fixture（缺少新文件/旧 schemaVersion）跑 `./ss doctor`，结果应为 PASS 或仅提示“可选迁移”（不得崩溃）。
+- **迁移幂等**：对同一 persona 连续跑两次迁移脚本（如 `./scripts/migrate_schema.mjs` 或 CLI 的 migrate 命令），第二次不得再改写任何文件内容（可对比 hash 或 mtime/内容）。
+- **行为基线不突变**：在 compatMode=legacy 下跑 3 条固定输入（fixture），至少保证：
+  1) 不会突然开始大量 emoji
+  2) 不会把每条消息都当任务长答
+  3) 主动打扰不会频率飙升
+  > 注：允许“内部 state 更新更细”，但外显行为必须稳定
 
 ### 5.4 Orchestrator / DecisionTrace changes（改动决策闭环必须）
 
@@ -210,6 +240,13 @@ trace/日志禁止输出绝对路径与用户长段原文（可摘要/哈希/计
 | 内在情绪状态 | `packages/core/src/mood_state.ts` |
 | 自传体叙事 | `packages/core/src/autobiography.ts` |
 | 兴趣分布（内在驱动） | `packages/core/src/interests.ts` |
+| 会话投入档位控制（Phase F） | `packages/core/src/conversation_control/engagement_controller.ts` |
+| 话题/线程追踪（Phase F） | `packages/core/src/conversation_control/topic_tracker.ts` |
+| 会话外显策略（Phase F） | `packages/core/src/conversation_control/conversation_policy.ts` |
+| 主动意图规划（Phase F） | `packages/core/src/proactive/planner.ts` |
+| 群聊仲裁（Phase F） | `packages/core/src/group_chat/arbitration.ts` |
+| Genome/天赋（Phase F） | `packages/core/src/genome.ts` |
+| Epigenetics/表观学习（Phase F） | `packages/core/src/epigenetics.ts` |
 | 周期自我反思 | `packages/core/src/self_reflection.ts` |
 | 内容安全语义评估 | `packages/core/src/content_safety_semantic.ts` |
 | Agent 记忆提案协议 | `packages/core/src/agent_memory_proposal.ts` |
