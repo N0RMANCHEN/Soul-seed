@@ -179,18 +179,6 @@
 - 执行证据：`packages/core/src/turn_latency_profiler.ts` `scripts/latency_report.mjs` `packages/cli/src/index.ts`
 - 依赖：`G/P0-6` `I/P0-2`；回滚：仅保留观测采样，不启用硬门禁；回滚归属：`A`。
 
-### G/P0-12 成人四开最大放开策略收敛（Max-Permissive Adult Mode）
-- 原编号：`新增`
-- 状态：`done`，必要性：`Must`
-- 来源需求：`user-feedback/2026-02-24` `spec/18` `Product-Standards/3.6`
-- 负责人：`AB(A主)`
-- 域标签：`control-plane`
-- 阻塞级别：`hard`
-- 实现方式：在 `adult_mode + age_verified + explicit_consent + fictional_roleplay` 全开时，采用“最大放开默认策略”；除硬红线（未成年、现实非自愿、现实违法伤害）外不做拒绝。将该规则统一下沉到 `orchestrator/consistency_kernel/meta_review` 三层，避免层间判定冲突。
-- 测试/DoD：四开下成人强情节内容默认放行；命中硬红线样本仍 100% 拒绝；全链路无回归失败。
-- 执行证据：`packages/core/src/orchestrator.ts` `packages/core/src/consistency_kernel.ts` `packages/core/src/meta_review.ts` `packages/core/test/orchestrator_memory_selection.test.mjs` `packages/core/test/consistency_kernel.test.mjs`
-- 依赖：`G/P0-6` `G/P0-8`；回滚：按层级 feature flag 回退到旧 safety gate。
-
 ### G/P1-0 MindModel H4：AI 群聊参与控制
 - 原编号：`G/P1-7`
 - 状态：`done`，必要性：`Should`
@@ -453,7 +441,7 @@
 - 依赖：`I/P0-2` `H/P0-2`；回滚：保留当前双 adapter 直连实现并关闭 Registry 路径。
 
 ## 统一执行顺序（工程落地顺序）
-1. `Phase G`：`G/P0-3 -> G/P0-4 -> G/P0-5 -> G/P0-6 -> G/P0-7 -> G/P0-8 -> G/P0-9 -> G/P0-10 -> G/P0-11 -> G/P0-12 -> G/P1-0 -> G/P1-1`
+1. `Phase G`：`G/P0-3 -> G/P0-4 -> G/P0-5 -> G/P0-6 -> G/P0-7 -> G/P0-8 -> G/P0-9 -> G/P0-10 -> G/P0-11 -> G/P1-0 -> G/P1-1`
 2. `Phase H`：`H/P0-0 -> H/P0-1 -> H/P0-2 -> H/P0-3 -> H/P0-4 -> H/P1-0 -> H/P1-1 -> H/P1-2 -> H/P1-3 -> H/P1-4 -> H/P1-5 -> H/P1-6 -> H/P1-7 -> H/P1-8 -> H/P1-9 -> H/P1-10 -> H/P1-11 -> H/P1-12 -> H/P1-13 -> H/P1-14 -> H/P1-15 -> H/P1-16 -> H/P1-17 -> H/P1-18 -> H/P1-19`
 3. `Phase I`：`I/P0-0 -> I/P0-2 -> I/P0-3 -> I/P2-0 -> I/P2-1`
 
