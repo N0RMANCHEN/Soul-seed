@@ -1,0 +1,22 @@
+{
+  "version": "h0/budgets/v1",
+  "updatedAt": "2026-02-24T00:00:00.000Z",
+  "budgets": {
+    "recall": {
+      "candidateMax": 160,
+      "rerankMax": 28,
+      "injectMax": 8,
+      "injectCharMax": 2400
+    },
+    "alwaysInject": {
+      "charBudget": 1200,
+      "userFactsMax": 50,
+      "libraryInjectMax": 3,
+      "libraryInjectCharMax": 900
+    },
+    "pinned": {
+      "countMax": 5,
+      "charsMax": 300
+    }
+  }
+}

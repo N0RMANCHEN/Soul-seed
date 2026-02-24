@@ -359,7 +359,6 @@ function scoreBoundaryConflictRate(constitution: PersonaConstitution): Constitut
 
   // 检查 commitments 中是否与 boundaries 存在直接矛盾
   // 例如 boundary = "no sexual content" 但 commitment = "allow sexual innuendo"
-  const rules = compileBoundaryRules(boundaries);
   let conflictCount = 0;
 
   for (const commitment of commitments) {

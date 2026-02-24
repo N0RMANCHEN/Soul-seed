@@ -72,3 +72,7 @@ export * from "./latent_cross_influence.js";
 export * from "./routing_adaptation.js";
 export * from "./memory_rotation.js";
 export * from "./persona_write_lock.js";
+export * from "./memory_store_driver.js";
+export * from "./persona_lint.js";
+export * from "./persona_compile.js";
+export * from "./persona_library.js";

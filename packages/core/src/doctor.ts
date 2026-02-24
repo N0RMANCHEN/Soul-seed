@@ -10,7 +10,7 @@ import { isMoodStateValid, isMoodLatentValid, MOOD_STATE_FILENAME, MOOD_LATENT_D
 import { isRelationshipLatentValid, RELATIONSHIP_LATENT_DIM, createRelationshipLatentBaseline } from "./relationship_state.js";
 import { isVoiceLatentValid, isBeliefLatentValid, VOICE_LATENT_DIM, BELIEF_LATENT_DIM, createVoiceLatentBaseline, createBeliefLatentBaseline } from "./expression_belief_state.js";
 import { inspectBoundaryRules } from "./constitution_rules.js";
-import { loadSocialGraph, validateSocialGraph, MAX_SOCIAL_PERSONS } from "./social_graph.js";
+import { loadSocialGraph, validateSocialGraph } from "./social_graph.js";
 import { MAX_USER_FACTS } from "./memory_user_facts.js";
 import { checkCrystallizationFileSizes } from "./constitution_crystallization.js";
 import { PERSONA_SCHEMA_VERSION, MAX_PINNED_COUNT, MAX_PINNED_CHARS } from "./types.js";

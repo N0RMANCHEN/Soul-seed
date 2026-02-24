@@ -374,16 +374,6 @@ export function summarizeAppliedRevision(proposal: SelfRevisionProposal): string
   return `${proposal.domain}: ${parts.join(", ")}`;
 }
 
-function keywordScore(text: string, keywords: string[]): number {
-  let hits = 0;
-  for (const keyword of keywords) {
-    if (text.includes(keyword.toLowerCase())) {
-      hits += 1;
-    }
-  }
-  return Math.min(1, hits / Math.max(1, keywords.length / 2));
-}
-
 /** 时间权重版关键字匹配：每个文本块按 weight 贡献命中分 */
 function weightedKeywordScore(
   items: Array<{ text: string; weight: number }>,

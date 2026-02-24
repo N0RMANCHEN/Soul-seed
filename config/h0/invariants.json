@@ -1,0 +1,24 @@
+{
+  "version": "h0/invariants/v1",
+  "updatedAt": "2026-02-24T00:00:00.000Z",
+  "invariants": {
+    "relationship": {
+      "overallRange": [0, 1],
+      "dimensionRange": [0, 1],
+      "libidoRange": [0, 1]
+    },
+    "mood": {
+      "valenceRange": [-1, 1],
+      "arousalRange": [0, 1]
+    },
+    "memory": {
+      "pinnedCountMax": 5,
+      "pinnedCharsMax": 300,
+      "alwaysInjectCharsMax": 1200
+    },
+    "safety": {
+      "llmDirectStateWrite": false,
+      "adultPolicy": "consent_first"
+    }
+  }
+}

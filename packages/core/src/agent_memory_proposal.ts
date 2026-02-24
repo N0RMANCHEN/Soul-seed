@@ -4,7 +4,7 @@
  * 三阶段：proposeMemory → arbitrateMemoryProposals → commitMemory
  */
 import { randomUUID } from "node:crypto";
-import { writeFile, readFile, mkdir } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 

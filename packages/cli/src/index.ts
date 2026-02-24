@@ -123,6 +123,7 @@ import {
   graduateFactsFromMemories,
   extractUserFactsFromTurn,
   compileAlwaysInjectContext,
+  compilePersonaSnapshot,
   formatAlwaysInjectContext,
   loadSocialGraph,
   addSocialPerson,
@@ -132,16 +133,12 @@ import {
   computeBehaviorMetrics,
   saveBehaviorSnapshot,
   detectBehaviorDrift,
-  listBehaviorSnapshots,
   scoreConstitutionQuality,
   explainLastDecision,
   inspectPersonaPackage,
   exportPersonaPackage,
   importPersonaPackage,
-  extractSpiritualLegacy,
-  MAX_REPRODUCTION_COUNT,
   formatModelRoutingConfig,
-  mergeModelRoutingConfig,
   exportFinetuneDataset,
   listGoldenExamples,
   addGoldenExample,
@@ -161,14 +158,12 @@ import {
   evolveMoodStateFromTurn,
   writeMoodState,
   createInitialMoodState,
-  MOOD_STATE_FILENAME,
   loadAutobiography,
   appendAutobiographyChapter,
   updateSelfUnderstanding,
   generateArcSummary,
   loadSelfReflection,
   appendSelfReflectionEntry,
-  shouldTriggerSelfReflection,
   shouldRequestReviewFromReflection,
   extractDriftSignalsFromEvents,
   updatePersonaVoiceOnEvolution,
@@ -191,9 +186,9 @@ import {
   deriveTemporalAnchor,
   enforceTemporalPhraseGuard,
   listLibraryBlocks,
+  lintPersona,
   addLibraryBlock,
   removeLibraryBlock,
-  MAX_PINNED_COUNT,
   MAX_PINNED_CHARS
 } from "@soulseed/core";
 import type {
@@ -443,6 +438,8 @@ function printHelp(): void {
       "  rename --to <new_name> [--persona <path>] [--confirm]",
       "  persona reproduce --name <child_name> [--persona <path>] [--out <path>] [--force-all]",
       "  persona inspect [--persona <path>]",
+      "  persona lint [--persona <path>] [--format text|json] [--strict]",
+      "  persona compile [--persona <path>] [--out <file>] [--strict-lint]",
       "  persona export --out <dir> [--persona <path>]",
       "  persona import --in <src_dir> --out <dest_dir>",
       "  persona model-routing [--show] [--instinct <model>] [--deliberative <model>] [--meta <model>] [--reset] [--persona <path>]",
@@ -1329,6 +1326,45 @@ async function runPersonaInspect(options: Record<string, string | boolean>): Pro
   }
 }
 
+async function runPersonaLint(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const strict = options.strict === true;
+  const format = optionString(options, "format") === "json" ? "json" : "text";
+  const report = await lintPersona(personaPath, { strict });
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(`persona lint: ${report.ok ? "OK" : "FAILED"} (${report.errorCount} errors, ${report.warningCount} warnings)`);
+    for (const issue of report.issues) {
+      const suffix = issue.suggestion ? ` | suggestion: ${issue.suggestion}` : "";
+      console.log(`- [${issue.level}] ${issue.code} @ ${issue.path}: ${issue.message}${suffix}`);
+    }
+  }
+  if (!report.ok) {
+    throw new Error(`persona lint failed with ${report.errorCount} error(s)`);
+  }
+}
+
+async function runPersonaCompile(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const outPath = optionString(options, "out");
+  const strictLint = options["strict-lint"] === true;
+  const { snapshot, outPath: writtenPath } = await compilePersonaSnapshot(personaPath, { outPath, strictLint });
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        outPath: writtenPath,
+        hash: snapshot.hash,
+        schemaVersion: snapshot.schemaVersion,
+        compiledAt: snapshot.compiledAt
+      },
+      null,
+      2
+    )
+  );
+}
+
 async function runPersonaExport(options: Record<string, string | boolean>): Promise<void> {
   const personaPath = resolvePersonaPath(options);
   const outRaw = optionString(options, "out");
@@ -1948,7 +1984,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   });
   if (!chainCheck.ok) {
     const written = chainCheck.scarWritten ? "并已写入 scar 事件" : "scar 事件已存在";
-    console.warn(`[warning] life.log hash 链断裂: ${chainCheck.reason ?? "unknown"}，${written}`);
+    console.log(`系统提示：life.log hash 链断裂（${chainCheck.reason ?? "unknown"}），${written}`);
   }
   let workingSetData = await readWorkingSet(personaPath);
   let memoryWeights = workingSetData.memoryWeights ?? DEFAULT_MEMORY_WEIGHTS;
@@ -1964,7 +2000,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       budgetMs: 1000
     }).catch((error: unknown) => {
       const msg = error instanceof Error ? error.message : String(error);
-      console.warn(`[warning] chat_open consolidation failed: ${msg}`);
+      console.log(`系统提示：启动阶段的记忆整理未完成（${msg}）`);
     });
 
     // 重连时关系状态记忆对齐：离线 > 48h 且有足够 relational 记忆时部分恢复
@@ -1972,11 +2008,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       if (result.reconciled && result.recoveryDelta) {
         const d = result.recoveryDelta;
         const gapH = result.gapMs ? Math.round(result.gapMs / 3600000) : "?";
-        console.log(`[reconcile] 关系状态已修复（离线 ${gapH}h）: intimacy+${d.intimacy.toFixed(4)}, trust+${d.trust.toFixed(4)}`);
+        console.log(`系统提示：关系状态已对齐（离线 ${gapH}h）：intimacy+${d.intimacy.toFixed(4)}, trust+${d.trust.toFixed(4)}`);
       }
     }).catch((error: unknown) => {
       const msg = error instanceof Error ? error.message : String(error);
-      console.warn(`[warning] relationship reconcile failed: ${msg}`);
+      console.log(`系统提示：关系状态对齐未完成（${msg}）`);
     });
   }
 
@@ -2847,7 +2883,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         })
         .catch((error: unknown) => {
           const msg = error instanceof Error ? error.message : String(error);
-          process.stdout.write(`\n[error] proactive message failed: ${msg}\n`);
+          sayAsAssistant(`我这次主动消息发送失败了：${msg}`);
           rl.prompt();
         })
         .finally(() => {
@@ -4379,7 +4415,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         };
         const instinctRoute = trace.routeDecision === "instinct";
         // P2-5: compile always-inject layer (user facts + pinned + relationship)
-        const alwaysInjectCtx = await compileAlwaysInjectContext(personaPath, personaPkg);
+        const alwaysInjectCtx = await compileAlwaysInjectContext(personaPath, personaPkg, { query: effectiveInput });
         const alwaysInjectBlock = formatAlwaysInjectContext(alwaysInjectCtx);
         // P2-6: compile related person context from social graph
         const socialBlock = await compileRelatedPersonContext(personaPath, effectiveInput, { lifeEvents: pastEvents });
@@ -4645,9 +4681,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const transientModelError =
           /fetch failed|request timeout|failed after retries|429|5\d{2}/i.test(msg);
         if (transientModelError) {
-          process.stdout.write(`\n[warning] 模型连接波动，已切换兜底回复（${msg}）\n`);
+          sayAsAssistant(`我这边模型连接有点波动，已切到兜底回复（${msg}）。`);
         } else {
-          process.stdout.write(`\n[error] ${msg}\n`);
+          sayAsAssistant(`我这次回复失败了：${msg}`);
         }
       }
         } finally {
@@ -4682,7 +4718,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       });
       assistantContent = recallGroundingGuard.text;
       const pronounRoleGuard = enforcePronounRoleGuard(assistantContent, {
-        lifeEvents: pastEvents
+        lifeEvents: pastEvents,
+        lastUserInput: input,
+        personaName: personaPkg.persona.displayName
       });
       assistantContent = pronounRoleGuard.text;
       const replyTemporalAnchor = deriveTemporalAnchor({
@@ -5141,7 +5179,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       })
       .catch((error: unknown) => {
         const msg = error instanceof Error ? error.message : String(error);
-        process.stdout.write(`\n[error] ${msg}\n`);
+        sayAsAssistant(`我这轮处理失败了：${msg}`);
         rl.prompt();
       });
   });
@@ -5178,7 +5216,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.warn(`[warning] chat_close maintenance failed: ${msg}`);
+        console.log(`系统提示：会话关闭清理未完全完成（${msg}）`);
       } finally {
         console.log("会话已关闭。");
         process.exit(0);
@@ -5231,10 +5269,6 @@ async function readTextAttachmentResolved(
     }
     throw new Error("读取失败（仅支持可按 UTF-8 读取的文本文件）");
   }
-}
-
-function buildSessionGreeting(displayName: string): string {
-  return `我是 ${displayName}。我在这，想先从哪件事开始？`;
 }
 
 function isExitConfirmed(input: string): boolean {
@@ -7400,6 +7434,16 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (resource === "persona" && action === "lint") {
+    await runPersonaLint(args.options);
+    return;
+  }
+
+  if (resource === "persona" && action === "compile") {
+    await runPersonaCompile(args.options);
+    return;
+  }
+
   if (resource === "persona" && action === "export") {
     await runPersonaExport(args.options);
     return;
@@ -8030,7 +8074,6 @@ async function runRefine(action: string | undefined, options: Record<string, str
     // We parse it from the raw process.argv indirectly via the options map
     // The CLI parser puts the 3rd positional in args[2]
     const rawArgs = process.argv;
-    const refineIdx = rawArgs.findIndex((a) => a === "refine" || a === "review");
     // Find "review" and then the next token
     const reviewIdx = rawArgs.indexOf("review");
     const reviewSubAction = reviewIdx >= 0 ? rawArgs[reviewIdx + 1] : undefined;

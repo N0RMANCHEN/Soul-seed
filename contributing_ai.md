@@ -41,6 +41,7 @@
 6. `doc/CLI.md`（若涉及 CLI 命令）
 7. `README.md`
 8. 若在排查构建：先看 `./scripts/verify.sh` 与 CI 日志
+9. 若任务涉及门禁配置：检查 `config/h0/*.json` 与 `scripts/check_h0_gate.mjs`
 
 说明：原则与边界以 `AGENT.md` 为唯一权威；本文件聚焦执行动作与验收要求。
 ---
@@ -70,6 +71,7 @@
 ### 5.1 Always（任何改动都必须）
 
 - `./scripts/verify.sh` 通过（单一入口，失败退出非 0）。
+- `npm run h0:check` 通过（当改动涉及 `config/h0/*` 时为必跑项）。
 - 文档联动检查通过：按 `AGENT.md` 的 `Doc Sync Gate` 排查受影响文档；若无需更新，交付中必须说明理由。
 - verify.sh 覆盖：
   - TypeScript 类型检查（三个包）

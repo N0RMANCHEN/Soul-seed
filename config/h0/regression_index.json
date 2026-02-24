@@ -1,0 +1,19 @@
+{
+  "version": "h0/regression_index/v1",
+  "updatedAt": "2026-02-24T00:00:00.000Z",
+  "regression_index": {
+    "core": [
+      "packages/core/test/doctor.test.mjs",
+      "packages/core/test/memory_user_facts.test.mjs",
+      "packages/core/test/runtime_pipeline.test.mjs",
+      "packages/core/test/persona_phasef_p0.test.mjs"
+    ],
+    "cli": [
+      "packages/cli/test/memory_commands.test.mjs",
+      "packages/cli/test/persona_commands.test.mjs"
+    ],
+    "mcp": [
+      "packages/mcp-server/test/smoke.test.mjs"
+    ]
+  }
+}

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { runMemoryStoreSql } from "./memory_store.js";
 import { appendLifeEvent } from "./persona.js";
+import { getMemoryStoreDriver } from "./memory_store_driver.js";
+import { buildLibraryInjection, searchPersonaLibrary } from "./persona_library.js";
 import type { ModelAdapter, PersonaPackage } from "./types.js";
 import { MAX_PINNED_COUNT } from "./types.js";
 
@@ -28,6 +30,7 @@ export interface UserFact {
 export interface AlwaysInjectContext {
   userFacts: UserFact[];
   pinnedMemories: string[];
+  libraryBlocks?: Array<{ id: string; title: string; content: string; score: number }>;
   relationshipSummary: string;
   totalChars: number;
   overBudget: boolean;
@@ -39,7 +42,7 @@ export async function getUserFacts(
 ): Promise<UserFact[]> {
   const limit = options?.limit ?? MAX_USER_FACTS;
   const where = options?.crystallizedOnly ? "WHERE crystallized = 1" : "";
-  const rows = await runMemoryStoreSql(
+  const rows = await runSql(
     rootPath,
     `SELECT id, key, value, confidence, mention_count, source_memory_ids_json, crystallized, created_at, updated_at FROM user_facts ${where} ORDER BY mention_count DESC, updated_at DESC LIMIT ${limit};`
   );
@@ -76,7 +79,7 @@ export async function upsertUserFact(
   const confidence = params.confidence ?? 1.0;
 
   // Check if fact exists
-  const existing = await runMemoryStoreSql(
+  const existing = await runSql(
     rootPath,
     `SELECT id, mention_count, source_memory_ids_json FROM user_facts WHERE key = '${escSql(params.key)}' LIMIT 1;`
   );
@@ -90,7 +93,7 @@ export async function upsertUserFact(
       sourceIds.push(params.sourceMemoryId);
     }
     const crystallized = mentionCount >= FACT_GRADUATION_THRESHOLD ? 1 : 0;
-    await runMemoryStoreSql(
+    await runSql(
       rootPath,
       `UPDATE user_facts SET value = '${escSql(params.value)}', confidence = ${confidence}, mention_count = ${mentionCount}, source_memory_ids_json = '${escSql(JSON.stringify(sourceIds))}', crystallized = ${crystallized}, updated_at = '${nowIso}' WHERE id = '${escSql(id)}';`
     );
@@ -123,7 +126,7 @@ export async function upsertUserFact(
   } else {
     const id = randomUUID();
     const sourceIds = params.sourceMemoryId ? [params.sourceMemoryId] : [];
-    await runMemoryStoreSql(
+    await runSql(
       rootPath,
       `INSERT INTO user_facts (id, key, value, confidence, mention_count, source_memory_ids_json, crystallized, created_at, updated_at) VALUES ('${escSql(id)}', '${escSql(params.key)}', '${escSql(params.value)}', ${confidence}, 1, '${escSql(JSON.stringify(sourceIds))}', 0, '${nowIso}', '${nowIso}');`
     );
@@ -142,12 +145,12 @@ export async function upsertUserFact(
 }
 
 export async function deleteUserFact(rootPath: string, key: string): Promise<boolean> {
-  const existing = await runMemoryStoreSql(
+  const existing = await runSql(
     rootPath,
     `SELECT id FROM user_facts WHERE key = '${escSql(key)}' LIMIT 1;`
   );
   if (!existing.trim()) return false;
-  await runMemoryStoreSql(rootPath, `DELETE FROM user_facts WHERE key = '${escSql(key)}';`);
+  await runSql(rootPath, `DELETE FROM user_facts WHERE key = '${escSql(key)}';`);
   return true;
 }
 
@@ -217,7 +220,7 @@ export async function extractUserFactsFromTurn(params: {
  * Natural language disclosures are handled by extractUserFactsFromTurn (LLM-based).
  */
 export async function graduateFactsFromMemories(rootPath: string): Promise<number> {
-  const rows = await runMemoryStoreSql(
+  const rows = await runSql(
     rootPath,
     `SELECT id, content FROM memories WHERE memory_type = 'episodic' AND deleted_at IS NULL AND excluded_from_recall = 0 ORDER BY created_at DESC LIMIT 500;`
   );
@@ -255,7 +258,7 @@ export async function graduateFactsFromMemories(rootPath: string): Promise<numbe
   let graduated = 0;
   for (const [key, { value, memoryIds }] of factCandidates.entries()) {
     if (memoryIds.length >= FACT_GRADUATION_THRESHOLD) {
-      const existing = await runMemoryStoreSql(
+      const existing = await runSql(
         rootPath,
         `SELECT id, crystallized FROM user_facts WHERE key = '${escSql(key)}' LIMIT 1;`
       );
@@ -277,7 +280,8 @@ export async function graduateFactsFromMemories(rootPath: string): Promise<numbe
  */
 export async function compileAlwaysInjectContext(
   rootPath: string,
-  personaPkg: PersonaPackage
+  personaPkg: PersonaPackage,
+  options?: { query?: string }
 ): Promise<AlwaysInjectContext> {
   const facts = await getUserFacts(rootPath, { limit: MAX_USER_FACTS });
   const pinnedMemories = personaPkg.pinned.memories.slice(0, MAX_PINNED_COUNT);
@@ -298,10 +302,23 @@ export async function compileAlwaysInjectContext(
 
   totalChars += pinnedMemories.reduce((s, m) => s + m.length + 2, 0);
   totalChars += relationshipSummary.length;
+  let libraryBlocks: Array<{ id: string; title: string; content: string; score: number }> = [];
+  if (typeof options?.query === "string" && options.query.trim().length > 0) {
+    const result = await searchPersonaLibrary(rootPath, options.query, { limit: 3 });
+    const injection = buildLibraryInjection(result, { injectMax: 3, injectCharMax: 900 });
+    libraryBlocks = injection.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      content: item.content,
+      score: item.score
+    }));
+    totalChars += injection.budgetUsed;
+  }
 
   return {
     userFacts: includedFacts,
     pinnedMemories,
+    libraryBlocks,
     relationshipSummary,
     totalChars,
     overBudget: totalChars > ALWAYS_INJECT_CHAR_BUDGET
@@ -318,6 +335,13 @@ export function formatAlwaysInjectContext(ctx: AlwaysInjectContext): string {
 
   if (ctx.pinnedMemories.length > 0) {
     parts.push(`Pinned memories: ${ctx.pinnedMemories.join(" | ")}`);
+  }
+
+  if (Array.isArray(ctx.libraryBlocks) && ctx.libraryBlocks.length > 0) {
+    const libraryLine = ctx.libraryBlocks
+      .map((b) => `${b.title}(${b.score.toFixed(2)}): ${b.content.slice(0, 140)}`)
+      .join(" | ");
+    parts.push(`Persona library: ${libraryLine}`);
   }
 
   if (ctx.relationshipSummary) {
@@ -359,4 +383,12 @@ function parseLlmFactsJson(content: string): Array<{ key: unknown; value: unknow
   } catch {
     return [];
   }
+}
+
+async function runSql(rootPath: string, sql: string): Promise<string> {
+  const driver = getMemoryStoreDriver();
+  if (driver) {
+    return driver.runSql(rootPath, sql);
+  }
+  return runMemoryStoreSql(rootPath, sql);
 }

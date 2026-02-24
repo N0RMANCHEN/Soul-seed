@@ -20,13 +20,11 @@ import {
 import {
   createInitialAutobiography,
   loadAutobiography,
-  writeAutobiography,
   AUTOBIOGRAPHY_FILENAME
 } from "./autobiography.js";
 import {
   createInitialInterests,
   loadInterests,
-  writeInterests,
   computeInterestCuriosity,
   INTERESTS_FILENAME
 } from "./interests.js";
@@ -47,6 +45,7 @@ import {
   MAX_PINNED_COUNT,
   MAX_PINNED_CHARS
 } from "./types.js";
+import { withPersonaLock } from "./persona_write_lock.js";
 import type {
   LifeEvent,
   LifeEventInput,
@@ -1742,8 +1741,22 @@ async function readJson<T>(filePath: string): Promise<T> {
 }
 
 async function writeJson(filePath: string, data: unknown): Promise<void> {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  await writeFile(tmpPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-  await rename(tmpPath, filePath);
+  const doWrite = async (): Promise<void> => {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+    await writeFile(tmpPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    await rename(tmpPath, filePath);
+  };
+  const rootPath = inferPersonaRoot(filePath);
+  await withPersonaLock(rootPath, doWrite);
+}
+
+function inferPersonaRoot(filePath: string): string {
+  const normalized = path.resolve(filePath);
+  const parts = normalized.split(path.sep);
+  const idx = parts.findIndex((part) => part.endsWith(".soulseedpersona"));
+  if (idx >= 0) {
+    return parts.slice(0, idx + 1).join(path.sep) || path.sep;
+  }
+  return path.dirname(normalized);
 }

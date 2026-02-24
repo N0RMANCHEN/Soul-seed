@@ -111,7 +111,7 @@ export interface AgentInvocationArbitration {
 
 export function arbitrateAgentInvocation(
   trace: DecisionTrace,
-  userInput: string
+  _userInput: string
 ): AgentInvocationArbitration {
   const agentReq = trace.agentRequest;
   if (!agentReq || !agentReq.needed) {

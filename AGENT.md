@@ -315,23 +315,24 @@ conversation window:
 1. **一次只做一个任务**（最小变更集），禁止"顺手重构"
 2. **任何改动必须保持可 build / 可跑**（至少 `./scripts/verify.sh` 通过）
 3. **Doc Sync Gate（强制）**：任何涉及代码、命令、配置、架构、schema、流程的改动，必须排查受影响文档（至少 `README.md`、`doc/*.md`、`AGENT.md`、`contributing_ai.md`）；若无需更新，交付中必须明确写出“已排查且无需更新”的理由。
-4. **不删除旧代码**：替换则移动到 `packages/legacy-*` 或归档目录
-5. **改 schema 必须**：`schemaVersion` bump + 迁移策略 + 回归用例
-6. **DecisionTrace schema 一旦发布必须向后兼容**，或提供迁移（回放基石）
-7. **新增铁律：Persona 演化必须向后兼容（比 DecisionTrace 更严格）**  
+4. **H0 门禁配置属于机器配置资产**：位置固定为 `config/h0/*`；任何修改后必须通过 `npm run h0:check`。
+5. **不删除旧代码**：替换则移动到 `packages/legacy-*` 或归档目录
+6. **改 schema 必须**：`schemaVersion` bump + 迁移策略 + 回归用例
+7. **DecisionTrace schema 一旦发布必须向后兼容**，或提供迁移（回放基石）
+8. **新增铁律：Persona 演化必须向后兼容（比 DecisionTrace 更严格）**  
    对已有 persona 引入的新层（genome/epigenetics/interests/policy 等）必须做到“缺省不改变行为（Behavior Parity by Default）”。任何升级必须：
    - **旧参数作为初始值/基线（seed-from-existing）**，禁止重置导致人格“换人”
    - 通过 `compatMode` / feature flags 渐进启用（默认 `legacy` 或 `hybrid`）
    - 提供迁移脚本 + 回滚点 + fixture 回归（覆盖：缺文件/旧 schemaVersion/迁移幂等）
-8. **新增铁律：会话控制面不得仅靠文案**  
+9. **新增铁律：会话控制面不得仅靠文案**  
    投入档位/主动意图/群聊参与必须由可解释信号与预算驱动（Interest→Attention→Engagement），禁止只改 prompt 让它“看起来克制”。
 
-9. **不引入显式评分闭环**（⭐/👍👎）作为主塑形路径
-10. **不宣告"意识/痛苦"事实**：只做可验证机制（张力、代价、边界、内化）
-11. **命令级改动补测**：CLI 命令解析/参数/路径改动必须补对应测试或执行验证
-12. **在线链路改动**：必须运行 `npm run acceptance` 并给出报告路径（失败必须归因）
-13. **验收隔离**：验收只使用 `personas/_qa/*`，禁止使用日常 persona
-14. **禁止新增正则词表作为感知主路径**（Phase E）：任何感知模块（情绪/风险/任务分类/记忆值得性判断）新增感知维度，必须走 LLM 语义评估；正则只允许作为 fallback 且必须有 trace 标记
+10. **不引入显式评分闭环**（⭐/👍👎）作为主塑形路径
+11. **不宣告"意识/痛苦"事实**：只做可验证机制（张力、代价、边界、内化）
+12. **命令级改动补测**：CLI 命令解析/参数/路径改动必须补对应测试或执行验证
+13. **在线链路改动**：必须运行 `npm run acceptance` 并给出报告路径（失败必须归因）
+14. **验收隔离**：验收只使用 `personas/_qa/*`，禁止使用日常 persona
+15. **禁止新增正则词表作为感知主路径**（Phase E）：任何感知模块（情绪/风险/任务分类/记忆值得性判断）新增感知维度，必须走 LLM 语义评估；正则只允许作为 fallback 且必须有 trace 标记
 15. **禁止新增固定标量/枚举作为状态本体**（Phase E）：新状态表示必须使用 Latent 向量；可解释标量/枚举只作为投影层存在，不得作为更新的输入或内在状态的直接量化
 16. **Agent 不得绕过 soul 路径**（Phase E）：新增 agent 功能必须通过 `agentRequest` + `meta_cognition.arbitrateAgentInvocation()` 进入，禁止在 `runtime_pipeline` 中新增与 soul 路径并行的 agent 分叉
 17. **会话能力扩展必须通过 capabilities 系统**：新增会话级别的操作（文件读取/URL 抓取/模式切换等），必须在 `capabilities/registry.ts` 注册、在 `capabilities/intent_resolver.ts` 添加识别规则，不得直接在 chat 主循环中添加 if 分支处理

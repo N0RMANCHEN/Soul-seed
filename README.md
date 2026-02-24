@@ -42,6 +42,11 @@ npm run build
 > **Windows users:** See [doc/Windows.md](doc/Windows.md) — WSL2 or Git Bash required, plus `sqlite3` CLI.
 > **Windows 用户：** 参见 [doc/Windows.md](doc/Windows.md) — 需要 WSL2 或 Git Bash，以及 `sqlite3` CLI。
 
+### Onboarding Pack / 上手资料包
+
+- 快速上手（含 15 分钟验收、故障排查、首轮示例）：[`doc/Quickstart.md`](doc/Quickstart.md)
+- 完整命令参考：[`doc/CLI.md`](doc/CLI.md)
+
 ---
 
 ## Installation / 安装

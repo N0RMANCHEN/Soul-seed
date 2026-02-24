@@ -4,6 +4,12 @@ set -euo pipefail
 echo "[verify] lint"
 npm run lint
 
+echo "[verify] h0 gate"
+npm run h0:check
+
+echo "[verify] changelog gate"
+npm run changelog:check
+
 echo "[verify] typecheck"
 npm run typecheck
 

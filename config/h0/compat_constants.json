@@ -1,0 +1,11 @@
+{
+  "version": "h0/compat_constants/v1",
+  "updatedAt": "2026-02-24T00:00:00.000Z",
+  "compat_constants": {
+    "personaSchemaVersion": "0.2.0",
+    "identitySchemaVersion": "2.0",
+    "relationshipStateVersion": "3",
+    "moodStateVersion": "2",
+    "memoryStoreSchemaVersion": 2
+  }
+}

@@ -192,7 +192,7 @@ function explainVoice(trace: StoredTrace): string {
   return `${stance}、用${tone}与你交流（${lang}）。`;
 }
 
-function buildSummary(trace: StoredTrace, explanation: Omit<BehaviorExplanation, "summary" | "coveredDimensions">): string {
+function buildSummary(trace: StoredTrace): string {
   if (trace.refuse) {
     return "上一轮我选择了拒绝回应，因为请求超出了我的边界设定。";
   }
@@ -254,8 +254,7 @@ export async function explainLastDecision(
   const boundaryExplanation = explainBoundary(targetTrace);
   const voiceExplanation = explainVoice(targetTrace);
 
-  const partial = { timestamp: targetTs, routeExplanation, memoryExplanation, boundaryExplanation, voiceExplanation };
-  const summary = buildSummary(targetTrace, partial);
+  const summary = buildSummary(targetTrace);
 
   // 统计有实质内容的维度（非"未检测到"、"未触发"之类的默认回退）
   const hasRoute = !routeExplanation.includes("直觉路径") || targetTrace.memoryBudget !== undefined;

@@ -261,7 +261,6 @@ export async function listConstitutionReviewRequests(
   const results: ConstitutionReviewRequest[] = [];
   for (const ev of events) {
     if (ev.type !== "constitution_review_requested") continue;
-    const status: "open" | "approved" | "rejected" = actedOn.has(ev.hash) ? "approved" : "open";
     // Determine actual status
     const acted = events.find(
       (e) =>
