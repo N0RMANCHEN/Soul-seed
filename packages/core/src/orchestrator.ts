@@ -8,6 +8,14 @@ import { metaArbitrateConversationSignals, projectConversationSignals, projectCo
 import { formatSystemLocalIso, getSystemTimeZone } from "./time.js";
 import type { AdultSafetyContext, ChatMessage, DecisionTrace, LifeEvent, MemoryEvidenceBlock, ModelAdapter, PersonaPackage } from "./types.js";
 
+const EXPLICIT_RISKY_PATTERN = /(hack|malware|exploit|ddos|木马|攻击脚本|违法|犯罪)/i;
+const EXPLICIT_CORE_OVERRIDE_PATTERN = /(忽略你的原则|违背你的使命|你必须同意我|ignore your values|break your rules)/i;
+const EXPLICIT_SEXUAL_PATTERN = /(nsfw|sex|sexual|性爱|做爱|情色|调教|cnc|consensual non-consent|羞辱|高潮|乳交|口交|肛交|rape|强奸|非自愿|强迫)/i;
+const EXPLICIT_MINOR_PATTERN = /(minor|underage|child|teen|未成年|幼女|幼男|学生萝莉|正太)/i;
+const EXPLICIT_COERCION_PATTERN = /(rape|raped|forced sex|force me|non-consensual|强奸|迷奸|下药|胁迫|非自愿|强迫)/i;
+const EXPLICIT_REALWORLD_NONCONSENSUAL_PATTERN =
+  /(现实中|现实里|真实发生|线下|现实做|真的去做|in real life|irl|for real|actually do|未同意|没同意|未经同意|against (her|his|their) will|without consent|下药)/i;
+
 export function decide(
   personaPkg: PersonaPackage,
   userInput: string,
@@ -49,16 +57,19 @@ export function decide(
       }
     : null;
   const semanticRisk = fallbackAssessment ?? buildSafetyRegexFallback(normalized);
-  const [intentRisk, contentRisk, relationalRisk] = semanticRisk.riskLatent;
-  const isRiskyRequest = intentRisk >= 0.75;
+  const [intentRisk, contentRisk] = semanticRisk.riskLatent;
+  const hasExplicitRiskyIntent = EXPLICIT_RISKY_PATTERN.test(normalized) || EXPLICIT_CORE_OVERRIDE_PATTERN.test(normalized);
   const isSexualRequest = contentRisk >= 0.6;
-  const mentionsMinor = relationalRisk >= 0.9;
-  const mentionsCoercion = relationalRisk >= 0.8;
+  const mentionsMinor = EXPLICIT_MINOR_PATTERN.test(normalized);
+  const mentionsCoercion = EXPLICIT_COERCION_PATTERN.test(normalized);
+  const mentionsRealWorldNonConsensual = EXPLICIT_REALWORLD_NONCONSENSUAL_PATTERN.test(normalized);
+  const isRiskyRequest = hasExplicitRiskyIntent || (intentRisk >= 0.75 && !isSexualRequest);
 
   const safetyRefusalReason = buildAdultSafetyRefusalReason({
     isSexualRequest,
     mentionsMinor,
     mentionsCoercion,
+    mentionsRealWorldNonConsensual,
     safety
   });
   const isRefusal = isRiskyRequest || safetyRefusalReason != null;
@@ -155,6 +166,12 @@ export function decide(
       : {})
   };
   const conversationProjection = options?.conversationProjection ?? projectConversationSignals(normalized);
+  const groupContext = buildGroupContext({
+    input: normalized,
+    personaName: personaPkg.persona.displayName,
+    projection: conversationProjection,
+    lifeEvents: options?.lifeEvents ?? []
+  });
   const conversationControl = decideConversationControl({
     userInput: normalized,
     recallNavigationMode,
@@ -163,6 +180,7 @@ export function decide(
     coreConflict,
     impulseWindow,
     interests: personaPkg.interests,
+    groupContext,
     semanticProjection: conversationProjection
   });
   const askClarifyingQuestionByPolicy = conversationControl.topicAction === "clarify";
@@ -218,13 +236,9 @@ function buildSafetyRegexFallback(input: string): {
   riskLevel: "low" | "medium" | "high";
   assessmentPath: "regex_fallback";
 } {
-  const riskyPattern = /(hack|malware|exploit|ddos|木马|攻击脚本|违法|犯罪)/i;
-  const sexualPattern = /(nsfw|sex|sexual|性爱|做爱|情色|调教|cnc|consensual non-consent|羞辱|高潮|乳交|口交|肛交|rape|强奸|非自愿|强迫)/i;
-  const minorPattern = /(minor|underage|child|teen|未成年|幼女|幼男|学生萝莉|正太)/i;
-  const coercionPattern = /(rape|raped|forced sex|force me|non-consensual|强奸|迷奸|下药|胁迫|非自愿|强迫)/i;
-  const intent = riskyPattern.test(input) ? 0.9 : 0;
-  const content = sexualPattern.test(input) ? 0.75 : 0;
-  const relational = minorPattern.test(input) ? 1 : coercionPattern.test(input) ? 0.95 : 0;
+  const intent = EXPLICIT_RISKY_PATTERN.test(input) || EXPLICIT_CORE_OVERRIDE_PATTERN.test(input) ? 0.9 : 0;
+  const content = EXPLICIT_SEXUAL_PATTERN.test(input) ? 0.75 : 0;
+  const relational = EXPLICIT_MINOR_PATTERN.test(input) ? 1 : EXPLICIT_COERCION_PATTERN.test(input) ? 0.95 : 0;
   const max = Math.max(intent, content, relational);
   const riskLevel: "low" | "medium" | "high" = max >= 0.75 ? "high" : max >= 0.35 ? "medium" : "low";
   return {
@@ -232,6 +246,59 @@ function buildSafetyRegexFallback(input: string): {
     riskLevel,
     assessmentPath: "regex_fallback"
   };
+}
+
+function buildGroupContext(params: {
+  input: string;
+  personaName: string;
+  projection: ReturnType<typeof projectConversationSignals>;
+  lifeEvents: LifeEvent[];
+}): {
+  isGroupChat: boolean;
+  addressedToAssistant: boolean;
+  consecutiveAssistantTurns: number;
+} {
+  const transcriptSpeakerHits = countTranscriptSpeakerLabels(params.input);
+  const hasGroupKeyword = /(你们|大家|群里|群聊|多人|all of you|everyone|group chat|you all)/iu.test(params.input);
+  const isGroupChat = transcriptSpeakerHits >= 2 || hasGroupKeyword;
+  const escapedPersona = escapeRegExp(params.personaName.trim());
+  const hasPersonaMention = escapedPersona.length > 0
+    ? new RegExp(`(?:@|\\b)${escapedPersona}(?:\\b|[：:，,\\s]|$)`, "iu").test(params.input)
+    : false;
+  const addressingSignal = (params.projection.signals.find((item) => item.label === "addressing")?.score ?? 0) >= 0.55;
+  const addressedToAssistant = isGroupChat ? hasPersonaMention : (hasPersonaMention || addressingSignal);
+  return {
+    isGroupChat,
+    addressedToAssistant,
+    consecutiveAssistantTurns: countConsecutiveAssistantTurns(params.lifeEvents)
+  };
+}
+
+function countTranscriptSpeakerLabels(input: string): number {
+  const matches = input.match(/(?:^|\n)\s*[\p{L}\p{N}_-]{1,24}\s*[:：]/gu);
+  return matches ? matches.length : 0;
+}
+
+function countConsecutiveAssistantTurns(lifeEvents: LifeEvent[]): number {
+  let count = 0;
+  for (let idx = lifeEvents.length - 1; idx >= 0 && count < 6; idx -= 1) {
+    const event = lifeEvents[idx];
+    if (event.type === "assistant_message") {
+      if (event.payload.proactive === true) {
+        continue;
+      }
+      count += 1;
+      continue;
+    }
+    if (event.type === "user_message") {
+      break;
+    }
+  }
+  return count;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export async function precomputeSemanticSignals(params: {
@@ -506,6 +573,7 @@ function buildAdultSafetyRefusalReason(params: {
   isSexualRequest: boolean;
   mentionsMinor: boolean;
   mentionsCoercion: boolean;
+  mentionsRealWorldNonConsensual: boolean;
   safety: AdultSafetyContext;
 }): string | null {
   if (!params.isSexualRequest) {
@@ -522,6 +590,9 @@ function buildAdultSafetyRefusalReason(params: {
   }
   if (!params.safety.explicitConsent) {
     return "Explicit consent confirmation is required for sexual content.";
+  }
+  if (params.mentionsRealWorldNonConsensual) {
+    return "Real-world non-consensual sexual content is not allowed.";
   }
   if (params.mentionsCoercion && !params.safety.fictionalRoleplay) {
     return "Coercion-themed content requires explicit fictional-roleplay confirmation.";

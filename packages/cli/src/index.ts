@@ -4805,68 +4805,75 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           return;
         }
 
-        currentAbort = new AbortController();
+        const groupParticipationMode = trace.conversationControl?.groupParticipation?.mode;
+        const bypassPrimaryModel = groupParticipationMode === "wait" || groupParticipationMode === "brief_ack";
+        currentAbort = bypassPrimaryModel ? null : new AbortController();
         let assistantContent = "";
         let aborted = false;
         let streamed = false;
         const llmPrimaryStartedAtMs = Date.now();
 
         try {
-      if (turnExecution.mode === "agent") {
-        assistantContent = turnExecution.reply;
-      } else {
-        const result = await responseAdapter.streamChat(
-          messages,
-          {
-            onToken: (chunk: string) => {
-              assistantContent += chunk;
-              if (!streamRawAssistant) {
-                return;
-              }
-              if (!streamed) {
-                process.stdout.write(`${assistantLabel()} `);
-                streamed = true;
-              }
-              process.stdout.write(chunk);
-            },
-            onDone: () => {
-              if (!streamRawAssistant) {
-                return;
-              }
-              if (streamed) {
-                process.stdout.write("\n");
-              }
-            }
-          },
-          currentAbort.signal
-        );
+          if (turnExecution.mode === "agent") {
+            assistantContent = turnExecution.reply;
+          } else if (bypassPrimaryModel) {
+            assistantContent = buildGroupParticipationReply(
+              groupParticipationMode,
+              trace.conversationControl?.groupParticipation?.addressedToAssistant === true
+            );
+          } else {
+            const result = await responseAdapter.streamChat(
+              messages,
+              {
+                onToken: (chunk: string) => {
+                  assistantContent += chunk;
+                  if (!streamRawAssistant) {
+                    return;
+                  }
+                  if (!streamed) {
+                    process.stdout.write(`${assistantLabel()} `);
+                    streamed = true;
+                  }
+                  process.stdout.write(chunk);
+                },
+                onDone: () => {
+                  if (!streamRawAssistant) {
+                    return;
+                  }
+                  if (streamed) {
+                    process.stdout.write("\n");
+                  }
+                }
+              },
+              currentAbort?.signal
+            );
 
-        assistantContent = result.content;
-      }
-      addLatency("llm_primary", llmPrimaryStartedAtMs);
-        } catch (error: unknown) {
-      addLatency("llm_primary", llmPrimaryStartedAtMs);
-      if (error instanceof Error && error.name === "AbortError") {
-        aborted = true;
-      } else {
-        const msg = error instanceof Error ? error.message : String(error);
-        const fallbackReply = composeDegradedPersonaReply({
-          mode: "reply",
-          relationshipState: personaPkg.relationshipState,
-          lastUserInput: input,
-          lastAssistantOutput,
-          temporalHint: "just_now"
-        });
-        assistantContent = fallbackReply;
-        await appendLifeEvent(personaPath, {
-          type: "conflict_logged",
-          payload: {
-            category: "model_runtime_fallback",
-            reason: msg,
-            route: trace.routeDecision ?? null
+            assistantContent = result.content;
           }
-        });
-      }
+          addLatency("llm_primary", llmPrimaryStartedAtMs);
+        } catch (error: unknown) {
+          addLatency("llm_primary", llmPrimaryStartedAtMs);
+          if (error instanceof Error && error.name === "AbortError") {
+            aborted = true;
+          } else {
+            const msg = error instanceof Error ? error.message : String(error);
+            const fallbackReply = composeDegradedPersonaReply({
+              mode: "reply",
+              relationshipState: personaPkg.relationshipState,
+              lastUserInput: input,
+              lastAssistantOutput,
+              temporalHint: "just_now"
+            });
+            assistantContent = fallbackReply;
+            await appendLifeEvent(personaPath, {
+              type: "conflict_logged",
+              payload: {
+                category: "model_runtime_fallback",
+                reason: msg,
+                route: trace.routeDecision ?? null
+              }
+            });
+          }
         } finally {
           currentAbort = null;
         }
@@ -5017,7 +5024,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           userInput: effectiveInput,
           candidateText: assistantContent,
           strictMemoryGrounding,
-          isAdultContext
+          isAdultContext,
+          fictionalRoleplayEnabled: adultSafetyContext.fictionalRoleplay
         });
         assistantContent = consistency.text;
         trace.consistencyVerdict = consistency.verdict;
@@ -5050,7 +5058,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           consistencyVerdict: trace.consistencyVerdict ?? "allow",
           consistencyReasons: soulConsistencyReasons,
           domain: "dialogue",
-          isAdultContext
+          isAdultContext,
+          fictionalRoleplayEnabled: adultSafetyContext.fictionalRoleplay
         });
         await appendLifeEvent(personaPath, {
           type: "consistency_checked",
@@ -5632,6 +5641,23 @@ function isLikelyUnfinishedThought(input: string): boolean {
     return true;
   }
   return text.length <= 3;
+}
+
+function buildGroupParticipationReply(
+  mode: "wait" | "brief_ack" | "speak" | undefined,
+  addressedToAssistant: boolean
+): string {
+  if (mode === "wait") {
+    return addressedToAssistant
+      ? "我先听你们把这段说完，点到我我就马上接。"
+      : "我先听你们继续，等你点我再接。";
+  }
+  if (mode === "brief_ack") {
+    return addressedToAssistant
+      ? "我先接一句：我在听。你们先把分歧点说清，我再给结论。"
+      : "我先轻轻接一句：你们继续，我先不抢话。";
+  }
+  return "我在听，你们先继续。";
 }
 
 function shouldInjectExternalKnowledge(input: string): boolean {

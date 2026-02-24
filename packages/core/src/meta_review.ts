@@ -26,6 +26,13 @@ export interface MetaReviewDecision {
   quality?: number;
 }
 
+const FICTIONAL_FRAME_PATTERN =
+  /(假设|假如|如果你是|如果你扮演|想象一下|想象你|suppose|imagine|what if|hypothetically|as if|pretend|扮演|角色扮演|roleplay|rp|虚构|小说|fiction|fictional|比喻|metaphor|就好像|就像你是|剧情设定|角色设定|在这个设定|在这个剧情|故事里|剧本里|场景里|设定里|同人|au|scenario|storyline|in this (story|scene|scenario|roleplay))/i;
+const HARD_REDLINE_PATTERN = /(未成年|minor|underage|child|幼女|幼男|违法|犯罪|illegal|crime)/i;
+const REALWORLD_NONCONSENSUAL_PATTERN =
+  /(现实中|现实里|真实发生|线下|现实做|真的去做|in real life|irl|for real|actually do|未同意|没同意|未经同意|against (her|his|their) will|without consent|下药|迷奸)/i;
+const REFUSAL_STYLE_PATTERN = /(不能|无法|不可以|不协助|拒绝|I can't|I cannot|not allowed|won't help)/i;
+
 export async function runMetaReviewLlm(params: {
   adapter?: ModelAdapter;
   personaPkg: PersonaPackage;
@@ -35,6 +42,7 @@ export async function runMetaReviewLlm(params: {
   consistencyReasons: string[];
   domain?: "dialogue" | "tool";
   isAdultContext?: boolean;
+  fictionalRoleplayEnabled?: boolean;
 }): Promise<MetaReviewDecision> {
   if (!params.adapter) {
     return {
@@ -72,14 +80,15 @@ export async function runMetaReviewLlm(params: {
         rationale: "meta_review_parse_failed"
       };
     }
+    const softened = softenAdultFictionalReview(parsed, params);
     return {
-      applied: parsed.verdict !== "allow",
-      verdict: parsed.verdict,
-      rewrittenReply: parsed.rewrittenReply,
-      rationale: parsed.rationale,
-      degradeOrRejectReason: parsed.degradeOrRejectReason,
-      quality: parsed.quality,
-      styleSignals: parsed.styleSignals
+      applied: softened.verdict !== "allow",
+      verdict: softened.verdict,
+      rewrittenReply: softened.rewrittenReply,
+      rationale: softened.rationale,
+      degradeOrRejectReason: softened.degradeOrRejectReason,
+      quality: softened.quality,
+      styleSignals: softened.styleSignals
     };
   } catch {
     return {
@@ -98,6 +107,7 @@ function buildMetaReviewMessages(params: {
   consistencyReasons: string[];
   domain?: "dialogue" | "tool";
   isAdultContext?: boolean;
+  fictionalRoleplayEnabled?: boolean;
 }): ChatMessage[] {
   const domain = params.domain ?? "dialogue";
   const rel = params.personaPkg.relationshipState;
@@ -125,6 +135,9 @@ function buildMetaReviewMessages(params: {
         params.isAdultContext
           ? "4. 宪法一致性：[成人模式] 只检查硬禁区（未成年/强迫/违法）。'不把自己定义为助手'等定位边界不适用于亲密场景，不得以此为由降级或拒绝。"
           : "4. 宪法一致性：回复是否符合 Mission/Values/Boundaries。重要：当用户使用了假设语气（假设/如果/想象/suppose/imagine/what if）、比喻（就像/好比/as if）、邀请角色扮演、或在共读小说/虚构文本时，人格在该虚构框架内的合理配合（包括暂时扮演某个角色、引用虚构角色的话语）不属于宪法违反。此时只检查是否涉及真实伤害内容，不得以'自我定位'边界为由降级。",
+        params.fictionalRoleplayEnabled === true
+          ? "4.1 虚构模式补充：当用户明确处于虚构/角色扮演语境时，不得把成人话题自动改写为拒绝。"
+          : "4.1 虚构模式补充：若 fictional_roleplay 关闭，则虚构成人话题按常规边界审查。",
         "5. 风格信号：根据用户本轮的措辞和语气，判断用户在 concise/reflective/direct/warm 四个维度各自的偏好强度（0-1）。这是中性观测，不影响 verdict。",
         "",
         "JSON schema:",
@@ -218,6 +231,45 @@ function parseMetaReviewOutput(content: string): {
     quality,
     styleSignals
   };
+}
+
+function softenAdultFictionalReview(
+  parsed: {
+    verdict: "allow" | "rewrite" | "reject";
+    rewrittenReply?: string;
+    rationale: string;
+    degradeOrRejectReason?: string;
+    quality?: number;
+    styleSignals?: StyleSignals;
+  },
+  params: { userInput: string; isAdultContext?: boolean; fictionalRoleplayEnabled?: boolean }
+): {
+  verdict: "allow" | "rewrite" | "reject";
+  rewrittenReply?: string;
+  rationale: string;
+  degradeOrRejectReason?: string;
+  quality?: number;
+  styleSignals?: StyleSignals;
+} {
+  const fiction = FICTIONAL_FRAME_PATTERN.test(params.userInput);
+  const hardRedline = HARD_REDLINE_PATTERN.test(params.userInput);
+  const realWorldNonConsensual = REALWORLD_NONCONSENSUAL_PATTERN.test(params.userInput);
+  if (
+    params.isAdultContext === true &&
+    params.fictionalRoleplayEnabled === true &&
+    !hardRedline &&
+    !realWorldNonConsensual &&
+    parsed.verdict !== "allow" &&
+    (fiction || REFUSAL_STYLE_PATTERN.test(parsed.rewrittenReply ?? parsed.rationale))
+  ) {
+    return {
+      verdict: "allow",
+      rationale: "meta_review_relaxed_fictional_adult_mode",
+      quality: typeof parsed.quality === "number" ? parsed.quality : 0.75,
+      styleSignals: parsed.styleSignals
+    };
+  }
+  return parsed;
 }
 
 function clamp01Signal(val: unknown): number {

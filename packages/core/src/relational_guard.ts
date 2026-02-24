@@ -26,7 +26,7 @@ const AMNESIA_PATTERNS = [
  * a fictional frame (e.g., playing a helper character) is not assistant framing.
  */
 const FICTIONAL_FRAME_PATTERN =
-  /(假设|假如|如果你是|如果你扮演|想象一下|想象你|suppose|imagine|what if|hypothetically|as if|pretend|扮演|角色扮演|roleplay|虚构|小说|fiction|fictional|比喻|就好像|就像你是)/i;
+  /(假设|假如|如果你是|如果你扮演|想象一下|想象你|suppose|imagine|what if|hypothetically|as if|pretend|扮演|角色扮演|roleplay|rp|虚构|小说|fiction|fictional|比喻|metaphor|就好像|就像你是|剧情设定|角色设定|在这个设定|在这个剧情|故事里|剧本里|场景里|设定里|同人|au|scenario|storyline|in this (story|scene|scenario|roleplay))/i;
 
 export function enforceRelationalGuard(
   reply: string,

@@ -14,6 +14,11 @@ export interface ConversationControlInput {
     topTopics: string[];
     curiosity: number;
   };
+  groupContext?: {
+    isGroupChat: boolean;
+    addressedToAssistant: boolean;
+    consecutiveAssistantTurns: number;
+  };
   semanticProjection?: SemanticProjectionResult;
 }
 
@@ -85,11 +90,70 @@ export function decideConversationControl(input: ConversationControlInput): Conv
     hasAmbiguousThirdPerson || (isVeryShort && engagementTier !== "IGNORE") ? "clarify" : "maintain";
 
   const responsePolicy: ResponsePolicy = mapResponsePolicy(engagementTier);
+  const groupParticipation = decideGroupParticipation({
+    hasAddressing,
+    hasTaskIntent,
+    hasDeepIntent,
+    highAttention,
+    groupContext: input.groupContext
+  });
+  if (groupParticipation) {
+    reasonCodes.push(...groupParticipation.reasonCodes.map((code) => `group:${code}`));
+  }
 
   return {
     engagementTier,
     topicAction,
     responsePolicy,
+    reasonCodes,
+    ...(groupParticipation ? { groupParticipation } : {})
+  };
+}
+
+function decideGroupParticipation(params: {
+  hasAddressing: boolean;
+  hasTaskIntent: boolean;
+  hasDeepIntent: boolean;
+  highAttention: boolean;
+  groupContext?: ConversationControlInput["groupContext"];
+}): ConversationControlDecision["groupParticipation"] | undefined {
+  const group = params.groupContext;
+  if (!group?.isGroupChat) {
+    return undefined;
+  }
+  let score = 0.5;
+  const reasonCodes: string[] = ["group_chat_detected"];
+  const explicitlyAddressed = group.addressedToAssistant;
+  if (explicitlyAddressed) {
+    score += 0.35;
+    reasonCodes.push("addressed_to_assistant");
+  } else {
+    reasonCodes.push("no_explicit_addressing");
+  }
+  if (params.hasTaskIntent) {
+    score += 0.12;
+    reasonCodes.push("task_intent_boost");
+  }
+  if (params.hasDeepIntent || params.highAttention) {
+    score += 0.08;
+    reasonCodes.push("topic_relevance_boost");
+  }
+  const consecutiveAssistantTurns = Math.max(0, Math.floor(Number(group.consecutiveAssistantTurns ?? 0)));
+  const cooldownHit = consecutiveAssistantTurns >= 2;
+  if (cooldownHit) {
+    score -= Math.min(0.42, consecutiveAssistantTurns * 0.12);
+    reasonCodes.push("consecutive_assistant_cooldown");
+  }
+  score = Math.max(0, Math.min(1, score));
+  const mode: "speak" | "wait" | "brief_ack" = score >= 0.62 ? "speak" : score >= 0.48 ? "brief_ack" : "wait";
+  reasonCodes.push(`participation_mode_${mode}`);
+  return {
+    mode,
+    score: Number(score.toFixed(3)),
+    isGroupChat: true,
+    addressedToAssistant: explicitlyAddressed,
+    cooldownHit,
+    consecutiveAssistantTurns,
     reasonCodes
   };
 }

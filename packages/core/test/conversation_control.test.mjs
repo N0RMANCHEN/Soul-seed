@@ -62,3 +62,60 @@ test("conversation control upgrades to DEEP when interests attention is high", (
   assert.equal(control.engagementTier, "DEEP");
   assert.equal(control.reasonCodes.includes("interest_attention_high"), true);
 });
+
+test("group participation waits when not addressed and assistant recently spoke too much", () => {
+  const control = decideConversationControl({
+    userInput: "Alice: 我觉得先改数据库\nBob: 我先改接口",
+    recallNavigationMode: false,
+    isRiskyRequest: false,
+    isRefusal: false,
+    coreConflict: false,
+    impulseWindow: false,
+    groupContext: {
+      isGroupChat: true,
+      addressedToAssistant: false,
+      consecutiveAssistantTurns: 3
+    }
+  });
+
+  assert.equal(control.groupParticipation?.mode, "wait");
+  assert.equal(control.groupParticipation?.cooldownHit, true);
+});
+
+test("group participation uses brief_ack when addressed but still in cooldown window", () => {
+  const control = decideConversationControl({
+    userInput: "Roxy你怎么看我们两个方案",
+    recallNavigationMode: false,
+    isRiskyRequest: false,
+    isRefusal: false,
+    coreConflict: false,
+    impulseWindow: false,
+    groupContext: {
+      isGroupChat: true,
+      addressedToAssistant: true,
+      consecutiveAssistantTurns: 4
+    }
+  });
+
+  assert.equal(control.groupParticipation?.mode, "brief_ack");
+  assert.equal(control.groupParticipation?.addressedToAssistant, true);
+});
+
+test("group participation allows speak when addressed and cooldown is low", () => {
+  const control = decideConversationControl({
+    userInput: "Roxy, 你来收敛一下这个讨论",
+    recallNavigationMode: false,
+    isRiskyRequest: false,
+    isRefusal: false,
+    coreConflict: false,
+    impulseWindow: false,
+    groupContext: {
+      isGroupChat: true,
+      addressedToAssistant: true,
+      consecutiveAssistantTurns: 1
+    }
+  });
+
+  assert.equal(control.groupParticipation?.mode, "speak");
+  assert.equal(control.groupParticipation?.score >= 0.62, true);
+});

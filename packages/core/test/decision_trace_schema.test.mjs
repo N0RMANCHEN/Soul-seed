@@ -90,3 +90,37 @@ test("normalizeDecisionTrace keeps conversation control fields", () => {
   assert.equal(normalized.conversationControl?.responsePolicy, "normal_response");
   assert.deepEqual(normalized.conversationControl?.reasonCodes, ["task_intent_detected"]);
 });
+
+test("normalizeDecisionTrace keeps group participation control fields", () => {
+  const normalized = normalizeDecisionTrace({
+    version: DECISION_TRACE_SCHEMA_VERSION,
+    timestamp: "2026-02-24T00:00:00.000Z",
+    selectedMemories: [],
+    askClarifyingQuestion: false,
+    refuse: false,
+    riskLevel: "low",
+    reason: "group-control",
+    model: "deepseek-chat",
+    conversationControl: {
+      engagementTier: "LIGHT",
+      topicAction: "maintain",
+      responsePolicy: "light_response",
+      reasonCodes: ["addressing_detected"],
+      groupParticipation: {
+        mode: "brief_ack",
+        score: 0.55,
+        isGroupChat: true,
+        addressedToAssistant: true,
+        cooldownHit: true,
+        consecutiveAssistantTurns: 3,
+        reasonCodes: ["group_chat_detected", "consecutive_assistant_cooldown"]
+      }
+    }
+  });
+
+  assert.equal(normalized.conversationControl?.groupParticipation?.mode, "brief_ack");
+  assert.equal(normalized.conversationControl?.groupParticipation?.isGroupChat, true);
+  assert.equal(normalized.conversationControl?.groupParticipation?.addressedToAssistant, true);
+  assert.equal(normalized.conversationControl?.groupParticipation?.cooldownHit, true);
+  assert.equal(normalized.conversationControl?.groupParticipation?.consecutiveAssistantTurns, 3);
+});

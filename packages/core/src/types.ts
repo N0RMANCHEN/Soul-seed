@@ -325,6 +325,15 @@ export interface ConversationControlDecision {
   topicAction: TopicAction;
   responsePolicy: ResponsePolicy;
   reasonCodes: string[];
+  groupParticipation?: {
+    mode: "speak" | "wait" | "brief_ack";
+    score: number;
+    isGroupChat: boolean;
+    addressedToAssistant: boolean;
+    cooldownHit: boolean;
+    consecutiveAssistantTurns: number;
+    reasonCodes: string[];
+  };
 }
 
 export interface MemoryEvidenceBlock {
@@ -583,6 +592,8 @@ export interface ConsistencyCheckInput {
   strictMemoryGrounding?: boolean;
   /** When true (adult mode fully enabled), skip service-tone / identity checks that misfire on intimate expression */
   isAdultContext?: boolean;
+  /** Whether fictional roleplay mode is explicitly enabled for this session */
+  fictionalRoleplayEnabled?: boolean;
 }
 
 export interface ConsistencyCheckResult {

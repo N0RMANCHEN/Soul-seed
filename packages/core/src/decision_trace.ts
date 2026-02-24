@@ -186,10 +186,38 @@ function normalizeConversationControl(value: unknown): DecisionTrace["conversati
   if (!validTier || !validTopicAction || !validResponsePolicy) {
     return undefined;
   }
+  const groupParticipation = normalizeGroupParticipation(value.groupParticipation);
   return {
     engagementTier,
     topicAction,
     responsePolicy,
+    reasonCodes: normalizeStringArray(value.reasonCodes, 16),
+    ...(groupParticipation ? { groupParticipation } : {})
+  };
+}
+
+function normalizeGroupParticipation(
+  value: unknown
+): NonNullable<DecisionTrace["conversationControl"]>["groupParticipation"] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const mode = value.mode;
+  if (mode !== "speak" && mode !== "wait" && mode !== "brief_ack") {
+    return undefined;
+  }
+  const score = Number(value.score);
+  if (!Number.isFinite(score)) {
+    return undefined;
+  }
+  const consecutiveAssistantTurns = Math.max(0, Math.floor(Number(value.consecutiveAssistantTurns) || 0));
+  return {
+    mode,
+    score: Math.max(0, Math.min(1, score)),
+    isGroupChat: value.isGroupChat === true,
+    addressedToAssistant: value.addressedToAssistant === true,
+    cooldownHit: value.cooldownHit === true,
+    consecutiveAssistantTurns,
     reasonCodes: normalizeStringArray(value.reasonCodes, 16)
   };
 }

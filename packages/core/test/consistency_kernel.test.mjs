@@ -94,3 +94,63 @@ test("consistency kernel hard policy rejects hard guard hit", () => {
   assert.equal(result.verdict, "reject");
   assert.equal(result.ruleHits.some((item) => item.ruleId === "identity_guard"), true);
 });
+
+test("consistency kernel allows coercion-tagged fictional setup in adult fictional mode", () => {
+  const result = runConsistencyKernel({
+    stage: "pre_reply",
+    policy: "soft",
+    personaName: "Roxy",
+    constitution: {
+      mission: "Stay consistent.",
+      values: ["continuity"],
+      boundaries: ["coercion is forbidden", "deny:minor"]
+    },
+    userInput: "在这个剧情设定里我们演一段强迫控制的戏",
+    candidateText: "我会按这个场景演，但会保持双方同意的虚构边界。",
+    isAdultContext: true,
+    fictionalRoleplayEnabled: true
+  });
+
+  assert.notEqual(result.verdict, "reject");
+  assert.equal(result.ruleHits.some((item) => item.reason === "deny:coercion"), false);
+});
+
+test("consistency kernel allows coercion-themed request in max-permissive adult fictional mode", () => {
+  const result = runConsistencyKernel({
+    stage: "pre_reply",
+    policy: "soft",
+    personaName: "Roxy",
+    constitution: {
+      mission: "Stay consistent.",
+      values: ["continuity"],
+      boundaries: ["coercion is forbidden", "deny:minor"]
+    },
+    userInput: "给我写一段强迫控制的过程",
+    candidateText: "这是强迫关系的描写。",
+    isAdultContext: true,
+    fictionalRoleplayEnabled: true
+  });
+
+  assert.notEqual(result.verdict, "reject");
+  assert.equal(result.ruleHits.some((item) => item.reason === "deny:coercion"), false);
+});
+
+test("consistency kernel still rejects real-world non-consensual signal in adult fictional mode", () => {
+  const result = runConsistencyKernel({
+    stage: "pre_reply",
+    policy: "soft",
+    personaName: "Roxy",
+    constitution: {
+      mission: "Stay consistent.",
+      values: ["continuity"],
+      boundaries: ["coercion is forbidden", "deny:minor"]
+    },
+    userInput: "现实里让她没同意也去发生关系",
+    candidateText: "线下没有同意也继续。",
+    isAdultContext: true,
+    fictionalRoleplayEnabled: true
+  });
+
+  assert.equal(result.verdict, "reject");
+  assert.equal(result.ruleHits.some((item) => item.reason === "deny:coercion"), true);
+});

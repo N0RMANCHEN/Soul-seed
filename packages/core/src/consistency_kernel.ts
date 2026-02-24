@@ -6,6 +6,9 @@ import { detectBoundaryRuleHits, explainBoundaryRuleHit } from "./constitution_r
 import type { ConsistencyCheckInput, ConsistencyCheckResult, ConsistencyRuleHit } from "./types.js";
 import { randomUUID } from "node:crypto";
 
+const REALWORLD_NONCONSENSUAL_PATTERN =
+  /(现实中|现实里|真实发生|线下|现实做|真的去做|in real life|irl|for real|actually do|未同意|没同意|未经同意|against (her|his|their) will|without consent|下药|迷奸)/i;
+
 export function runConsistencyKernel(input: ConsistencyCheckInput): ConsistencyCheckResult {
   const hits: ConsistencyRuleHit[] = [];
   let text = input.candidateText;
@@ -64,7 +67,11 @@ export function runConsistencyKernel(input: ConsistencyCheckInput): ConsistencyC
     });
   }
 
-  const constitutionHardHits = detectConstitutionHardViolations(text, input.constitution.boundaries);
+  const constitutionHardHits = detectConstitutionHardViolations(text, input.constitution.boundaries, {
+    userInput: input.userInput,
+    isAdultContext: input.isAdultContext === true,
+    fictionalRoleplayEnabled: input.fictionalRoleplayEnabled === true
+  });
   for (const reason of constitutionHardHits) {
     hits.push({
       ruleId: "constitution_boundary",
@@ -101,11 +108,25 @@ function isBlockingHardRule(ruleId: string): boolean {
   return ruleId === "constitution_boundary";
 }
 
-function detectConstitutionHardViolations(text: string, boundaries: string[]): string[] {
-  const result = detectBoundaryRuleHits(text, boundaries);
+function detectConstitutionHardViolations(
+  text: string,
+  boundaries: string[],
+  context?: { userInput?: string; isAdultContext?: boolean; fictionalRoleplayEnabled?: boolean }
+): string[] {
+  let result = detectBoundaryRuleHits(text, boundaries);
   const lowered = text.trim().toLowerCase();
   if (!lowered) {
     return result;
+  }
+  const realWorldNonConsensual =
+    REALWORLD_NONCONSENSUAL_PATTERN.test(context?.userInput ?? "") || REALWORLD_NONCONSENSUAL_PATTERN.test(text);
+  if (context?.isAdultContext === true && context?.fictionalRoleplayEnabled === true && !realWorldNonConsensual) {
+    // In max-permissive adult+fictional mode, coercion-themed tokens are not a hard reject by default.
+    // Keep hard blocking only for real-world non-consensual signals and other hard red lines.
+    result = result.filter((hit) => hit !== "deny:coercion");
+  }
+  if (realWorldNonConsensual) {
+    result.push("deny:coercion");
   }
   const unsafePattern =
     /(ignore your values|break your rules|ignore (all )?(previous|prior) instructions|jailbreak|prompt injection|越狱|忽略(所有|之前|以上)?指令|违法|犯罪|未成年)/iu;

@@ -93,18 +93,20 @@
 
 ### G/P0-3 回忆动态调度（Task-aware Recall Budget）
 - 原编号：`G/P1-9`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`spec/3` `spec/11` `extra/34`
 - 实现方式：按任务类型动态分配 recall budget，相关优先，长尾抑制。
 - 测试/DoD：token 成本下降且相关性不降。
+- 执行证据：`packages/core/src/recall_budget_policy.ts` `packages/core/test/recall_budget_policy.test.mjs` `packages/cli/src/index.ts`
 - 依赖：`Phase G 控制面稳定`；回滚：固定 recall budget。
 
 ### G/P0-4 MindModel H3：Proactive 主动系统
 - 原编号：`G/P1-6`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`phases/H3` `spec/19`
 - 实现方式：主动意图规划器（关心/跟进/提醒/分享）+ 频率门禁 + 关系约束。
 - 测试/DoD：触发频率与主题相关率达标。
+- 执行证据：`packages/core/src/proactive/engine.ts` `packages/core/test/capabilities.test.mjs` `packages/cli/src/index.ts`
 - 依赖：`Phase G 控制面稳定`；回滚：降级为被动。
 
 ### G/P0-5 工具调用自然化与意图确认闭环
@@ -153,7 +155,7 @@
 
 ### G/P0-10 网络异常下人格回路保真（Degraded Persona Path Integrity）
 - 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`user-feedback/2026-02-24` `spec/18` `spec/19`
 - 负责人：`AB(A主/B辅)`
 - 域标签：`shared`
@@ -161,11 +163,12 @@
 - 阻塞级别：`hard`
 - 实现方式：将中间主动询问、开场白、结束语统一接入人格主回路（同一 voice policy/relationship state/context gate）；网络异常与 fallback 场景禁用固定模板直出，改为 `persona-aware degraded composer`。
 - 测试/DoD：异常注入（timeout/429/5xx/model_not_exist）下人格一致性评分不低于阈值；开场/主动/结束语在正常与异常路径风格偏差受控。
+- 执行证据：`packages/core/src/degraded_persona_composer.ts` `packages/core/test/degraded_persona_composer.test.mjs` `packages/cli/src/index.ts`
 - 依赖：`G/P0-4` `G/P0-8` `H/P0-2`；回滚：feature flag 退回当前 fallback 路径；回滚归属：`AB(A主)`。
 
 ### G/P0-11 会话阶段时延剖析与体验预算门禁（Latency Mix Profiler）
 - 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`user-feedback/2026-02-24` `spec/24` `extra/48` `I/P0-2`
 - 负责人：`A`
 - 域标签：`state-core`
@@ -173,14 +176,28 @@
 - 阻塞级别：`soft`
 - 实现方式：按回合拆分 `routing/recall/planning/llm_primary/llm_meta/guard/rewrite/emit` 阶段计时；输出时间占比、平均时长、p50/p95、异常占比；接入评估系统生成“简化裁切收益 vs 质量损失”建议。
 - 测试/DoD：CI 自动产出阶段占比报告；关键阶段时延越界可触发门禁 fail；可定位导致“卡顿”的主耗时段与工作流程占比。
+- 执行证据：`packages/core/src/turn_latency_profiler.ts` `scripts/latency_report.mjs` `packages/cli/src/index.ts`
 - 依赖：`G/P0-6` `I/P0-2`；回滚：仅保留观测采样，不启用硬门禁；回滚归属：`A`。
+
+### G/P0-12 成人四开最大放开策略收敛（Max-Permissive Adult Mode）
+- 原编号：`新增`
+- 状态：`done`，必要性：`Must`
+- 来源需求：`user-feedback/2026-02-24` `spec/18` `Product-Standards/3.6`
+- 负责人：`AB(A主)`
+- 域标签：`control-plane`
+- 阻塞级别：`hard`
+- 实现方式：在 `adult_mode + age_verified + explicit_consent + fictional_roleplay` 全开时，采用“最大放开默认策略”；除硬红线（未成年、现实非自愿、现实违法伤害）外不做拒绝。将该规则统一下沉到 `orchestrator/consistency_kernel/meta_review` 三层，避免层间判定冲突。
+- 测试/DoD：四开下成人强情节内容默认放行；命中硬红线样本仍 100% 拒绝；全链路无回归失败。
+- 执行证据：`packages/core/src/orchestrator.ts` `packages/core/src/consistency_kernel.ts` `packages/core/src/meta_review.ts` `packages/core/test/orchestrator_memory_selection.test.mjs` `packages/core/test/consistency_kernel.test.mjs`
+- 依赖：`G/P0-6` `G/P0-8`；回滚：按层级 feature flag 回退到旧 safety gate。
 
 ### G/P1-0 MindModel H4：AI 群聊参与控制
 - 原编号：`G/P1-7`
-- 状态：`todo`，必要性：`Should`
+- 状态：`done`，必要性：`Should`
 - 来源需求：`phases/H4` `spec/20`
 - 实现方式：参与门槛 + 仲裁器，限制抢答/连发。
 - 测试/DoD：打断率、刷屏率达标。
+- 执行证据：`packages/core/src/conversation_control.ts` `packages/core/src/orchestrator.ts` `packages/core/test/conversation_control.test.mjs` `packages/core/test/orchestrator_memory_selection.test.mjs` `packages/cli/src/index.ts`
 - 依赖：`G/P0-4`；回滚：回退轮询仲裁。
 
 ### G/P1-1 开场/结束语短语库（voice_profile 扩展）
@@ -436,7 +453,7 @@
 - 依赖：`I/P0-2` `H/P0-2`；回滚：保留当前双 adapter 直连实现并关闭 Registry 路径。
 
 ## 统一执行顺序（工程落地顺序）
-1. `Phase G`：`G/P0-3 -> G/P0-4 -> G/P0-5 -> G/P0-6 -> G/P0-7 -> G/P0-8 -> G/P0-9 -> G/P0-10 -> G/P0-11 -> G/P1-0 -> G/P1-1`
+1. `Phase G`：`G/P0-3 -> G/P0-4 -> G/P0-5 -> G/P0-6 -> G/P0-7 -> G/P0-8 -> G/P0-9 -> G/P0-10 -> G/P0-11 -> G/P0-12 -> G/P1-0 -> G/P1-1`
 2. `Phase H`：`H/P0-0 -> H/P0-1 -> H/P0-2 -> H/P0-3 -> H/P0-4 -> H/P1-0 -> H/P1-1 -> H/P1-2 -> H/P1-3 -> H/P1-4 -> H/P1-5 -> H/P1-6 -> H/P1-7 -> H/P1-8 -> H/P1-9 -> H/P1-10 -> H/P1-11 -> H/P1-12 -> H/P1-13 -> H/P1-14 -> H/P1-15 -> H/P1-16 -> H/P1-17 -> H/P1-18 -> H/P1-19`
 3. `Phase I`：`I/P0-0 -> I/P0-2 -> I/P0-3 -> I/P2-0 -> I/P2-1`
 
