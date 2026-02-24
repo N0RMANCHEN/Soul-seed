@@ -28,10 +28,69 @@
 - `done` 任务直接从当前 Roadmap active 列表移除。
 - 不单独维护“已完成任务归档”章节，完成记录以 Git 历史为准。
 
+### 5) 双人分工规则（自动执行）
+- 团队固定 **2 人**并行开发，按域划分：
+  - **Person A**：状态核心 / 记忆 / 情绪 / MindModel 行为层
+  - **Person B**：路由 / 安全 / 兼容迁移 / Schema 治理
+- **新增任务必须标注 `负责人：A | B | AB共建`**，未标注视为分配缺失，更新不合规。
+- **跨流依赖**必须在任务条目标注 `同步点：等待 X 完成 Y`，明确阻塞方。
+- 每个 Phase 末尾维护 **分工总览表**（含任务链、同步点、域归属）。
+- 分配平衡约束：同 Phase 内两人任务数差距 **≤ 30%**；超出须说明原因。
+- **更新触发**：每次 Roadmap 新增 / 删除 / 重排任务时，必须同步更新分工表与同步点。
+
 ## 当前执行总览（重排后）
 - `in_progress`：`none`
 - `blocked`：`none`
 - `todo`：其余 active 任务
+
+## 分工总览（双人并行）
+
+### Phase G 分工
+
+| Person A（MindModel + 记忆） | Person B（路由 + 安全 + 工具） |
+|---|---|
+| G/P0-3 回忆动态调度 | G/P0-5 工具调用自然化 |
+| G/P0-4 Proactive 主动系统 | G/P0-6 四层语义路由门禁 |
+| G/P1-0 群聊参与控制（← G/P0-4） | G/P0-7 业务 regex 清零（← G/P0-6） |
+| G/P1-1 开场/结束语短语库 | G/P0-8 安全 fallback 收敛（← G/P0-6） |
+
+- 同步点：无（全部从"控制面稳定"独立展开）
+- A 关键链：`G/P0-4 → G/P1-0`；B 关键链：`G/P0-6 → G/P0-7 / G/P0-8`
+- 任务数：A=4 | B=4 | 差距 0%
+
+### Phase H 分工
+
+| Person A（状态 + 记忆 + 情绪） | Person B（兼容 + Schema + 治理） |
+|---|---|
+| **H/P0-0 AB共建** | **H/P0-0 AB共建** |
+| H/P0-1 Invariant Table | H/P0-2 Compat & Migration |
+| H/P1-0 Values / Personality | H/P0-3 compat 常数清单（← H/P0-2） |
+| H/P1-1 Goals / Beliefs | H/P0-4 Genome & Epigenetics（← H/P0-2 + H/P0-3） |
+| H/P1-2 记忆遗忘与压缩 | H/P1-4 Persona Package（← H/P0-2） |
+| H/P1-3 Relationship state（← H/P1-2） | H/P1-7 兼容说明落地校核（← H/P0-2） |
+| H/P1-5 Affect 三层状态机 ⚠sync | H/P1-10 治理验收回归集 ⚠sync |
+| H/P1-6 人类化不完美 DoD | H/P1-14 Epigenetics 暗门防护（← H/P0-4） |
+| H/P1-8 关系连续性回归（← H/P1-3） | H/P1-15 Genome trait 闸门（← H/P0-4） |
+| H/P1-9 情绪厚度回归（← H/P1-5） | H/P1-16 LLM 直写封禁 |
+| H/P1-12 风险护栏：过度数值化 | H/P1-17 附录示例契约化（← H/P1-4） |
+| H/P1-13 风险护栏：Relationship 噪音（← H/P1-3） | H/P1-18 Spec 附录A Schema（← H/P1-17） |
+| | H/P1-19 Spec 附录B 接入点核查 |
+
+- ⚠ 同步点 1（B→A）：A 的 `H/P1-5` 需等 B 完成 `H/P0-4`
+- ⚠ 同步点 2（A→B）：B 的 `H/P1-10` 需等 A 完成 `H/P0-1`
+- 跨 Phase 延迟：`H/P1-11`（可观测性回归）依赖 `I/P0-2`，归 B，延迟到 Phase I 启动后执行
+- 任务数：A=11 + 共建1 | B=12 + 共建1 + 延迟1 | 差距 ~8%
+
+### Phase I 分工
+
+| Person A | Person B |
+|---|---|
+| I/P0-2 性能与可观测 | I/P0-0 开源合规 |
+| I/P2-0 Inheritance（可选） | I/P0-3 OK 定义产品化门禁 |
+| | H/P1-11 可观测性回归（解锁于 A 的 I/P0-2） |
+
+- ⚠ 同步点（A→B）：B 的 `H/P1-11` 需等 A 完成 `I/P0-2`
+- 任务数：A=2 | B=3 | I/P2-0 为 Could 级可选
 
 ## Phase G（第一优先级：会话控制与交互闭环）
 
