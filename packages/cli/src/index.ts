@@ -19,6 +19,7 @@ import {
   compactColdMemories,
   DEFAULT_MEMORY_WEIGHTS,
   OpenAICompatAdapter,
+  AnthropicNativeAdapter,
   appendLifeEvent,
   addPinnedMemory,
   applyRename,
@@ -139,6 +140,7 @@ import {
   exportPersonaPackage,
   importPersonaPackage,
   formatModelRoutingConfig,
+  resolveModelForRoute,
   exportFinetuneDataset,
   listGoldenExamples,
   addGoldenExample,
@@ -181,6 +183,11 @@ import {
   ensureSoulLineageArtifacts,
   adaptRoutingWeightsFromHistory,
   DEFAULT_ROUTING_WEIGHTS,
+  inspectRuntimeModelConfig,
+  formatRuntimeModelInspectionError,
+  formatRuntimeModelInspectionWarnings,
+  mergeRouteCandidates,
+  hasAnyRuntimeModelSignal,
   rotateLifeLogIfNeeded,
   checkEnvironment,
   isEnvironmentReady,
@@ -197,6 +204,7 @@ import type {
   DecisionTrace,
   LifeEvent,
   MetaCognitionMode,
+  ModelAdapter,
   PersonaInitOptions,
   PersonaJudgmentLabel,
   RelationshipState,
@@ -225,7 +233,6 @@ interface PersonaTemplate {
   stancePreference: "friend" | "peer" | "intimate" | "neutral";
 }
 
-const DEFAULT_CHAT_MODEL = "claude-sonnet-4-6";
 const DEFAULT_PERSONA_NAME = "Soulseed";
 const RESERVED_ROOT_COMMANDS = new Set([
   "help",
@@ -348,6 +355,56 @@ function loadDotEnvFromCwd(): void {
   }
 }
 
+function resolveRuntimeModelConfigStrict(
+  options: Record<string, string | boolean>,
+  modelOverride?: string
+) {
+  const inspection = inspectRuntimeModelConfig({
+    provider: optionString(options, "provider")?.trim() || undefined,
+    model: (modelOverride ?? optionString(options, "model")?.trim()) || undefined
+  });
+  if (!inspection.ok) {
+    throw new Error(formatRuntimeModelInspectionError(inspection));
+  }
+  const warnings = formatRuntimeModelInspectionWarnings(inspection);
+  return { config: inspection.config, warnings };
+}
+
+function shouldEmitRuntimeModelWarnings(): boolean {
+  const raw = (process.env.SOULSEED_MODEL_CONFIG_WARNINGS ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+}
+
+type ChatAdapter = OpenAICompatAdapter | AnthropicNativeAdapter;
+
+function createChatAdapter(params: {
+  provider: string;
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  modelCandidates: string[];
+  onModelFallback: (info: { from: string; to: string; reason: string; attempt: number }) => void;
+}): ChatAdapter {
+  if (params.provider === "anthropic") {
+    return new AnthropicNativeAdapter({
+      provider: "anthropic",
+      apiKey: params.apiKey,
+      baseUrl: params.baseUrl,
+      model: params.model,
+      modelCandidates: params.modelCandidates,
+      onModelFallback: params.onModelFallback
+    });
+  }
+  return new OpenAICompatAdapter({
+    provider: params.provider as "deepseek" | "openai" | "openai_compat" | "custom",
+    apiKey: params.apiKey,
+    baseUrl: params.baseUrl,
+    model: params.model,
+    modelCandidates: params.modelCandidates,
+    onModelFallback: params.onModelFallback
+  });
+}
+
 function parseArgs(argv: string[]): ParsedArgs {
   const parsed: ParsedArgs = { _: [], options: {} };
 
@@ -379,8 +436,8 @@ function printHelp(): void {
       "  new <name>                                         # one-question setup (default)",
       "  new <name> --quick                                 # instant create, no questions",
       "  new <name> --advanced                              # full configuration wizard",
-      "  new <name> [--out <path>] [--template friend|peer|intimate|neutral] [--model <model>]",
-      "  <name> [--model <model>] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
+      "  new <name> [--out <path>] [--template friend|peer|intimate|neutral]",
+      "  <name> [--provider <provider>] [--model <model>] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
       "  doctor [--persona ./personas/<name>.soulseedpersona]",
       "  goal create --title <text> [--persona <path>]",
       "  goal list [--persona <path>] [--status pending|active|blocked|completed|canceled|suspended] [--limit 20]",
@@ -453,7 +510,7 @@ function printHelp(): void {
       "",
       "兼容命令:",
       "  init [--name Soulseed] [--out ./personas/<name>.soulseedpersona]",
-      "  chat [--persona ./personas/<name>.soulseedpersona] [--model <model>] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
+      "  chat [--persona ./personas/<name>.soulseedpersona] [--provider <provider>] [--model <model>] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
       "  persona init --name <name> --out <path>",
       "  persona rename --to <new_name> [--persona <path>] [--confirm]",
       "",
@@ -560,11 +617,11 @@ function resolveExecutionMode(options: Record<string, string | boolean>): "auto"
 
 function resolveHumanPacedMode(options: Record<string, string | boolean>): boolean {
   const explicitOption = typeof options["human-paced"] === "string" ? options["human-paced"] : undefined;
-  if (!explicitOption && process.env.DEEPSEEK_API_KEY === "test-key") {
+  if (!explicitOption && (process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY) === "test-key") {
     return false;
   }
   const raw =
-    (explicitOption ?? process.env.SOULSEED_HUMAN_PACED ?? "1")
+    (explicitOption ?? process.env.SOULSEED_HUMAN_PACED ?? "0")
       .trim()
       .toLowerCase();
   return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
@@ -583,10 +640,10 @@ function resolveThinkingPreviewEnabled(
   if (fromEnv) {
     return fromEnv === "1" || fromEnv === "true" || fromEnv === "on" || fromEnv === "yes";
   }
-  if (process.env.DEEPSEEK_API_KEY === "test-key") {
+  if ((process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY) === "test-key") {
     return false;
   }
-  return voiceProfile?.thinkingPreview?.enabled ?? true;
+  return voiceProfile?.thinkingPreview?.enabled ?? false;
 }
 
 function resolveThinkingPreviewThresholdMs(
@@ -614,7 +671,7 @@ function resolveThinkingPreviewModelFallback(options: Record<string, string | bo
     const normalized = fromOption.trim().toLowerCase();
     return normalized === "1" || normalized === "true" || normalized === "on" || normalized === "yes";
   }
-  const raw = (process.env.SOULSEED_THINKING_PREVIEW_MODEL_FALLBACK ?? "1").trim().toLowerCase();
+  const raw = (process.env.SOULSEED_THINKING_PREVIEW_MODEL_FALLBACK ?? "0").trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
 }
 
@@ -802,7 +859,6 @@ async function askQuestion(rl: readline.Interface, prompt: string): Promise<stri
 
 function buildInitOptionsFromTemplate(params: {
   templateKey: PersonaTemplateKey;
-  model: string;
   worldviewSeed?: string;
   mission?: string;
   values?: string[];
@@ -849,7 +905,6 @@ function buildInitOptionsFromTemplate(params: {
         allowFiller: true
       }
     },
-    defaultModel: params.model.trim() || DEFAULT_CHAT_MODEL,
     initProfile: {
       template: params.templateKey
     }
@@ -891,12 +946,10 @@ async function runPersonaNew(nameArg: string | undefined, options: Record<string
   }
   const quick = options.quick === true;
   const templateFromOption = parseTemplate(optionString(options, "template"));
-  const modelFromOption = optionString(options, "model")?.trim() || DEFAULT_CHAT_MODEL;
 
   if (quick) {
     const optionsFromTemplate = buildInitOptionsFromTemplate({
-      templateKey: templateFromOption ?? "neutral",
-      model: modelFromOption
+      templateKey: templateFromOption ?? "neutral"
     });
     await initPersonaPackage(outPath, rawName, optionsFromTemplate);
     console.log(`已创建 persona: ${outPath}`);
@@ -930,7 +983,7 @@ async function runPersonaNew(nameArg: string | undefined, options: Record<string
         "4": "neutral",  "n": "neutral",  "neutral": "neutral"
       };
       const templateKey: PersonaTemplateKey = vibeMap[vibeAnswer] ?? templateFromOption ?? "friend";
-      const initOptions = buildInitOptionsFromTemplate({ templateKey, model: modelFromOption });
+      const initOptions = buildInitOptionsFromTemplate({ templateKey });
       await initPersonaPackage(outPath, rawName, initOptions);
       console.log(`\n  ✦  ${rawName} is ready.  ${rawName} 已就绪。`);
       console.log(`     Style: ${vibeLabels[templateKey]}`);
@@ -954,8 +1007,6 @@ async function runPersonaNew(nameArg: string | undefined, options: Record<string
     );
     const templateKey = parseTemplate(templatePrompt) ?? templateFromOption ?? "neutral";
     const template = PERSONA_TEMPLATES[templateKey];
-    const modelPrompt = await askQuestion(rl, `默认模型 (默认 ${modelFromOption}): `);
-    const model = modelPrompt.trim() || modelFromOption;
     const worldviewPrompt = await askQuestion(rl, `世界观 seed (默认: ${template.worldviewSeed}): `);
     const missionPrompt = await askQuestion(rl, `使命 mission (默认: ${template.mission}): `);
     const valuesPrompt = await askQuestion(rl, `values（逗号分隔，默认: ${template.values.join(", ")}): `);
@@ -1001,7 +1052,6 @@ async function runPersonaNew(nameArg: string | undefined, options: Record<string
     console.log(`- name: ${rawName}`);
     console.log(`- out: ${outPath}`);
     console.log(`- template: ${templateKey}`);
-    console.log(`- model: ${model}`);
     console.log(`- worldview: ${(worldviewPrompt.trim() || template.worldviewSeed).slice(0, 120)}`);
     console.log(`- mission: ${(missionPrompt.trim() || template.mission).slice(0, 120)}`);
     console.log(`- style/adaptability: ${stylePrompt.trim() || template.style} / ${adaptability}`);
@@ -1013,7 +1063,6 @@ async function runPersonaNew(nameArg: string | undefined, options: Record<string
 
     const initOptions = buildInitOptionsFromTemplate({
       templateKey,
-      model,
       worldviewSeed: worldviewPrompt,
       mission: missionPrompt,
       values,
@@ -1139,12 +1188,24 @@ async function runAgentCommand(action: string | undefined, options: Record<strin
   const goalId = optionString(options, "goal-id")?.trim();
   const maxSteps = parseLimit(optionString(options, "max-steps"), 4, 1, 12);
   const personaPkg = await loadPersonaPackage(personaPath);
-  let plannerAdapter: OpenAICompatAdapter | undefined;
-  try {
-    const model = optionString(options, "model")?.trim() || personaPkg.persona.defaultModel || DEFAULT_CHAT_MODEL;
-    plannerAdapter = new OpenAICompatAdapter({ model });
-  } catch {
-    plannerAdapter = undefined;
+  let plannerAdapter: ModelAdapter | undefined;
+  if (hasAnyRuntimeModelSignal()) {
+    const { config: runtimeConfig } = resolveRuntimeModelConfigStrict(options);
+    const deliberativeModel = resolveModelForRoute(
+      "deliberative",
+      personaPkg.cognition,
+      runtimeConfig.chatModel
+    );
+    plannerAdapter = createChatAdapter({
+      provider: runtimeConfig.provider,
+      apiKey: runtimeConfig.apiKey,
+      baseUrl: runtimeConfig.baseUrl,
+      model: deliberativeModel,
+      modelCandidates: mergeRouteCandidates(deliberativeModel, runtimeConfig.candidateModels),
+      onModelFallback: () => {
+        // agent command is non-interactive JSON output, keep fallback logs silent.
+      }
+    });
   }
   const execution = await runAgentExecution({
     rootPath: personaPath,
@@ -1430,7 +1491,15 @@ async function runPersonaImport(options: Record<string, string | boolean>): Prom
 async function runPersonaModelRouting(options: Record<string, string | boolean>): Promise<void> {
   const personaPath = resolvePersonaPath(options);
   const personaPkg = await loadPersonaPackage(personaPath);
-  const defaultModel = optionString(options, "model") ?? (personaPkg.persona.defaultModel ?? DEFAULT_CHAT_MODEL);
+  const defaultModel = (() => {
+    const fromOption = optionString(options, "model")?.trim();
+    if (fromOption) return fromOption;
+    try {
+      return resolveRuntimeModelConfigStrict(options).config.chatModel;
+    } catch {
+      return "<runtime-unconfigured>";
+    }
+  })();
 
   const instinct = optionString(options, "instinct");
   const deliberative = optionString(options, "deliberative");
@@ -1450,7 +1519,7 @@ async function runPersonaModelRouting(options: Record<string, string | boolean>)
 
   if (reset) {
     await patchCognitionState(personaPath, { modelRouting: null });
-    console.log("模型路由已重置为默认（全部使用 persona defaultModel）");
+    console.log("模型路由已重置为默认（全部使用运行时默认模型）");
     return;
   }
 
@@ -1990,11 +2059,36 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   }
   let workingSetData = await readWorkingSet(personaPath);
   let memoryWeights = workingSetData.memoryWeights ?? DEFAULT_MEMORY_WEIGHTS;
-  const resolvedModel = optionString(options, "model")?.trim() || personaPkg.persona.defaultModel || DEFAULT_CHAT_MODEL;
-  const adapter = new OpenAICompatAdapter({
-    model: resolvedModel
-  });
-  const apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
+  const { config: runtimeConfig, warnings: runtimeWarnings } = resolveRuntimeModelConfigStrict(options);
+  if (shouldEmitRuntimeModelWarnings()) {
+    for (const warning of runtimeWarnings) {
+      console.log(`[soulseed] 模型配置提示: ${warning}`);
+    }
+  }
+  const adapterCache = new Map<string, ChatAdapter>();
+  const getAdapterForRoute = (routeTag: "instinct" | "deliberative" | "meta"): ChatAdapter => {
+    const cached = adapterCache.get(routeTag);
+    if (cached) {
+      return cached;
+    }
+    const routedModel = resolveModelForRoute(routeTag, personaPkg.cognition, runtimeConfig.chatModel);
+    const adapter = createChatAdapter({
+      provider: runtimeConfig.provider,
+      apiKey: runtimeConfig.apiKey,
+      baseUrl: runtimeConfig.baseUrl,
+      model: routedModel,
+      modelCandidates: mergeRouteCandidates(routedModel, runtimeConfig.candidateModels),
+      onModelFallback: (info) => {
+        console.log(
+          `[soulseed] 路由 ${routeTag} 模型不可用，自动切换(${info.attempt}): ${info.from} -> ${info.to} [${info.reason}]`
+        );
+      }
+    });
+    adapterCache.set(routeTag, adapter);
+    return adapter;
+  };
+  const adapter = getAdapterForRoute("deliberative");
+  const apiKey = runtimeConfig.apiKey;
   const skipBackgroundMaintenance = apiKey === "test-key";
   if (!skipBackgroundMaintenance) {
     void runMemoryConsolidation(personaPath, {
@@ -2153,7 +2247,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     if (!thinkingPreviewModelFallback) {
       return null;
     }
-    const apiKey = process.env.DEEPSEEK_API_KEY ?? "";
+    const apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
     if (!apiKey || apiKey === "test-key") {
       return null;
     }
@@ -2574,10 +2668,16 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     });
     const temporalRef = anchor.silenceMinutes < 20 && !anchor.crossedDayBoundary ? "刚才" : "之前";
     if (!source) {
-      return `我在这。你${temporalRef}想聊哪个点，我们从那接。`;
+      return `继续吧。你${temporalRef}想聊哪个点，我们就从那一段接上。`;
     }
     const compact = source.replace(/\s+/g, " ").slice(0, 36);
-    return `我在。你${temporalRef}提到“${compact}”，我们从这接。`;
+    const templates = [
+      `你${temporalRef}提到“${compact}”，我们继续往下走。`,
+      `回到你${temporalRef}说的“${compact}”，我给你接着展开。`,
+      `先接住“${compact}”这点，我继续往前推进。`
+    ];
+    const idx = Math.floor(Date.now() / 1000) % templates.length;
+    return templates[idx] ?? templates[0];
   };
 
   const normalizeConversationalReply = (
@@ -2632,7 +2732,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     if (params.mode === "greeting" && !lastUserInput.trim()) {
       return { text: params.fallback, streamed: false };
     }
-    const apiKey = process.env.DEEPSEEK_API_KEY ?? "";
+    const apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
     if (!apiKey || apiKey === "test-key") {
       return { text: params.fallback, streamed: false };
     }
@@ -4291,7 +4391,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           personaPkg.userProfile = updated;
         }
 
-        const model = adapter.getModel();
+        const plannerAdapter = getAdapterForRoute("deliberative");
+        const model = plannerAdapter.getModel();
         const pastEvents = await readLifeEvents(personaPath);
         const nextRelationship = evolveRelationshipState(
           personaPkg.relationshipState ?? createInitialRelationshipState(),
@@ -4401,7 +4502,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           recalledMemoryBlocks: [...recallResult.memoryBlocks, ...externalKnowledgeBlocks],
           recallTraceId: recallResult.traceId,
           safetyContext: adultSafetyContext,
-          plannerAdapter: adapter,
+          plannerAdapter,
           goalId: goalAssist.kind === "resume" ? goalAssist.goalId : undefined,
           mode: executionMode
         });
@@ -4417,6 +4518,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           executionMode: executionMode === "agent" ? "agent" : "soul"
         };
         const instinctRoute = trace.routeDecision === "instinct";
+        const responseAdapter = getAdapterForRoute(instinctRoute ? "instinct" : "deliberative");
         // P2-5: compile always-inject layer (user facts + pinned + relationship)
         const alwaysInjectCtx = await compileAlwaysInjectContext(personaPath, personaPkg, { query: effectiveInput });
         const alwaysInjectBlock = formatAlwaysInjectContext(alwaysInjectCtx);
@@ -4662,7 +4764,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       if (turnExecution.mode === "agent") {
         assistantContent = turnExecution.reply;
       } else {
-        const result = await adapter.streamChat(
+        const result = await responseAdapter.streamChat(
           messages,
           {
             onToken: (chunk: string) => {
@@ -4864,8 +4966,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       // 保存本轮 meta-review 风格信号，用于后续 self_revision 替代关键字硬匹配
       let metaReviewStyleSignals: { concise: number; reflective: number; direct: number; warm: number } | undefined;
       if (turnExecution.mode === "soul") {
+        const metaAdapter = getAdapterForRoute("meta");
         const metaReview = await runMetaReviewLlm({
-          adapter,
+          adapter: metaAdapter,
           personaPkg,
           userInput: effectiveInput,
           candidateReply: assistantContent,

@@ -53,7 +53,7 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
   }
 
   if (issues.length === 0) {
-    const persona = await readJson<{ id?: string; schemaVersion?: string; paths?: Record<string, unknown> }>(
+    const persona = await readJson<{ id?: string; schemaVersion?: string; paths?: Record<string, unknown>; defaultModel?: unknown }>(
       path.join(rootPath, "persona.json")
     );
     const identity = await readJson<{ personaId?: string; schemaVersion?: string; selfDescription?: string; personalityCore?: unknown[] }>(path.join(rootPath, "identity.json"));
@@ -79,6 +79,14 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
           `persona.json schemaVersion=${persona.schemaVersion ?? "unknown"}, expected ${PERSONA_SCHEMA_VERSION}` +
           (missingPaths.length ? `; missing paths: ${missingPaths.join(", ")}` : "") +
           `. Run: node scripts/migrate_schema.mjs --persona <path>`,
+        path: "persona.json"
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(persona, "defaultModel")) {
+      issues.push({
+        code: "deprecated_default_model_field",
+        severity: "warning",
+        message: "persona.json defaultModel is deprecated and should be removed. Run: node scripts/migrate_schema.mjs --persona <path>",
         path: "persona.json"
       });
     }

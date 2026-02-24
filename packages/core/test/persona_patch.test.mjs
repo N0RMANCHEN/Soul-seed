@@ -94,7 +94,7 @@ test("patchWorldview and patchConstitution persist revisions", async () => {
   assert.deepEqual(constitution.commitments, ["never fabricate past dialogue"]);
 });
 
-test("initPersonaPackage persists optional init profile and default model", async () => {
+test("initPersonaPackage persists optional init profile and removes defaultModel field", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-persona-init-options-"));
   const personaPath = path.join(tmpDir, "Teddy.soulseedpersona");
   await initPersonaPackage(personaPath, "Teddy", {
@@ -117,7 +117,6 @@ test("initPersonaPackage persists optional init profile and default model", asyn
       tonePreference: "direct",
       stancePreference: "peer"
     },
-    defaultModel: "deepseek-reasoner",
     initProfile: {
       template: "peer"
     }
@@ -127,8 +126,8 @@ test("initPersonaPackage persists optional init profile and default model", asyn
   const worldview = JSON.parse(await readFile(path.join(personaPath, "worldview.json"), "utf8"));
   const voice = JSON.parse(await readFile(path.join(personaPath, "voice_profile.json"), "utf8"));
 
-  assert.equal(persona.schemaVersion, "0.2.0");
-  assert.equal(persona.defaultModel, "deepseek-reasoner");
+  assert.equal(persona.schemaVersion, "0.3.0");
+  assert.equal(Object.prototype.hasOwnProperty.call(persona, "defaultModel"), false);
   assert.equal(persona.initProfile.template, "peer");
   assert.equal(typeof persona.initProfile.initializedAt, "string");
   assert.equal(worldview.seed, "custom worldview");

@@ -90,6 +90,15 @@ export async function lintPersona(personaPath: string, options?: { strict?: bool
         suggestion: "Set schemaVersion to current version"
       });
     }
+    if (Object.prototype.hasOwnProperty.call(personaJson, "defaultModel")) {
+      issues.push({
+        level: "error",
+        code: "deprecated_default_model_field",
+        path: "persona.json:defaultModel",
+        message: "persona.defaultModel is deprecated and must be removed",
+        suggestion: "Run: node scripts/migrate_schema.mjs --persona <path>"
+      });
+    }
   }
 
   const pinned = await safeReadJson<PersonaPinned>(path.join(personaPath, "pinned.json"));

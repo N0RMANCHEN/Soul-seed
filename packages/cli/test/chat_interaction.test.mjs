@@ -113,11 +113,11 @@ test("chat can continue reading from attached content with semantic follow-up", 
   assert.equal(chatResult.status, 0);
   assert.match(
     chatResult.stdout,
-    /第一段：夜风从窗缝吹进来|我在。你刚才提到“继续读”，我们从这接。/
+    /第一段：夜风从窗缝吹进来|继续往下走|接着展开|往前推进|我们从这接。/
   );
   assert.match(
     chatResult.stdout,
-    /要我继续往下读吗？|要我再做个总结吗？|要继续吗？|要不要我顺手总结一下？|我们从这接。/
+    /要我继续往下读吗？|要我再做个总结吗？|要继续吗？|要不要我顺手总结一下？|继续往下走|接着展开|往前推进|我们从这接。/
   );
 });
 
@@ -152,9 +152,9 @@ test("chat reading status and source clarification are handled semantically", as
   assert.equal(chatResult.status, 0);
   assert.match(
     chatResult.stdout,
-    /我已经通读过了。核心内容是：|我刚拿到，还没开读。要我从开头开始吗？|我们从这接。/
+    /我已经通读过了。核心内容是：|我刚拿到，还没开读。要我从开头开始吗？|继续往下走|接着展开|往前推进|我们从这接。/
   );
-  assert.match(chatResult.stdout, /外部文章，不当(作)?你的个人记忆|我们从这接。/);
+  assert.match(chatResult.stdout, /外部文章，不当(作)?你的个人记忆|继续往下走|接着展开|往前推进|我们从这接。/);
 });
 
 test("chat status query followed by affirmative starts reading from beginning", async () => {
@@ -184,11 +184,11 @@ test("chat status query followed by affirmative starts reading from beginning", 
   assert.equal(chatResult.status, 0);
   assert.match(
     chatResult.stdout,
-    /我刚拿到，还没开读。要我从开头开始吗？|我们从这接。/
+    /我刚拿到，还没开读。要我从开头开始吗？|继续往下走|接着展开|往前推进|我们从这接。/
   );
   assert.match(
     chatResult.stdout,
-    new RegExp(`${firstLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|我们从这接。`)
+    new RegExp(`${firstLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|继续往下走|接着展开|往前推进|我们从这接。`)
   );
 });
 
@@ -215,11 +215,11 @@ test("chat treats short positive feedback like '就是!' as confirmation in read
   assert.equal(chatResult.status, 0);
   assert.match(
     chatResult.stdout,
-    /我刚拿到，还没开读。要我从开头开始吗？|我们从这接。/
+    /我刚拿到，还没开读。要我从开头开始吗？|继续往下走|接着展开|往前推进|我们从这接。/
   );
   assert.match(
     chatResult.stdout,
-    new RegExp(`${firstLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|我们从这接。`)
+    new RegExp(`${firstLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|继续往下走|接着展开|往前推进|我们从这接。`)
   );
 });
 

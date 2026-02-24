@@ -6,7 +6,7 @@ export interface ChatMessage {
   content: string;
 }
 
-export const PERSONA_SCHEMA_VERSION = "0.2.0";
+export const PERSONA_SCHEMA_VERSION = "0.3.0";
 
 export interface SharedSpaceConfig {
   /** Absolute path to the shared space root directory */
@@ -22,7 +22,6 @@ export interface PersonaMeta {
   displayName: string;
   schemaVersion: string;
   createdAt: string;
-  defaultModel?: string;
   /** Per-persona adult safety defaults. CLI flags override these; system defaults are all false. */
   adultSafetyDefaults?: {
     adultMode?: boolean;
@@ -105,7 +104,6 @@ export interface PersonaInitOptions {
   constitution?: PersonaConstitution;
   habits?: PersonaHabits;
   voiceProfile?: VoiceProfile;
-  defaultModel?: string;
   initProfile?: {
     template: "friend" | "peer" | "intimate" | "neutral" | "custom";
     initializedAt?: string;

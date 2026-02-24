@@ -135,15 +135,13 @@ export async function initPersonaPackage(
   const constitution = normalizeConstitution(options?.constitution);
   const habits = normalizeHabits(options?.habits);
   const voiceProfile = normalizeVoiceProfile(options?.voiceProfile);
-  const defaultModel = normalizeDefaultModel(options?.defaultModel);
   const initProfile = normalizeInitProfile(options?.initProfile, createdAt);
 
   await writeJson(path.join(outPath, "persona.json"), {
     id: personaId,
     displayName,
-    schemaVersion: "0.2.0",
+    schemaVersion: PERSONA_SCHEMA_VERSION,
     createdAt,
-    ...(defaultModel ? { defaultModel } : {}),
     ...(initProfile ? { initProfile } : {}),
     paths: {
       identity: "identity.json",
@@ -1396,17 +1394,16 @@ const PERSONA_DEFAULT_PATHS: Required<NonNullable<PersonaMeta["paths"]>> = {
 };
 
 function normalizePersonaMeta(raw: PersonaMeta): PersonaMeta {
-  const defaultModel = normalizeDefaultModel(raw.defaultModel);
   const initProfile = normalizeInitProfile(raw.initProfile, raw.createdAt);
   const isLegacy = raw.schemaVersion !== PERSONA_SCHEMA_VERSION;
   const paths: PersonaMeta["paths"] = isLegacy
     ? { ...PERSONA_DEFAULT_PATHS, ...(raw.paths ?? {}) }
     : raw.paths;
+  const { defaultModel: _legacyDefaultModel, ...rest } = (raw as PersonaMeta & { defaultModel?: unknown });
   return {
-    ...raw,
+    ...rest,
     schemaVersion: isLegacy ? PERSONA_SCHEMA_VERSION : raw.schemaVersion,
     paths,
-    ...(defaultModel ? { defaultModel } : {}),
     ...(initProfile ? { initProfile } : {})
   };
 }
@@ -1604,14 +1601,6 @@ function normalizeRoutingWeights(raw: unknown): CognitionState["routingWeights"]
     };
   }
   return undefined;
-}
-
-function normalizeDefaultModel(value: string | undefined): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized.slice(0, 80) : undefined;
 }
 
 function normalizeInitProfile(

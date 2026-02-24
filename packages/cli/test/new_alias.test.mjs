@@ -7,7 +7,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 
 const cliPath = path.resolve("dist/index.js");
 
-test("new --quick creates persona with defaultModel and initProfile", async () => {
+test("new --quick creates persona with initProfile and no defaultModel", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-new-test-"));
   const personaPath = path.join(tmpDir, "Teddy.soulseedpersona");
 
@@ -20,7 +20,7 @@ test("new --quick creates persona with defaultModel and initProfile", async () =
   assert.match(result.stdout, /已创建 persona:/);
 
   const persona = JSON.parse(await readFile(path.join(personaPath, "persona.json"), "utf8"));
-  assert.equal(persona.defaultModel, "deepseek-reasoner");
+  assert.equal(Object.prototype.hasOwnProperty.call(persona, "defaultModel"), false);
   assert.equal(persona.initProfile.template, "peer");
 });
 

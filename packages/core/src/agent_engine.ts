@@ -602,8 +602,12 @@ async function buildPlannedActions(params: {
     };
   }
 
-  if (params.plannerAdapter.name === "deepseek") {
-    const apiKey = (process.env.DEEPSEEK_API_KEY ?? "").trim();
+  if (
+    params.plannerAdapter.name === "deepseek" ||
+    params.plannerAdapter.name === "openai-compat" ||
+    params.plannerAdapter.name === "anthropic"
+  ) {
+    const apiKey = (process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "").trim();
     if (!apiKey || apiKey === "test-key") {
       return {
         source: "fallback_rule",

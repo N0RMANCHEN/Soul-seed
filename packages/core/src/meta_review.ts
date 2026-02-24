@@ -43,8 +43,12 @@ export async function runMetaReviewLlm(params: {
       rationale: "meta_review_adapter_missing"
     };
   }
-  if (params.adapter.name === "deepseek") {
-    const apiKey = (process.env.DEEPSEEK_API_KEY ?? "").trim();
+  if (
+    params.adapter.name === "deepseek" ||
+    params.adapter.name === "openai-compat" ||
+    params.adapter.name === "anthropic"
+  ) {
+    const apiKey = (process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "").trim();
     if (!apiKey || apiKey === "test-key") {
       return {
         applied: false,

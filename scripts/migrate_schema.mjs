@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/migrate_schema.mjs
 // 人格包 schema 幂等升级工具（P0-0）
-// 将 persona.json 从旧版本（如 0.1.0）升级到当前版本（0.2.0）。
+// 将 persona.json 从旧版本（如 0.1.0）升级到当前版本（0.3.0）。
 //
 // Usage:
 //   node scripts/migrate_schema.mjs --persona <persona-dir>       # 单个人格包
@@ -12,7 +12,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 
-const CURRENT_SCHEMA_VERSION = "0.2.0";
+const CURRENT_SCHEMA_VERSION = "0.3.0";
 
 const DEFAULT_PATHS = {
   identity: "identity.json",
@@ -47,11 +47,13 @@ async function migratePersonaDir(personaDir, dryRun = false) {
 
   const raw = JSON.parse(await fsp.readFile(personaJsonPath, "utf8"));
 
+  const hadLegacyDefaultModel = typeof raw.defaultModel === "string";
+
   if (raw.schemaVersion === CURRENT_SCHEMA_VERSION) {
     // 检查 paths 是否完整
     const existingPaths = raw.paths ?? {};
     const missingKeys = Object.keys(DEFAULT_PATHS).filter((k) => !existingPaths[k]);
-    if (missingKeys.length === 0) {
+    if (missingKeys.length === 0 && !hadLegacyDefaultModel) {
       console.log(`  [ok]   ${path.basename(personaDir)} — already at ${CURRENT_SCHEMA_VERSION} with complete paths`);
       return { status: "already_current" };
     }
@@ -60,13 +62,16 @@ async function migratePersonaDir(personaDir, dryRun = false) {
       ...raw,
       paths: { ...DEFAULT_PATHS, ...existingPaths }
     };
+    delete updated.defaultModel;
     if (!dryRun) {
       await fsp.writeFile(personaJsonPath, JSON.stringify(updated, null, 2) + "\n", "utf8");
     }
     console.log(
-      `  [fix]  ${path.basename(personaDir)} — paths completed (added: ${missingKeys.join(", ")})${dryRun ? " [dry-run]" : ""}`
+      `  [fix]  ${path.basename(personaDir)} — paths completed (added: ${missingKeys.join(", ") || "none"})` +
+      `${hadLegacyDefaultModel ? " + removed legacy defaultModel" : ""}` +
+      `${dryRun ? " [dry-run]" : ""}`
     );
-    return { status: "paths_completed", added: missingKeys };
+    return { status: "paths_completed", added: missingKeys, removedDefaultModel: hadLegacyDefaultModel };
   }
 
   // 版本过旧，升级
@@ -76,6 +81,7 @@ async function migratePersonaDir(personaDir, dryRun = false) {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     paths: { ...DEFAULT_PATHS, ...(raw.paths ?? {}) }
   };
+  delete updated.defaultModel;
 
   if (!dryRun) {
     // 备份原文件
@@ -87,7 +93,12 @@ async function migratePersonaDir(personaDir, dryRun = false) {
   console.log(
     `  [upgrade] ${path.basename(personaDir)} — ${oldVersion} → ${CURRENT_SCHEMA_VERSION}${dryRun ? " [dry-run]" : "  (backup saved)"}`
   );
-  return { status: "upgraded", from: oldVersion, to: CURRENT_SCHEMA_VERSION };
+  return {
+    status: "upgraded",
+    from: oldVersion,
+    to: CURRENT_SCHEMA_VERSION,
+    removedDefaultModel: hadLegacyDefaultModel
+  };
 }
 
 async function findPersonaDirs(rootDir) {
@@ -136,7 +147,9 @@ async function main() {
   const fixed = results.filter((r) => r.status === "paths_completed").length;
   const current = results.filter((r) => r.status === "already_current").length;
   const skipped = results.filter((r) => r.status === "skipped").length;
+  const removedDefaultModel = results.filter((r) => r.removedDefaultModel).length;
   console.log(`upgraded: ${upgraded}  paths_completed: ${fixed}  already_current: ${current}  skipped: ${skipped}`);
+  console.log(`defaultModel_removed: ${removedDefaultModel}`);
 
   if (upgraded + fixed > 0 && !args.dryRun) {
     console.log("\nDone. Run `ss doctor --persona <path>` to verify.");

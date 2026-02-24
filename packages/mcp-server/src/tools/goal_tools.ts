@@ -8,6 +8,7 @@ import {
   listExecutionTraces,
   listGoals,
   loadPersonaPackage,
+  inspectRuntimeModelConfig,
   runAgentExecution
 } from "@soulseed/core";
 
@@ -149,10 +150,11 @@ export async function runRuntimeTurnTool(personaPath: string, args: {
     throw new Error("runtime.turn: userInput is required");
   }
   const personaPkg = await loadPersonaPackage(personaPath);
+  const runtimeConfig = inspectRuntimeModelConfig().config;
   const model =
     typeof args.model === "string" && args.model.trim().length > 0
       ? args.model.trim()
-      : personaPkg.persona.defaultModel ?? "deepseek-chat";
+      : runtimeConfig.chatModel || "deepseek-chat";
   const mode = args.mode === "soul" || args.mode === "agent" ? args.mode : "auto";
   const turn = await executeTurnProtocol({
     rootPath: personaPath,
@@ -200,10 +202,11 @@ export async function runRuntimeGoalResumeTool(personaPath: string, args: {
   }
   const context = await getGoalContext(personaPath, targetId);
   const personaPkg = await loadPersonaPackage(personaPath);
+  const runtimeConfig = inspectRuntimeModelConfig().config;
   const model =
     typeof args.model === "string" && args.model.trim().length > 0
       ? args.model.trim()
-      : personaPkg.persona.defaultModel ?? "deepseek-chat";
+      : runtimeConfig.chatModel || "deepseek-chat";
   const userInput =
     typeof args.userInput === "string" && args.userInput.trim().length > 0
       ? args.userInput.trim()

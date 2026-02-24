@@ -9,7 +9,7 @@ function buildPersonaPkg() {
     persona: {
       id: "p1",
       displayName: "Roxy",
-      schemaVersion: "0.2.0",
+      schemaVersion: "0.3.0",
       createdAt: new Date().toISOString(),
       paths: {
         identity: "identity.json",

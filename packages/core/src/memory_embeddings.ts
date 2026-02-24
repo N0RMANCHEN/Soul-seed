@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { ensureMemoryStore, runMemoryStoreSql } from "./memory_store.js";
+import { resolveRuntimeModelConfig } from "./runtime_model_config.js";
 
 export interface EmbeddingProvider {
   readonly name: string;
@@ -47,10 +48,11 @@ export class OpenAICompatEmbeddingProvider implements EmbeddingProvider {
   private readonly baseUrl: string;
 
   constructor() {
-    this.apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
-    this.baseUrl = (process.env.SOULSEED_BASE_URL ?? process.env.DEEPSEEK_BASE_URL ?? "").replace(/\/+$/, "");
-    this.model = process.env.SOULSEED_EMBEDDING_MODEL ?? process.env.DEEPSEEK_EMBEDDING_MODEL ?? "text-embedding-3-small";
-    this.dim = Number(process.env.SOULSEED_EMBEDDING_DIM ?? process.env.DEEPSEEK_EMBEDDING_DIM ?? 1024);
+    const resolved = resolveRuntimeModelConfig();
+    this.apiKey = resolved.apiKey;
+    this.baseUrl = resolved.baseUrl;
+    this.model = resolved.embeddingModel;
+    this.dim = resolved.embeddingDim;
     if (!this.apiKey) {
       throw new Error(
         "Missing API key for embedding provider. Set SOULSEED_API_KEY (or legacy DEEPSEEK_API_KEY)."
@@ -119,7 +121,7 @@ export async function buildMemoryEmbeddingIndex(
   await ensureMemoryStore(rootPath);
   const batchSize = Math.max(1, Math.min(64, Math.floor(options?.batchSize ?? 16)));
   const maxRows = Math.max(1, Math.min(10000, Math.floor(options?.maxRows ?? 4000)));
-  const provider = createEmbeddingProvider(options?.provider ?? "deepseek");
+  const provider = createEmbeddingProvider(options?.provider ?? "openai");
   const rows = await fetchEmbeddingRows(rootPath, maxRows);
   const existing = await fetchExistingEmbeddingMeta(rootPath);
 

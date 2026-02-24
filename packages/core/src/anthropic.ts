@@ -1,7 +1,7 @@
 import type { ChatMessage, ModelAdapter, ModelStreamCallbacks } from "./types.js";
 import { mergeRouteCandidates, resolveRuntimeModelConfig, type RuntimeProvider } from "./runtime_model_config.js";
 
-interface LLMAdapterOptions {
+interface AnthropicAdapterOptions {
   provider?: RuntimeProvider;
   apiKey?: string;
   baseUrl?: string;
@@ -11,24 +11,17 @@ interface LLMAdapterOptions {
   onModelFallback?: (info: { from: string; to: string; reason: string; attempt: number }) => void;
 }
 
-interface ChatCompletionChunk {
-  choices?: Array<{
-    delta?: {
-      content?: string;
-    };
-  }>;
+interface AnthropicTextBlock {
+  type?: string;
+  text?: string;
 }
 
-/**
- * Provider-agnostic adapter for any OpenAI-compatible chat completions API.
- *
- * Environment variables (new generic names preferred, legacy DEEPSEEK_* still supported):
- *   SOULSEED_API_KEY   / DEEPSEEK_API_KEY    — required
- *   SOULSEED_BASE_URL  / DEEPSEEK_BASE_URL   — required (no hardcoded default)
- *   SOULSEED_MODEL     / DEEPSEEK_MODEL      — no global hardcoded default
- */
-export class OpenAICompatAdapter implements ModelAdapter {
-  name = "openai-compat";
+interface AnthropicMessageResponse {
+  content?: AnthropicTextBlock[];
+}
+
+export class AnthropicNativeAdapter implements ModelAdapter {
+  name = "anthropic";
 
   private readonly provider: RuntimeProvider;
   private readonly apiKey: string;
@@ -37,9 +30,10 @@ export class OpenAICompatAdapter implements ModelAdapter {
   private readonly candidateModels: string[];
   private readonly maxRetries: number;
   private readonly requestTimeoutMs: number;
+  private readonly maxOutputTokens: number;
   private readonly onModelFallback?: (info: { from: string; to: string; reason: string; attempt: number }) => void;
 
-  constructor(options: LLMAdapterOptions = {}) {
+  constructor(options: AnthropicAdapterOptions = {}) {
     const resolved = resolveRuntimeModelConfig({
       provider: options.provider,
       apiKey: options.apiKey,
@@ -55,18 +49,14 @@ export class OpenAICompatAdapter implements ModelAdapter {
     this.candidateModels = mergeRouteCandidates(this.model, resolved.candidateModels);
     this.maxRetries = resolved.llmRetries;
     this.requestTimeoutMs = resolved.llmTimeoutMs;
+    this.maxOutputTokens = clampInt(Number(process.env.SOULSEED_ANTHROPIC_MAX_TOKENS ?? 2048), 256, 8192, 2048);
     this.onModelFallback = options.onModelFallback;
 
     if (!this.apiKey) {
-      throw new Error(
-        "Missing API key. Set SOULSEED_API_KEY (or legacy DEEPSEEK_API_KEY) in your .env file."
-      );
+      throw new Error("Missing API key. Set SOULSEED_API_KEY for Anthropic provider.");
     }
     if (!this.baseUrl) {
-      throw new Error(
-        "Missing base URL. Set SOULSEED_BASE_URL in your .env file " +
-        "(e.g. https://your-provider.com/v1)."
-      );
+      throw new Error("Missing base URL. Set SOULSEED_BASE_URL (e.g. https://api.anthropic.com/v1).");
     }
   }
 
@@ -80,14 +70,14 @@ export class OpenAICompatAdapter implements ModelAdapter {
     for (let idx = 0; idx < pool.length; idx += 1) {
       const currentModel = pool[idx];
       try {
-        return await this.streamChatWithModel(currentModel, messages, callbacks, signal);
+        return await this.chatWithModel(currentModel, messages, callbacks, signal);
       } catch (error) {
         lastError = error;
         const nextModel = pool[idx + 1];
         if (!nextModel) {
           throw error;
         }
-        const errorKind = classifyModelError(error);
+        const errorKind = classifyAnthropicError(error);
         if (!shouldFallbackByErrorKind(errorKind)) {
           throw error;
         }
@@ -100,77 +90,7 @@ export class OpenAICompatAdapter implements ModelAdapter {
       }
     }
     const detail = lastError instanceof Error ? lastError.message : String(lastError);
-    throw new Error(`LLM request failed across candidate models: ${detail}`);
-  }
-
-  private async streamChatWithModel(
-    model: string,
-    messages: ChatMessage[],
-    callbacks: ModelStreamCallbacks,
-    signal?: AbortSignal
-  ): Promise<{ content: string }> {
-    const body = JSON.stringify({
-      model,
-      messages,
-      stream: true
-    });
-    const res = await this.fetchWithRetry("/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`
-      },
-      body
-    }, signal);
-
-    if (!res.body) {
-      throw new Error("LLM request failed: empty response body");
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let content = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) {
-          continue;
-        }
-
-        const data = trimmed.replace(/^data:\s*/, "");
-        if (data === "[DONE]") {
-          callbacks.onDone?.();
-          return { content };
-        }
-
-        let chunk: ChatCompletionChunk;
-        try {
-          chunk = JSON.parse(data) as ChatCompletionChunk;
-        } catch {
-          continue;
-        }
-
-        const token = chunk.choices?.[0]?.delta?.content;
-        if (token) {
-          content += token;
-          callbacks.onToken(token);
-        }
-      }
-    }
-
-    callbacks.onDone?.();
-    return { content };
+    throw new Error(`Anthropic request failed across candidate models: ${detail}`);
   }
 
   getModel(): string {
@@ -179,6 +99,47 @@ export class OpenAICompatAdapter implements ModelAdapter {
 
   getProvider(): RuntimeProvider {
     return this.provider;
+  }
+
+  private async chatWithModel(
+    model: string,
+    messages: ChatMessage[],
+    callbacks: ModelStreamCallbacks,
+    signal?: AbortSignal
+  ): Promise<{ content: string }> {
+    const transformed = toAnthropicMessages(messages);
+    const body = {
+      model,
+      max_tokens: this.maxOutputTokens,
+      ...(transformed.system ? { system: transformed.system } : {}),
+      messages: transformed.messages,
+      stream: false
+    };
+    const res = await this.fetchWithRetry(
+      "/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": this.apiKey,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify(body)
+      },
+      signal
+    );
+    const parsed = (await res.json()) as AnthropicMessageResponse;
+    const content = (parsed.content ?? [])
+      .filter((item) => item.type === "text" && typeof item.text === "string")
+      .map((item) => item.text?.trim() ?? "")
+      .filter((item) => item.length > 0)
+      .join("\n");
+    if (!content) {
+      throw new Error("Anthropic response has no text content");
+    }
+    callbacks.onToken(content);
+    callbacks.onDone?.();
+    return { content };
   }
 
   private async fetchWithRetry(
@@ -193,13 +154,11 @@ export class OpenAICompatAdapter implements ModelAdapter {
         abortErr.name = "AbortError";
         throw abortErr;
       }
-
       const timeoutController = new AbortController();
       const timeoutId = setTimeout(() => timeoutController.abort(), this.requestTimeoutMs);
       const signal = upstreamSignal
         ? AbortSignal.any([upstreamSignal, timeoutController.signal])
         : timeoutController.signal;
-
       try {
         const res = await fetch(`${this.baseUrl}${endpoint}`, { ...init, signal });
         if (res.ok) {
@@ -207,7 +166,7 @@ export class OpenAICompatAdapter implements ModelAdapter {
           return res;
         }
         const text = await res.text();
-        const httpError = new Error(`LLM request failed: ${res.status} ${text}`);
+        const httpError = new Error(`Anthropic request failed: ${res.status} ${text}`);
         const retryable = res.status === 429 || res.status >= 500;
         if (!retryable || attempt >= this.maxRetries) {
           clearTimeout(timeoutId);
@@ -226,25 +185,48 @@ export class OpenAICompatAdapter implements ModelAdapter {
         if (!retryable || attempt >= this.maxRetries) {
           clearTimeout(timeoutId);
           if (timeout) {
-            throw new Error(`LLM request timeout after ${this.requestTimeoutMs}ms`);
+            throw new Error(`Anthropic request timeout after ${this.requestTimeoutMs}ms`);
           }
           throw error;
         }
-        lastError = timeout ? new Error(`LLM request timeout after ${this.requestTimeoutMs}ms`) : error;
+        lastError = timeout ? new Error(`Anthropic request timeout after ${this.requestTimeoutMs}ms`) : error;
       } finally {
         clearTimeout(timeoutId);
       }
-
       const delayMs = Math.min(1200, 180 * (2 ** attempt));
       await sleep(delayMs);
     }
     const detail = lastError instanceof Error ? lastError.message : String(lastError);
-    throw new Error(`LLM request failed after retries: ${detail}`);
+    throw new Error(`Anthropic request failed after retries: ${detail}`);
   }
 }
 
-/** @deprecated Use OpenAICompatAdapter instead */
-export const DeepSeekAdapter = OpenAICompatAdapter;
+function toAnthropicMessages(messages: ChatMessage[]): {
+  system?: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+} {
+  const systemBlocks: string[] = [];
+  const chatBlocks: Array<{ role: "user" | "assistant"; content: string }> = [];
+  for (const item of messages) {
+    const text = String(item.content ?? "").trim();
+    if (!text) continue;
+    if (item.role === "system") {
+      systemBlocks.push(text);
+      continue;
+    }
+    chatBlocks.push({
+      role: item.role === "assistant" ? "assistant" : "user",
+      content: text
+    });
+  }
+  if (chatBlocks.length === 0) {
+    chatBlocks.push({ role: "user", content: "你好" });
+  }
+  return {
+    ...(systemBlocks.length > 0 ? { system: systemBlocks.join("\n\n") } : {}),
+    messages: chatBlocks
+  };
+}
 
 function isRetryableNetworkError(error: unknown): boolean {
   const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
@@ -259,41 +241,39 @@ function isRetryableNetworkError(error: unknown): boolean {
   );
 }
 
-function isModelNotExistError(error: unknown): boolean {
+function classifyAnthropicError(error: unknown): string {
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return (
-    message.includes("model not exist") ||
+  if (
     message.includes("model_not_found") ||
-    message.includes("no such model")
-  );
-}
-
-function isAuthError(error: unknown): boolean {
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return message.includes(" 401 ") || message.includes(" 403 ");
-}
-
-function isRateLimitOrServerError(error: unknown): boolean {
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return (
+    message.includes("model not found") ||
+    message.includes("unknown model") ||
+    message.includes("not_found_error")
+  ) {
+    return "model_not_exist";
+  }
+  if (message.includes(" 401 ") || message.includes(" 403 ")) {
+    return "auth_error";
+  }
+  if (
     message.includes(" 429 ") ||
     message.includes(" 500 ") ||
     message.includes(" 502 ") ||
     message.includes(" 503 ") ||
     message.includes(" 504 ") ||
     message.includes("failed after retries")
-  );
-}
-
-function classifyModelError(error: unknown): string {
-  if (isModelNotExistError(error)) return "model_not_exist";
-  if (isAuthError(error)) return "auth_error";
-  if (isRateLimitOrServerError(error)) return "provider_transient";
+  ) {
+    return "provider_transient";
+  }
   return "unknown_error";
 }
 
 function shouldFallbackByErrorKind(kind: string): boolean {
   return kind === "model_not_exist" || kind === "provider_transient";
+}
+
+function clampInt(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(value)));
 }
 
 function sleep(ms: number): Promise<void> {
