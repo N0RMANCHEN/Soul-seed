@@ -7,3 +7,4 @@ reports/acceptance/
 personas/_qa/
 personas/*.soulseedpersona/
 *.db
+backlog.md
