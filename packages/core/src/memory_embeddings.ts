@@ -9,7 +9,7 @@ export interface EmbeddingProvider {
 }
 
 export interface BuildEmbeddingOptions {
-  provider?: "deepseek" | "local";
+  provider?: "openai" | "deepseek" | "local";
   batchSize?: number;
   maxRows?: number;
 }
@@ -39,20 +39,27 @@ export class LocalDeterministicEmbeddingProvider implements EmbeddingProvider {
   }
 }
 
-export class DeepSeekEmbeddingProvider implements EmbeddingProvider {
-  readonly name = "deepseek";
+export class OpenAICompatEmbeddingProvider implements EmbeddingProvider {
+  readonly name = "openai";
   readonly model: string;
   readonly dim: number;
   private readonly apiKey: string;
   private readonly baseUrl: string;
 
   constructor() {
-    this.apiKey = process.env.DEEPSEEK_API_KEY ?? "";
-    this.baseUrl = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1";
-    this.model = process.env.DEEPSEEK_EMBEDDING_MODEL ?? "deepseek-embedding";
-    this.dim = Number(process.env.DEEPSEEK_EMBEDDING_DIM ?? 1024);
+    this.apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
+    this.baseUrl = process.env.SOULSEED_BASE_URL ?? process.env.DEEPSEEK_BASE_URL ?? "";
+    this.model = process.env.SOULSEED_EMBEDDING_MODEL ?? process.env.DEEPSEEK_EMBEDDING_MODEL ?? "text-embedding-3-small";
+    this.dim = Number(process.env.SOULSEED_EMBEDDING_DIM ?? process.env.DEEPSEEK_EMBEDDING_DIM ?? 1024);
     if (!this.apiKey) {
-      throw new Error("Missing DEEPSEEK_API_KEY for embedding provider");
+      throw new Error(
+        "Missing API key for embedding provider. Set SOULSEED_API_KEY (or legacy DEEPSEEK_API_KEY)."
+      );
+    }
+    if (!this.baseUrl) {
+      throw new Error(
+        "Missing base URL for embedding provider. Set SOULSEED_BASE_URL."
+      );
     }
   }
 
@@ -73,30 +80,33 @@ export class DeepSeekEmbeddingProvider implements EmbeddingProvider {
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`DeepSeek embedding request failed: ${res.status} ${text}`);
+      throw new Error(`Embedding request failed: ${res.status} ${text}`);
     }
     const parsed = (await res.json()) as {
       data?: Array<{ embedding?: number[] }>;
     };
     const vectors = (parsed.data ?? []).map((item) => item.embedding ?? []);
     if (vectors.length !== texts.length) {
-      throw new Error("DeepSeek embedding response size mismatch");
+      throw new Error("Embedding response size mismatch");
     }
     for (const vector of vectors) {
       if (vector.length === 0) {
-        throw new Error("DeepSeek embedding response contains empty vector");
+        throw new Error("Embedding response contains empty vector");
       }
     }
     return vectors;
   }
 }
 
-export function createEmbeddingProvider(kind: "deepseek" | "local" = "deepseek"): EmbeddingProvider {
+/** @deprecated Use OpenAICompatEmbeddingProvider instead */
+export const DeepSeekEmbeddingProvider = OpenAICompatEmbeddingProvider;
+
+export function createEmbeddingProvider(kind: "openai" | "deepseek" | "local" = "openai"): EmbeddingProvider {
   if (kind === "local") {
     return new LocalDeterministicEmbeddingProvider();
   }
   try {
-    return new DeepSeekEmbeddingProvider();
+    return new OpenAICompatEmbeddingProvider();
   } catch {
     return new LocalDeterministicEmbeddingProvider();
   }
@@ -189,7 +199,7 @@ export async function buildMemoryEmbeddingIndex(
 export async function searchMemoryVectors(
   rootPath: string,
   query: string,
-  options?: { maxResults?: number; provider?: "deepseek" | "local" }
+  options?: { maxResults?: number; provider?: "openai" | "deepseek" | "local" }
 ): Promise<VectorSearchResult[]> {
   const maxResults = Math.max(1, Math.min(200, Math.floor(options?.maxResults ?? 64)));
   const trimmed = query.trim();
@@ -311,7 +321,7 @@ async function fetchExistingEmbeddingMeta(rootPath: string): Promise<Map<string,
   return out;
 }
 
-async function inferIndexedProvider(rootPath: string): Promise<"deepseek" | "local" | null> {
+async function inferIndexedProvider(rootPath: string): Promise<"openai" | "deepseek" | "local" | null> {
   const raw = await runMemoryStoreSql(
     rootPath,
     [
@@ -323,7 +333,7 @@ async function inferIndexedProvider(rootPath: string): Promise<"deepseek" | "loc
     ].join("\n")
   );
   const provider = raw.trim();
-  if (provider === "deepseek" || provider === "local") {
+  if (provider === "openai" || provider === "deepseek" || provider === "local") {
     return provider;
   }
   return null;

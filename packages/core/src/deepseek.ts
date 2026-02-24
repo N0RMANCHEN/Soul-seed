@@ -1,12 +1,12 @@
 import type { ChatMessage, ModelAdapter, ModelStreamCallbacks } from "./types.js";
 
-interface DeepSeekOptions {
+interface LLMAdapterOptions {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
 }
 
-interface DeepSeekChunk {
+interface ChatCompletionChunk {
   choices?: Array<{
     delta?: {
       content?: string;
@@ -14,8 +14,16 @@ interface DeepSeekChunk {
   }>;
 }
 
-export class DeepSeekAdapter implements ModelAdapter {
-  name = "deepseek";
+/**
+ * Provider-agnostic adapter for any OpenAI-compatible chat completions API.
+ *
+ * Environment variables (new generic names preferred, legacy DEEPSEEK_* still supported):
+ *   SOULSEED_API_KEY   / DEEPSEEK_API_KEY    — required
+ *   SOULSEED_BASE_URL  / DEEPSEEK_BASE_URL   — required (no hardcoded default)
+ *   SOULSEED_MODEL     / DEEPSEEK_MODEL      — default: claude-sonnet-4-6
+ */
+export class OpenAICompatAdapter implements ModelAdapter {
+  name = "openai-compat";
 
   private readonly apiKey: string;
   private readonly baseUrl: string;
@@ -23,15 +31,35 @@ export class DeepSeekAdapter implements ModelAdapter {
   private readonly maxRetries: number;
   private readonly requestTimeoutMs: number;
 
-  constructor(options: DeepSeekOptions = {}) {
-    this.apiKey = options.apiKey ?? process.env.DEEPSEEK_API_KEY ?? "";
-    this.baseUrl = options.baseUrl ?? process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1";
-    this.model = options.model ?? process.env.DEEPSEEK_MODEL ?? "deepseek-chat";
+  constructor(options: LLMAdapterOptions = {}) {
+    this.apiKey = options.apiKey
+      ?? process.env.SOULSEED_API_KEY
+      ?? process.env.DEEPSEEK_API_KEY
+      ?? "";
+    const isLegacyDeepseek = !process.env.SOULSEED_API_KEY && !!process.env.DEEPSEEK_API_KEY;
+    const legacyBaseUrl = isLegacyDeepseek ? "https://api.deepseek.com/v1" : "";
+    const legacyModel = isLegacyDeepseek ? "deepseek-chat" : "claude-sonnet-4-6";
+    this.baseUrl = options.baseUrl
+      ?? process.env.SOULSEED_BASE_URL
+      ?? process.env.DEEPSEEK_BASE_URL
+      ?? legacyBaseUrl;
+    this.model = options.model
+      ?? process.env.SOULSEED_MODEL
+      ?? process.env.DEEPSEEK_MODEL
+      ?? legacyModel;
     this.maxRetries = clampInt(Number(process.env.SOULSEED_LLM_RETRIES ?? 2), 0, 5, 2);
     this.requestTimeoutMs = clampInt(Number(process.env.SOULSEED_LLM_TIMEOUT_MS ?? 35000), 5000, 120000, 35000);
 
     if (!this.apiKey) {
-      throw new Error("Missing DEEPSEEK_API_KEY");
+      throw new Error(
+        "Missing API key. Set SOULSEED_API_KEY (or legacy DEEPSEEK_API_KEY) in your .env file."
+      );
+    }
+    if (!this.baseUrl) {
+      throw new Error(
+        "Missing base URL. Set SOULSEED_BASE_URL in your .env file " +
+        "(e.g. https://your-provider.com/v1)."
+      );
     }
   }
 
@@ -55,7 +83,7 @@ export class DeepSeekAdapter implements ModelAdapter {
     }, signal);
 
     if (!res.body) {
-      throw new Error("DeepSeek request failed: empty response body");
+      throw new Error("LLM request failed: empty response body");
     }
 
     const reader = res.body.getReader();
@@ -85,9 +113,9 @@ export class DeepSeekAdapter implements ModelAdapter {
           return { content };
         }
 
-        let chunk: DeepSeekChunk;
+        let chunk: ChatCompletionChunk;
         try {
-          chunk = JSON.parse(data) as DeepSeekChunk;
+          chunk = JSON.parse(data) as ChatCompletionChunk;
         } catch {
           continue;
         }
@@ -134,7 +162,7 @@ export class DeepSeekAdapter implements ModelAdapter {
           return res;
         }
         const text = await res.text();
-        const httpError = new Error(`DeepSeek request failed: ${res.status} ${text}`);
+        const httpError = new Error(`LLM request failed: ${res.status} ${text}`);
         const retryable = res.status === 429 || res.status >= 500;
         if (!retryable || attempt >= this.maxRetries) {
           clearTimeout(timeoutId);
@@ -153,11 +181,11 @@ export class DeepSeekAdapter implements ModelAdapter {
         if (!retryable || attempt >= this.maxRetries) {
           clearTimeout(timeoutId);
           if (timeout) {
-            throw new Error(`DeepSeek request timeout after ${this.requestTimeoutMs}ms`);
+            throw new Error(`LLM request timeout after ${this.requestTimeoutMs}ms`);
           }
           throw error;
         }
-        lastError = timeout ? new Error(`DeepSeek request timeout after ${this.requestTimeoutMs}ms`) : error;
+        lastError = timeout ? new Error(`LLM request timeout after ${this.requestTimeoutMs}ms`) : error;
       } finally {
         clearTimeout(timeoutId);
       }
@@ -166,9 +194,12 @@ export class DeepSeekAdapter implements ModelAdapter {
       await sleep(delayMs);
     }
     const detail = lastError instanceof Error ? lastError.message : String(lastError);
-    throw new Error(`DeepSeek request failed after retries: ${detail}`);
+    throw new Error(`LLM request failed after retries: ${detail}`);
   }
 }
+
+/** @deprecated Use OpenAICompatAdapter instead */
+export const DeepSeekAdapter = OpenAICompatAdapter;
 
 function clampInt(value: number, min: number, max: number, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;
