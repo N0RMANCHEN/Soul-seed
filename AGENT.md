@@ -378,6 +378,7 @@ chore: update .env.example to SOULSEED_* vars (2.24.09)
 
 **规则**：
 - 按逻辑域拆分提交，不把不相关的变更合成一个 commit
+- 同一批次（同时完成的多个提交）共享同一个 version 号，不必每个 commit 递增
 - version 序号当日连续递增，跨日从 `.01` 重新计数
 - 已推送的 commit 不得 amend / rebase rewrite
 
