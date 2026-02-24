@@ -61,7 +61,7 @@
 ## 4. Secrets & API Keys（安全规则）
 
 - API Key 不得提交进 git。
-- 推荐：环境变量（`DEEPSEEK_API_KEY` 等）或本地 config（必须 gitignore）。
+- 推荐：环境变量（`SOULSEED_API_KEY` 等）或本地 config（必须 gitignore）。
 - 若引入配置文件：必须更新 `.gitignore` + README 说明。
 
 ---

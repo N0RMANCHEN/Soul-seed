@@ -211,7 +211,7 @@ CLI 入口: ./ss
 
 ### 4.4 Memory Stack（记忆栈）
 - **四状态**：`hot → warm → cold → archive`（含 `scar` 不可过期标记）
-- **Hybrid RAG**：FTS（全文检索）+ 向量嵌入（deepseek/local）+ salience 融合评分
+- **Hybrid RAG**：FTS（全文检索）+ 向量嵌入（openai-compat/local）+ salience 融合评分
 - **decay 类型**：`fast / standard / slow / sticky`，影响衰减速率
 - **整合**：`light` 轻量（关键词提炼）/ `full` 深度（LLM 语义合并）
 - **用户事实**：每轮从对话提取 key-value，3次提及自动晶化，编译为 always-inject 上下文（预算 1200 chars）

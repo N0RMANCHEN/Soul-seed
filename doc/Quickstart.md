@@ -10,8 +10,8 @@ Get from zero to your first conversation in five steps.
 
 - **Node.js 18+** — [nodejs.org](https://nodejs.org/)
 - **sqlite3 CLI** — bundled on macOS/Linux; Windows users see [Windows.md](Windows.md)
-- **An API key** — DeepSeek by default; any OpenAI-compatible API works
-  *默认使用 DeepSeek，任何兼容 OpenAI 接口的 API 均可*
+- **An API key** — any OpenAI-compatible API works (DeepSeek, OpenAI, Anthropic via proxy, etc.)
+  *任何兼容 OpenAI 接口的 API 均可（DeepSeek、OpenAI、通过代理的 Anthropic 等）*
 
 ---
 
@@ -34,13 +34,19 @@ cp .env.example .env
 Edit `.env` and fill in your key:
 
 ```env
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-DEEPSEEK_MODEL=deepseek-chat
+# Generic (any OpenAI-compatible provider)
+SOULSEED_API_KEY=sk-xxxxxxxxxxxxxxxx
+SOULSEED_BASE_URL=https://your-openai-compatible-api-provider/v1
+SOULSEED_MODEL=claude-sonnet-4-6
+
+# Or use legacy DeepSeek config (still works)
+# DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx
+# DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+# DEEPSEEK_MODEL=deepseek-chat
 ```
 
-> Any OpenAI-compatible endpoint works — just swap `DEEPSEEK_BASE_URL` and `DEEPSEEK_MODEL`.
-> 任何兼容 OpenAI 的接口都可以用，修改 `DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 即可。
+> Any OpenAI-compatible endpoint works. Legacy `DEEPSEEK_*` vars are still supported.
+> 任何兼容 OpenAI 的接口都可以用。旧版 `DEEPSEEK_*` 变量仍然支持。
 
 ---
 

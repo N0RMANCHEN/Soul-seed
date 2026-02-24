@@ -9,7 +9,7 @@
 ```bash
 npm install
 cp .env.example .env
-# 编辑 .env，填入 DEEPSEEK_API_KEY
+# 编辑 .env，填入 SOULSEED_API_KEY + SOULSEED_BASE_URL + SOULSEED_MODEL（或旧版 DEEPSEEK_API_KEY）
 npm run build
 ```
 
@@ -248,7 +248,7 @@ SHA-256 哈希校验后导入，失败自动回滚并列出错误。输出：`{o
 ./ss chat [--persona <path>] [--model <model>] [同上参数...]
 ```
 
-模型优先级：`--model` > persona `defaultModel` > `deepseek-chat`
+模型优先级：`--model` > persona `defaultModel` > `SOULSEED_MODEL`/`DEEPSEEK_MODEL` 环境变量 > 内置默认（`claude-sonnet-4-6`，旧版 DeepSeek 配置下为 `deepseek-chat`）
 
 **自动行为**：
 - 会话启动时后台触发轻量记忆整合（`trigger=chat_open`）
@@ -499,14 +499,14 @@ Doctor 检查项（全量模式）：
 #### `memory index build` / `memory index rebuild`
 
 ```bash
-./ss memory index build [--persona <path>] [--provider deepseek|local] [--batch-size 16]
-./ss memory index rebuild [--persona <path>] [--provider deepseek|local] [--batch-size 16]
+./ss memory index build [--persona <path>] [--provider openai|deepseek|local] [--batch-size 16]
+./ss memory index rebuild [--persona <path>] [--provider openai|deepseek|local] [--batch-size 16]
 ```
 
 - `build`：为现有记忆批量生成向量嵌入
 - `rebuild`：先清空 `memory_embeddings`，再全量重建
 
-`--provider deepseek`：调用 DeepSeek 嵌入 API（失败自动回退 local）。
+`--provider openai`（默认）：调用 OpenAI 兼容嵌入 API（`--provider deepseek` 亦可，使用相同接口；失败自动回退 local）。
 
 #### `memory search`
 
@@ -823,11 +823,11 @@ Pinned Memory 在每次对话中始终注入上下文（硬注入，不受预算
 ```bash
 # 创建 persona
 ./ss new Teddy
-./ss new Teddy --quick --template peer --model deepseek-reasoner
+./ss new Teddy --quick --template peer --model claude-sonnet-4-6
 
 # 对话
 ./ss Teddy
-./ss Teddy --model deepseek-chat
+./ss Teddy --model claude-sonnet-4-6
 ./ss chat --persona ./personas/Teddy.soulseedpersona   # 兼容入口
 
 # 改名

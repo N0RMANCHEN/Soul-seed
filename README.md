@@ -25,7 +25,7 @@ npm install
 
 # 2. Add your API key / 填入 API Key
 cp .env.example .env
-# Edit .env — set DEEPSEEK_API_KEY (any OpenAI-compatible API works)
+# Edit .env — set SOULSEED_API_KEY + SOULSEED_BASE_URL + SOULSEED_MODEL (any OpenAI-compatible API works)
 
 # 3. Build / 构建
 npm run build
@@ -108,25 +108,36 @@ cp .env.example .env
 Open `.env` and fill in your credentials:
 
 ```bash
-# Required / 必填
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Required / 必填 — any OpenAI-compatible provider
+SOULSEED_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SOULSEED_BASE_URL=https://your-openai-compatible-api-provider/v1
+SOULSEED_MODEL=claude-sonnet-4-6
+```
 
-# Optional / 可选（通常不需要修改）
+Or, if you use DeepSeek, the legacy env vars still work:
+
+```bash
+# Legacy DeepSeek config (still supported)
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 DEEPSEEK_MODEL=deepseek-chat
 ```
 
 ### Supported API Providers / 支持的 API 提供商
 
-| Provider / 提供商 | Base URL | Default Model / 默认模型 | API Key |
-|---|---|---|---|
-| **DeepSeek** | `https://api.deepseek.com/v1` | `deepseek-chat` | [platform.deepseek.com](https://platform.deepseek.com) |
+Any provider with an **OpenAI-compatible** `/v1/chat/completions` endpoint works.
 
-> **Current status / 当前状态：**  
-> ✅ **DeepSeek is supported.**  
-> ✅ **目前仅支持 DeepSeek。**  
-> Other providers will be added later. / 其他供应商将在后续版本补充支持。
-> 
+> 任何提供 OpenAI 兼容 `/v1/chat/completions` 端点的 API 均可使用。
+
+| Provider / 提供商 | Base URL | Example Model / 示例模型 |
+|---|---|---|
+| **DeepSeek** | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| **OpenAI** | `https://api.openai.com/v1` | `gpt-4o` |
+| **OpenAI-compatible proxy** | `https://<your-proxy>/v1` | `claude-sonnet-4-6`, etc. |
+
+> ✅ **Any OpenAI-compatible API is supported.**
+> ✅ **支持任意 OpenAI 兼容 API。**
+>
 
 ### Step 3: Verify Configuration / 验证配置
 
@@ -354,12 +365,19 @@ Available tools: `persona.get_context`, `memory.search`, `memory.search_hybrid`,
 
 | Variable | Default | Description / 说明 |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | — | LLM API key (required) / LLM API 密钥（必填） |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI-compatible base URL / 兼容 OpenAI 的接口地址 |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | Model name / 模型名称 |
+| `SOULSEED_API_KEY` | — | LLM API key (required) / LLM API 密钥（必填） |
+| `SOULSEED_BASE_URL` | — | OpenAI-compatible base URL (required) / 兼容 OpenAI 的接口地址（必填） |
+| `SOULSEED_MODEL` | `claude-sonnet-4-6` | Model name / 模型名称 |
+| `SOULSEED_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model / 嵌入模型 |
+| `SOULSEED_EMBEDDING_DIM` | `1024` | Embedding dimension / 嵌入维度 |
+| `SOULSEED_LLM_RETRIES` | `2` | Max retries (0–5) / 最大重试次数 |
+| `SOULSEED_LLM_TIMEOUT_MS` | `35000` | Request timeout in ms / 请求超时（毫秒） |
 | `SOULSEED_MCP_ALLOW_WRITES` | `false` | Enable write tools in MCP / 启用 MCP 写入工具 |
 | `SOULSEED_MCP_TOKEN` | — | Auth token for HTTP MCP / HTTP MCP 鉴权 Token |
 | `SOULSEED_OWNER_KEY` | — | Owner-level auth / 所有者级别鉴权 |
+| `DEEPSEEK_API_KEY` | — | Legacy: falls back if `SOULSEED_API_KEY` not set / 旧版兼容 |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com/v1` | Legacy: falls back if `SOULSEED_BASE_URL` not set / 旧版兼容 |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | Legacy: falls back if `SOULSEED_MODEL` not set / 旧版兼容 |
 
 ---
 
