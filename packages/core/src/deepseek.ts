@@ -39,10 +39,10 @@ export class OpenAICompatAdapter implements ModelAdapter {
     const isLegacyDeepseek = !process.env.SOULSEED_API_KEY && !!process.env.DEEPSEEK_API_KEY;
     const legacyBaseUrl = isLegacyDeepseek ? "https://api.deepseek.com/v1" : "";
     const legacyModel = isLegacyDeepseek ? "deepseek-chat" : "claude-sonnet-4-6";
-    this.baseUrl = options.baseUrl
+    this.baseUrl = (options.baseUrl
       ?? process.env.SOULSEED_BASE_URL
       ?? process.env.DEEPSEEK_BASE_URL
-      ?? legacyBaseUrl;
+      ?? legacyBaseUrl).replace(/\/+$/, "");
     this.model = options.model
       ?? process.env.SOULSEED_MODEL
       ?? process.env.DEEPSEEK_MODEL

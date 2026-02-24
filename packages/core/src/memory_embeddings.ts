@@ -48,7 +48,7 @@ export class OpenAICompatEmbeddingProvider implements EmbeddingProvider {
 
   constructor() {
     this.apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
-    this.baseUrl = process.env.SOULSEED_BASE_URL ?? process.env.DEEPSEEK_BASE_URL ?? "";
+    this.baseUrl = (process.env.SOULSEED_BASE_URL ?? process.env.DEEPSEEK_BASE_URL ?? "").replace(/\/+$/, "");
     this.model = process.env.SOULSEED_EMBEDDING_MODEL ?? process.env.DEEPSEEK_EMBEDDING_MODEL ?? "text-embedding-3-small";
     this.dim = Number(process.env.SOULSEED_EMBEDDING_DIM ?? process.env.DEEPSEEK_EMBEDDING_DIM ?? 1024);
     if (!this.apiKey) {
