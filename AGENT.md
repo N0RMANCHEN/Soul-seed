@@ -358,6 +358,29 @@ conversation window:
 
 ## 8. CI 与质量门禁
 
+### Git Commit 规范
+
+**格式**：`<prefix>: <description> (<version>)`
+
+| 字段 | 说明 |
+|---|---|
+| `prefix` | `feat` 新功能 · `fix` 缺陷修复 · `chore` 配置/构建/维护 · `docs` 纯文档 |
+| `description` | 简明描述做了什么，**不能只写 "update"** |
+| `version` | `(月.日.当日序号)` — 例如 `(2.24.07)` = 2月24日第7个提交 |
+
+**示例**：
+```
+feat: migrate core LLM adapter to OpenAICompatAdapter (2.24.07)
+fix: trim trailing slash from SOULSEED_BASE_URL in adapters (2.24.11)
+docs: add dual-team assignment rules to Roadmap (2.24.12)
+chore: update .env.example to SOULSEED_* vars (2.24.09)
+```
+
+**规则**：
+- 按逻辑域拆分提交，不把不相关的变更合成一个 commit
+- version 序号当日连续递增，跨日从 `.01` 重新计数
+- 已推送的 commit 不得 amend / rebase rewrite
+
 ### PR 门禁（`.github/workflows/pr_gate.yml`）
 - TypeScript 编译检查
 - 全量单元测试（`packages/core` + `packages/cli` + `packages/mcp-server`）
