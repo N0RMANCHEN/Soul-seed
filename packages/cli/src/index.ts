@@ -18,7 +18,7 @@ import {
   classifyMemoryTier,
   compactColdMemories,
   DEFAULT_MEMORY_WEIGHTS,
-  DeepSeekAdapter,
+  OpenAICompatAdapter,
   appendLifeEvent,
   addPinnedMemory,
   applyRename,
@@ -224,7 +224,7 @@ interface PersonaTemplate {
   stancePreference: "friend" | "peer" | "intimate" | "neutral";
 }
 
-const DEFAULT_CHAT_MODEL = "deepseek-chat";
+const DEFAULT_CHAT_MODEL = "claude-sonnet-4-6";
 const DEFAULT_PERSONA_NAME = "Soulseed";
 const RESERVED_ROOT_COMMANDS = new Set([
   "help",
@@ -378,8 +378,8 @@ function printHelp(): void {
       "  new <name>                                         # one-question setup (default)",
       "  new <name> --quick                                 # instant create, no questions",
       "  new <name> --advanced                              # full configuration wizard",
-      "  new <name> [--out <path>] [--template friend|peer|intimate|neutral] [--model deepseek-chat]",
-      "  <name> [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
+      "  new <name> [--out <path>] [--template friend|peer|intimate|neutral] [--model <model>]",
+      "  <name> [--model <model>] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
       "  doctor [--persona ./personas/<name>.soulseedpersona]",
       "  goal create --title <text> [--persona <path>]",
       "  goal list [--persona <path>] [--status pending|active|blocked|completed|canceled|suspended] [--limit 20]",
@@ -397,8 +397,8 @@ function printHelp(): void {
       "  memory unstick [--persona <path>] [--phrase <text>] [--min-occurrences 3] [--max-content-length 1200] [--dry-run]",
       "  memory compact [--persona ./personas/<name>.soulseedpersona]",
       "  memory archive [--persona <path>] [--min-items 50] [--min-cold-ratio 0.35] [--idle-days 14] [--max-items 500] [--dry-run]",
-      "  memory index build [--persona <path>] [--provider deepseek|local] [--batch-size 16]",
-      "  memory index rebuild [--persona <path>] [--provider deepseek|local] [--batch-size 16]",
+      "  memory index build [--persona <path>] [--provider openai|local] [--batch-size 16]",
+      "  memory index rebuild [--persona <path>] [--provider openai|local] [--batch-size 16]",
       "  memory search --query <q> [--persona <path>] [--max-results 12] [--debug-trace]",
       "  memory recall-trace --trace-id <id> [--persona <path>]",
       "  memory consolidate [--persona <path>] [--mode light|full] [--timeout-ms 1200]",
@@ -452,7 +452,7 @@ function printHelp(): void {
       "",
       "兼容命令:",
       "  init [--name Soulseed] [--out ./personas/<name>.soulseedpersona]",
-      "  chat [--persona ./personas/<name>.soulseedpersona] [--model deepseek-chat] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
+      "  chat [--persona ./personas/<name>.soulseedpersona] [--model <model>] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]",
       "  persona init --name <name> --out <path>",
       "  persona rename --to <new_name> [--persona <path>] [--confirm]",
       "",
@@ -1137,10 +1137,10 @@ async function runAgentCommand(action: string | undefined, options: Record<strin
   const goalId = optionString(options, "goal-id")?.trim();
   const maxSteps = parseLimit(optionString(options, "max-steps"), 4, 1, 12);
   const personaPkg = await loadPersonaPackage(personaPath);
-  let plannerAdapter: DeepSeekAdapter | undefined;
+  let plannerAdapter: OpenAICompatAdapter | undefined;
   try {
     const model = optionString(options, "model")?.trim() || personaPkg.persona.defaultModel || DEFAULT_CHAT_MODEL;
-    plannerAdapter = new DeepSeekAdapter({ model });
+    plannerAdapter = new OpenAICompatAdapter({ model });
   } catch {
     plannerAdapter = undefined;
   }
@@ -1989,10 +1989,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   let workingSetData = await readWorkingSet(personaPath);
   let memoryWeights = workingSetData.memoryWeights ?? DEFAULT_MEMORY_WEIGHTS;
   const resolvedModel = optionString(options, "model")?.trim() || personaPkg.persona.defaultModel || DEFAULT_CHAT_MODEL;
-  const adapter = new DeepSeekAdapter({
+  const adapter = new OpenAICompatAdapter({
     model: resolvedModel
   });
-  const skipBackgroundMaintenance = process.env.DEEPSEEK_API_KEY === "test-key";
+  const apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
+  const skipBackgroundMaintenance = apiKey === "test-key";
   if (!skipBackgroundMaintenance) {
     void runMemoryConsolidation(personaPath, {
       trigger: "chat_open",
@@ -6974,14 +6975,14 @@ async function runMemoryArchive(options: Record<string, string | boolean>): Prom
 async function runMemoryIndex(action: string | undefined, options: Record<string, string | boolean>): Promise<void> {
   const personaPath = resolvePersonaPath(options);
   await ensureMemoryStore(personaPath);
-  const providerRaw = (optionString(options, "provider") ?? "deepseek").trim().toLowerCase();
-  const provider = providerRaw === "local" ? "local" : "deepseek";
+  const providerRaw = (optionString(options, "provider") ?? "openai").trim().toLowerCase();
+  const provider: "openai" | "deepseek" | "local" = providerRaw === "local" ? "local" : providerRaw === "deepseek" ? "deepseek" : "openai";
   const batchSize = parseLimit(optionString(options, "batch-size"), 16, 1, 64);
 
   if (action === "rebuild") {
     await runMemoryStoreSql(personaPath, "DELETE FROM memory_embeddings;");
   } else if (action !== "build") {
-    throw new Error("memory index 用法: memory index <build|rebuild> [--provider deepseek|local] [--batch-size N]");
+    throw new Error("memory index 用法: memory index <build|rebuild> [--provider openai|local] [--batch-size N]");
   }
 
   const report = await buildMemoryEmbeddingIndex(personaPath, {
