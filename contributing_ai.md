@@ -35,12 +35,12 @@
 
 1. `AGENT.md`
 2. `contributing_ai.md`
-
-3. `Soulseed-MindModel-StateLayer-Optimization.md`（MindModel/StateLayer 总体设计与演进）
-4. `Soulseed-MindModel-StateLayer-Genome-ConversationControl-Optimized-v0.4.md`（Genome/兼容/会话控制面总规范）
-5. `README.md`
+3. `doc/Roadmap.md`
+4. `doc/MindModel-Implementation-Contract.md`
+5. `doc/Quality-Evaluation.md`
 6. `doc/CLI.md`（若涉及 CLI 命令）
-7. 若在排查构建：先看 `./scripts/verify.sh` 与 CI 日志
+7. `README.md`
+8. 若在排查构建：先看 `./scripts/verify.sh` 与 CI 日志
 ---
 
 ## 3. Non-negotiables（铁律）

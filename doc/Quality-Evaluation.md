@@ -12,6 +12,7 @@
 不覆盖：
 - 命令参数说明（见 `doc/CLI.md`）
 - 产品阶段与里程碑总览（见 `doc/Roadmap.md`）
+- MindModel 实施约束与 H0-H8 落地顺序（见 `doc/MindModel-Implementation-Contract.md`）
 
 ---
 

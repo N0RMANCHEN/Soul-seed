@@ -393,8 +393,9 @@ datasets/
   quality/retrieval/ grounding/ safety/  # 评测数据集（JSONL）
 doc/
   CLI.md                   # 完整命令参考（含 Phase D/E 所有新命令）
-  Roadmap.md               # 产品阶段总览（Phase A–E 全部完成）
+  Roadmap.md               # 产品阶段总览（Phase A-G；含 G 阶段 H0-H8 扩展轨道）
   Quality-Evaluation.md    # 分层评测框架（L0-L5）
+  MindModel-Implementation-Contract.md  # MindModel 实施约束（H0-H8/门禁/降级/兼容）
 ```
 
 ---
