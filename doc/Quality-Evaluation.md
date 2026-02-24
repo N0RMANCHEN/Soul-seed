@@ -12,7 +12,8 @@
 不覆盖：
 - 命令参数说明（见 `doc/CLI.md`）
 - 产品阶段与里程碑总览（见 `doc/Roadmap.md`）
-- MindModel 实施约束与 H0-H8 落地顺序（见 `doc/MindModel-Implementation-Contract.md`）
+- 全产品实施规范与通用门禁（见 `doc/Product-Standards.md`）
+- 开发协作流程与提交要求（见 `AGENT.md`、`contributing_ai.md`）
 
 ---
 

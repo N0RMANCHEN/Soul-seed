@@ -36,78 +36,24 @@
 1. `AGENT.md`
 2. `contributing_ai.md`
 3. `doc/Roadmap.md`
-4. `doc/MindModel-Implementation-Contract.md`
+4. `doc/Product-Standards.md`
 5. `doc/Quality-Evaluation.md`
 6. `doc/CLI.md`（若涉及 CLI 命令）
 7. `README.md`
 8. 若在排查构建：先看 `./scripts/verify.sh` 与 CI 日志
+
+说明：原则与边界以 `AGENT.md` 为唯一权威；本文件聚焦执行动作与验收要求。
 ---
 
 ## 3. Non-negotiables（铁律）
 
-### 3.1 一次只做一个任务（最小变更集）
+本节不重复定义产品原则，统一以 `AGENT.md` 第 6 节（开发铁律）与第 7 节（安全边界）为准。
 
-禁止"顺手重构"。改动范围只做当前任务必须的最小变更。
-
-### 3.2 不允许偷换语义
-
-- 不得引入显式评分闭环（⭐/👍👎）作为主塑形路径。
-- 不得把 persona 退化为 prompt 模板；必须保留 `execution_protocol` / `runtime_pipeline` / `consistency_kernel` 决策闭环与资产化存储。
-- 不得把 MBTI/性格参数写死为永久；只允许作为初始化种子。
-- "主动思考"不得假装：不允许只加"我很好奇…"文案；必须由 decision/tension/代价预算驱动。
-- 不得拖后驱动链路：Chat + ModelAdapter + Persona 文件读写是 MVP 必需品，必须靠前。
-- 不得用"不可验证的玄学叙事"替代工程机制：不可逆要靠 event-sourcing + hash 链；连续性要靠注入顺序与回归。
-
-### 3.3 绝不删除旧代码
-
-替换则移动到 `packages/legacy-*`（或 `src/legacy`）。
-
-### 3.4 不泄露隐私/绝对路径
-
-trace/日志禁止输出绝对路径与用户长段原文（可摘要/哈希/计数）。
-
-### 3.5 File-first Persona（默认不共享）
-
-- Persona 资产以文件为唯一真相与载体（可复制、可迁移、可备份）。
-- 默认不对外暴露写权限；共享必须是用户显式动作。
-
-### 3.6 输出风格约束
-
-- CLI 默认只展示"对用户可见"的回复；Dev/Debug 才显示 decision trace。
-- C 端（未来 UI）默认禁止括号情感旁白；Dev 模式可显示内部状态。
-
-### 3.7 连续性是第一性需求（Same Persona Continuity）
-
-- 关闭会话/重启/换模型后必须保持连续性体验。
-- 注入优先级必须稳定：Profile > Pinned > WorkingSet > 检索片段 > Few-shot。
-- 变更 Orchestrator/记忆/存储时必须评估连续性影响并补回归用例。
-- `DecisionTrace` schema 一旦发布必须向后兼容或提供迁移（它是回放与回归的基石）。
-
-
-### 3.7a 向后兼容与“行为不换人”（Backward Compatibility Contract）
-
-> 你提到的关键点：**现有的人格已经长期使用，植入 Genome / 会话控制面后不能错乱**。这条原则必须写进仓库铁律。
-
-**强制要求**：
-- **Behavior Parity by Default**：对已存在的 persona，默认启用 `compatMode="legacy"`（或等价开关），保证输出风格/主动打扰频率/表情使用等 **不发生突变**。
-- **seed-from-existing**：当引入新文件/新层（`genome.json` / `epigenetics.json` / `conversation_policy.json` / `topic_state.json` 等）时：
-  - 如果旧系统已有相关参数（哪怕是散落在 `habits.json` / `cognition_state.json` / 旧版 config 里），**必须把旧值当作初始值**；
-  - 若旧系统没有该参数 → 用“保守默认值”生成（不要让人格更外向、更热情、更爱表情）。
-- **迁移必须可回滚、可幂等**：迁移脚本重复跑不会再次改写；回滚点写入 `migration-backups/` 并记录 event（scar/migration）。
-- **禁止 silent semantic drift**：任何“更像人/更克制”的改动都要能被验证：
-  - 通过 DecisionTrace 或 replay fixture 证明：投入档位/emoji policy/主动插话选择是由信号与预算驱动，而不是 prompt 文案；
-  - 增加至少 1 组 legacy persona fixture 覆盖旧 schemaVersion（缺文件/旧字段/旧默认值）。
-
-### 3.8 安全默认：ToolBus deny-by-default
-
-- 默认无工具可用；必须显式批准（DecisionTrace）。
-- 工具调用必须可中止（Ctrl+C / abort），并写入事件日志。
-- 工具 side-effect 必须声明影响面（读/写范围）与预算（次数/时间/网络等）。
-
-### 3.9 成人内容与繁衍门控
-
-- `adultSafety` 默认关闭，不得在代码中绕过三重确认（adult_mode + age_verified + explicit_consent）。
-- 繁衍机制（`persona reproduce`）必须满足条件检查或 `--force-all` 显式绕过（均需写入事件）。
+本文件仅补充执行层约束：
+- 默认采用最小变更集，禁止与当前任务无关的改动。
+- 不得跳过验证门槛；`./scripts/verify.sh` 是任何改动的基础门禁。
+- 所有改动必须执行文档联动排查，并在交付中写明结论（见 `AGENT.md` 的 `Doc Sync Gate`）。
+- 任何新增命令、schema、迁移、线上链路改动，必须按第 5 节对应条款补齐验证或回归。
 
 ---
 
@@ -124,6 +70,7 @@ trace/日志禁止输出绝对路径与用户长段原文（可摘要/哈希/计
 ### 5.1 Always（任何改动都必须）
 
 - `./scripts/verify.sh` 通过（单一入口，失败退出非 0）。
+- 文档联动检查通过：按 `AGENT.md` 的 `Doc Sync Gate` 排查受影响文档；若无需更新，交付中必须说明理由。
 - verify.sh 覆盖：
   - TypeScript 类型检查（三个包）
   - 全量单元测试（`packages/core` + `packages/cli` + `packages/mcp-server`）
@@ -286,3 +233,4 @@ trace/日志禁止输出绝对路径与用户长段原文（可摘要/哈希/计
 - 在线链路改动已通过 `npm run acceptance`，并提供报告文件（成功或失败归因）
 - 验收未污染日常 persona（只使用 `personas/_qa/*`）
 - 若新增/修改 CLI 命令：`doc/CLI.md` 已同步更新
+- 文档联动检查已完成（或已说明“无需更新”的理由）

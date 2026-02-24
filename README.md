@@ -4,10 +4,10 @@
 
 **有记忆、有灵魂、跨时间持续成长的 AI 伙伴。**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: CC%20BY--NC--ND%204.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green)](https://nodejs.org/)
-[![Version](https://img.shields.io/badge/version-0.2.0-orange)](CHANGELOG.md)
+![Version](https://img.shields.io/badge/version-0.2.0-orange)
 
 ---
 
@@ -409,6 +409,7 @@ npm run eval:all       # Full quality evaluation / 完整质量评估
 | [`doc/Quickstart.md`](doc/Quickstart.md) | 5-minute onboarding guide / 5分钟上手指南 |
 | [`doc/CLI.md`](doc/CLI.md) | Complete command reference / 完整命令参考 |
 | [`doc/Roadmap.md`](doc/Roadmap.md) | Product phases and milestones / 产品阶段与里程碑 |
+| [`doc/Product-Standards.md`](doc/Product-Standards.md) | Product-wide implementation standards / 全产品通用实施规范 |
 | [`doc/Quality-Evaluation.md`](doc/Quality-Evaluation.md) | Layered evaluation system (L0–L5) / 分层评估体系 |
 | [`doc/Windows.md`](doc/Windows.md) | Windows installation guide / Windows 安装指南 |
 | [`AGENT.md`](AGENT.md) | AI collaboration guide / AI 协作指南 |
@@ -421,6 +422,8 @@ npm run eval:all       # Full quality evaluation / 完整质量评估
   *先读 `AGENT.md`（优先级高于 `contributing_ai.md`）*
 - All changes must pass `./scripts/verify.sh`
   *所有变更必须通过 `./scripts/verify.sh`*
+- Every change must run a documentation impact check (see `AGENT.md` Doc Sync Gate)
+  *每次变更都必须执行文档影响排查（见 `AGENT.md` 的 Doc Sync Gate）*
 - Online path changes require an `npm run acceptance` report
   *涉及在线路径的变更需附上 `npm run acceptance` 报告*
 - New session capabilities → register in `capabilities/registry.ts` + `intent_resolver.ts`
@@ -430,6 +433,6 @@ npm run eval:all       # Full quality evaluation / 完整质量评估
 
 ## License / 许可证
 
-MIT — see [LICENSE](LICENSE) for details.
+CC BY-NC-ND 4.0 — see [LICENSE](LICENSE) for details.
 
 Copyright (c) 2026 hirohi
