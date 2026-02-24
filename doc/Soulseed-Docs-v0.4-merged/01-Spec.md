@@ -1,31 +1,18 @@
-# Soulseed 心智系统与会话控制面总体方案
-> 版本：v0.4（2026-02-24）  
-> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
-> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+# Soulseed MindModel Spec (v0.4) — MERGED
+> 合并日期：2026-02-24  
+> 说明：本文件由多份拆分文档合并而成；为保证信息不丢失，保留每个源文件的完整内容，并在每段前标注原始路径。
 
 ---
 
-## 目录
-- [0. 现状与问题（从产品表现反推架构缺口）](#0-现状与问题从产品表现反推架构缺口)
-- [1. 目标与非目标（像人，而不是像神）](#1-目标与非目标像人而不是像神)
-- [2. 设计铁律（成败开关）](#2-设计铁律成败开关)
-- [3. 三种信息裁切（你要求必须考虑的三视角）](#3-三种信息裁切你要求必须考虑的三视角)
-- [4. 总体分层架构（在现有 Soulseed 基础上“加层不推翻”）](#4-总体分层架构在现有-soulseed-基础上加层不推翻)
-- [5. 7块心智模型（State Layer）与三层变化机制（Genome / Epigenetics / State）](#5-7块心智模型state-layer与三层变化机制genome--epigenetics--state)
-- [6. 会话控制面（Conversation Control Plane）](#6-会话控制面conversation-control-plane)
-- [7. Interests（兴趣系统）如何驱动 Attention / Engagement，并且可培养可演进](#7-interests兴趣系统如何驱动-attention--engagement并且可培养可演进)
-- [8. 被动回复：从“每条都认真回”升级为“像人一样选择投入”](#8-被动回复从每条都认真回升级为像人一样选择投入)
-- [9. 主动打扰：从“随机打扰”升级为“有动机、有主题、有克制”](#9-主动打扰从随机打扰升级为有动机有主题有克制)
-- [10. AI 群聊：参与控制、插话门槛与仲裁（避免机器人抢答）](#10-ai-群聊参与控制插话门槛与仲裁避免机器人抢答)
-- [11. Gates & Budgets（门禁与预算）](#11-gates--budgets门禁与预算)
-- [12. 存储与 Persona Package（新增文件必须可回滚、可审计）](#12-存储与-persona-package新增文件必须可回滚可审计)
-- [13. 兼容性与迁移（存量人格不能错乱/换人）](#13-兼容性与迁移存量人格不能错乱换人)
-- [14. 评估与验收（DoD + 回归集）](#14-评估与验收dod--回归集)
-- [15. 推荐 Rollout 顺序（最小闭环 → 可控扩展）](#15-推荐-rollout-顺序最小闭环--可控扩展)
-- [16. 风险清单与对策](#16-风险清单与对策)
-- [17. OK 的定义](#17-ok-的定义)
-- [附录 A：关键数据结构草案（JSON Schema 级别）](#附录-a关键数据结构草案json-schema-级别)
-- [附录 B：与现有代码的“最小侵入接入点”清单（架构对齐）](#附录-b与现有代码的最小侵入接入点清单架构对齐)
+
+---
+
+## SOURCE: `spec/10-0._现状与问题(从产品表现反推架构缺口).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
 
 ---
 
@@ -40,6 +27,18 @@
 > 你现在很强的是 **内容生成与可审计内核**（Memory + Guards + Commit），但缺少 **会话控制面**：也就是“是否开口、开口多少、何时插话、插什么话题、外显多少情绪”。
 
 换句话说：你现在系统默认把每条输入当成“必须认真完成的任务”，这更像客服/答题机，而不是人。
+
+---
+
+
+---
+
+## SOURCE: `spec/11-1._目标与非目标(像人而不是像神).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
 
 ---
 
@@ -61,6 +60,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/12-2._设计铁律(成败开关).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 2. 设计铁律（成败开关）
 
 > 以下是你之前强调、且我完全认可的“必须做到”，任何一条松动都会把系统变成漂移制造机。
@@ -72,6 +83,18 @@
 5) **兼容优先**：存量 persona 默认 `legacy/hybrid`，先回归再 `full`（Behavior Parity by Default）。  
 6) **人类化不完美**：允许“不确定/想不起来/说不上来原因”，但禁止胡编与无证据断言。  
 7) **模块化**：把“会话控制面”拆成清晰模块（Interest、Topic、Engagement、Proactive Planner、Group Arbitration），避免把逻辑揉进 prompt 或 CLI 渲染里。  
+
+---
+
+
+---
+
+## SOURCE: `spec/13-3._三种信息裁切(你要求必须考虑的三视角).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
 
 ---
 
@@ -106,6 +129,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/14-4._总体分层架构(在现有_Soulseed_基础上加层不推翻).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 4. 总体分层架构（在现有 Soulseed 基础上“加层不推翻”）
 
 ### 4.1 现有强项（保留）
@@ -119,6 +154,18 @@
 在不破坏现有结构前提下新增两块：
 1) **State Layer（7块心智模型）**：把关系/情绪/目标/信念/价值/人格从“文本描述”变为可运行状态机。  
 2) **Conversation Control Plane（会话控制面）**：把兴趣/话题/注意力/投入/主动意图/群聊参与控制从“默认认真”升级为“选择性投入”。  
+
+---
+
+
+---
+
+## SOURCE: `spec/15-5._7块心智模型(State_Layer)与三层变化机制(Genome_-_Epigenetics_-_State).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
 
 ---
 
@@ -150,6 +197,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/16-6._会话控制面(Conversation_Control_Plane).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 6. 会话控制面（Conversation Control Plane）
 
 ### 6.1 为什么必须有“会话控制面”
@@ -170,6 +229,18 @@
 7) **Group Arbitration（群聊）**：参与门槛、竞争仲裁、cooldown  
 
 > 这些模块的输出必须进入 turn protocol 的“路由”与“预算”阶段，而不是只存在于离线分析。
+
+---
+
+
+---
+
+## SOURCE: `spec/17-7._Interests(兴趣系统)如何驱动_Attention_-_Engagement并且可培养可演进.md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
 
 ---
 
@@ -213,6 +284,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/18-8._被动回复-从每条都认真回升级为像人一样选择投入.md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 8. 被动回复：从“每条都认真回”升级为“像人一样选择投入”
 
 ### 8.1 投入档位（必须成为主循环第一决策）
@@ -244,6 +327,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/19-9._主动打扰-从随机打扰升级为有动机有主题有克制.md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 9. 主动打扰：从“随机打扰”升级为“有动机、有主题、有克制”
 
 ### 9.1 主动系统的正确层级
@@ -270,6 +365,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/20-10._AI_群聊-参与控制插话门槛与仲裁(避免机器人抢答).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 10. AI 群聊：参与控制、插话门槛与仲裁（避免机器人抢答）
 
 群聊的本质不是“多 persona 同时说话”，而是：
@@ -293,6 +400,18 @@
 - 选 top 1（或 top 2）发言  
 - 其余 persona 只做 internal state update，不发言  
 - 记录仲裁 trace（便于调参）  
+
+---
+
+
+---
+
+## SOURCE: `spec/21-11._Gates_&_Budgets(门禁与预算).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
 
 ---
 
@@ -324,6 +443,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/22-12._存储与_Persona_Package(新增文件必须可回滚可审计).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 12. 存储与 Persona Package（新增文件必须可回滚、可审计）
 
 遵循“增量新增文件，不破坏旧文件”的原则，建议新增（可选分阶段）：
@@ -350,6 +481,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/23-13._兼容性与迁移(存量人格不能错乱-换人).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 13. 兼容性与迁移（存量人格不能错乱/换人）
 
 ### 13.1 compatMode（三档）
@@ -368,6 +511,18 @@
 - 对存量 persona：默认保持旧回复强度（除非用户明确开启）  
 - 建议先做 **P0 止血**：把“情绪外显频率”纳入 policy 并默认降低；这一般不会破坏人格核心，只会更像人。  
 - 其余 engagement/群聊参与默认先关或轻度启用，以回归结果为准。  
+
+---
+
+
+---
+
+## SOURCE: `spec/24-14._评估与验收(DoD__回归集).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
 
 ---
 
@@ -401,6 +556,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/25-15._推荐_Rollout_顺序(最小闭环__可控扩展).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 15. 推荐 Rollout 顺序（最小闭环 → 可控扩展）
 
 > 目标：每一步都“立刻更像人”，同时不破坏存量人格与工程复杂度。
@@ -427,6 +594,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/26-16._风险清单与对策.md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 16. 风险清单与对策
 
 1) **过度数值化像面板**  
@@ -444,6 +623,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/27-17._OK_的定义.md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 17. OK 的定义
 
 做到 v0.4 的“OK”，不是永远记得、永远解释清楚，而是：
@@ -455,6 +646,18 @@
 - 群聊大多数时候沉默，只有高度相关/被点名才参与  
 - 全部关键变化可审计、可回滚、可回归  
 - 存量人格不乱、不换人  
+
+---
+
+
+---
+
+## SOURCE: `spec/28-附录_A-关键数据结构草案(JSON_Schema_级别).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
 
 ---
 
@@ -545,6 +748,18 @@
 
 ---
 
+
+---
+
+## SOURCE: `spec/29-附录_B-与现有代码的最小侵入接入点清单(架构对齐).md`
+
+# Soulseed 心智系统与会话控制面总体方案（整合优化版）
+> 版本：v0.4（2026-02-24）  
+> 目标：在**彻底尊重既有产品与代码结构**的前提下，把 v0.1（StateLayer-Optimization）+ v0.2（Genome-Compatibility MasterPlan）+ 新增的“会话注意力/兴趣/投入/群聊参与控制”整合为一套**可落地、可扩展、可兼容存量人格**的系统方案。  
+> 关键词：7块心智模型｜State Layer｜Genome/天赋｜Epigenetics｜兼容性（compatMode）｜Gates & Budgets｜三种信息裁切｜Interest→Attention→Engagement｜被动回复｜主动打扰｜AI 群聊参与控制
+
+---
+
 ## 附录 B：与现有代码的“最小侵入接入点”清单（架构对齐）
 
 > 这里不写具体实现代码，只写“应该插在哪”，确保你后续审查代码时能一眼定位改动范围。
@@ -562,4 +777,4 @@
    - 在消息分发层引入 participation scoring + arbitration + cooldown  
    - 非发言 persona 只做 internal update  
 6) **情绪外显**：  
-   - 从 UI/CLI 渲染默认行为迁移到 conversation_policy 输出（频率门禁）  
+   - 从 UI/CLI 渲染默认行为迁移到 conversation_policy 输出（频率门禁）
