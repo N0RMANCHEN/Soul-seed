@@ -43,7 +43,7 @@ npm run build
 #### `new`
 
 ```bash
-./ss new <name> [--out <personaPath>] [--template friend|peer|intimate|neutral] [--model <model>] [--quick]
+./ss new <name> [--out <personaPath>] [--template friend|peer|intimate|neutral] [--quick]
 ```
 
 交互式创建新 persona 包，采集模板、世界观、使命、价值观、风格等。`--quick` 按模板默认值快速创建，跳过交互。名字不能与内置人格同名（若 `personas/defaults/<name>.soulseedpersona` 已存在，如 Alpha、Beta，会报错并提示使用 `./ss <name>` 或换名）。
@@ -122,7 +122,7 @@ SHA-256 哈希校验后导入，失败自动回滚并列出错误。输出：`{o
 
 管理三路模型配置（instinct / deliberative / meta 各可独立设置不同模型）。
 - 无修改参数：显示当前路由配置
-- `--reset`：将三路由全部重置为 `defaultModel`
+- `--reset`：将三路由全部重置为运行时默认模型（`SOULSEED_MODEL`）
 
 #### `persona voice-phrases`
 
@@ -237,7 +237,7 @@ SHA-256 哈希校验后导入，失败自动回滚并列出错误。输出：`{o
 #### 主入口
 
 ```bash
-./ss <personaName> [--model <model>] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]
+./ss <personaName> [--provider <provider>] [--model <model>] [--strict-memory-grounding true|false] [--adult-mode true|false] [--age-verified true|false] [--explicit-consent true|false] [--fictional-roleplay true|false]
 ```
 
 自动解析 `./personas/<name>.soulseedpersona`，不存在时提示创建。
@@ -245,10 +245,10 @@ SHA-256 哈希校验后导入，失败自动回滚并列出错误。输出：`{o
 #### 兼容入口
 
 ```bash
-./ss chat [--persona <path>] [--model <model>] [同上参数...]
+./ss chat [--persona <path>] [--provider <provider>] [--model <model>] [同上参数...]
 ```
 
-模型优先级：`--model` > persona `defaultModel` > `SOULSEED_MODEL`/`DEEPSEEK_MODEL` 环境变量 > 内置默认（`claude-sonnet-4-6`，旧版 DeepSeek 配置下为 `deepseek-chat`）
+模型优先级：`--model` > `SOULSEED_MODEL`/`DEEPSEEK_MODEL` 环境变量 > 按 provider/baseUrl 推断（DeepSeek 默认 `deepseek-chat`）
 
 **自动行为**：
 - 会话启动时后台触发轻量记忆整合（`trigger=chat_open`）
@@ -823,11 +823,11 @@ Pinned Memory 在每次对话中始终注入上下文（硬注入，不受预算
 ```bash
 # 创建 persona
 ./ss new Teddy
-./ss new Teddy --quick --template peer --model claude-sonnet-4-6
+./ss new Teddy --quick --template peer
 
 # 对话
 ./ss Teddy
-./ss Teddy --model claude-sonnet-4-6
+./ss Teddy --provider deepseek --model deepseek-chat
 ./ss chat --persona ./personas/Teddy.soulseedpersona   # 兼容入口
 
 # 改名

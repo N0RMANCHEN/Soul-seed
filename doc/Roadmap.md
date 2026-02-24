@@ -28,15 +28,12 @@
 - `done` 任务直接从当前 Roadmap active 列表移除。
 - 不单独维护“已完成任务归档”章节，完成记录以 Git 历史为准。
 
-### 5) 双人分工规则（自动执行）
-- 团队固定 **2 人**并行开发，按域划分：
-  - **Person A**：状态核心 / 记忆 / 情绪 / MindModel 行为层
-  - **Person B**：路由 / 安全 / 兼容迁移 / Schema 治理
-- **新增任务必须标注 `负责人：A | B | AB共建`**，未标注视为分配缺失，更新不合规。
-- **跨流依赖**必须在任务条目标注 `同步点：等待 X 完成 Y`，明确阻塞方。
-- 每个 Phase 末尾维护 **分工总览表**（含任务链、同步点、域归属）。
-- 分配平衡约束：同 Phase 内两人任务数差距 **≤ 30%**；超出须说明原因。
-- **更新触发**：每次 Roadmap 新增 / 删除 / 重排任务时，必须同步更新分工表与同步点。
+### 5) 双人分工规则（轻量执行版）
+- 分工原则：A 负责 `state-core`（状态/记忆/情绪/行为演化），B 负责 `control-plane`（路由/安全/兼容/治理）。
+- active 任务必须补齐最小字段：`负责人`、`域标签`、`同步点`、`阻塞级别`、`回滚归属`。
+- 同步点必须显式声明：`等待 X 完成 Y`；禁止隐式依赖。
+- 同一 Phase 任务工作量差距建议控制在 30% 以内；超出需注明原因。
+- AB 共建任务必须写主副责（例如 `AB(A主/B辅)`）。
 
 ## 当前执行总览（重排后）
 - `in_progress`：`none`
@@ -141,6 +138,42 @@
 - 实现方式：收敛重复安全 fallback 逻辑到单入口（统一评估、统一 trace、统一审计字段）。
 - 测试/DoD：fallback 逻辑单源且可追踪；安全回归不退化。
 - 依赖：`G/P0-6`；回滚：保留 legacy 兼容代理层。
+
+### G/P0-9 系统提示泄漏治理（Prompt Leak Guard）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`user-feedback/2026-02-24` `spec/18` `Quality-Evaluation/L4RegexFallbackRate`
+- 负责人：`B`
+- 域标签：`control-plane`
+- 同步点：`等待 G/P0-8 统一 fallback 入口`
+- 阻塞级别：`hard`
+- 实现方式：新增系统语句泄漏检测（如“系统提示/执行状态/观察你”等元叙事措辞）；在回复提交前增加人格层 rewrite/reject gate；记录结构化 trace（`leak_type` `source_stage` `rewrite_applied`）。
+- 测试/DoD：系统提示泄漏样本阻断率 100%；正常对话误杀率受控（<=1%）。
+- 依赖：`G/P0-6` `G/P0-8`；回滚：降级为只告警不拦截；回滚归属：`B`。
+
+### G/P0-10 网络异常下人格回路保真（Degraded Persona Path Integrity）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`user-feedback/2026-02-24` `spec/18` `spec/19`
+- 负责人：`AB(A主/B辅)`
+- 域标签：`shared`
+- 同步点：`A 等待 B 完成 G/P0-9 泄漏门禁；B 等待 A 完成语气策略基线`
+- 阻塞级别：`hard`
+- 实现方式：将中间主动询问、开场白、结束语统一接入人格主回路（同一 voice policy/relationship state/context gate）；网络异常与 fallback 场景禁用固定模板直出，改为 `persona-aware degraded composer`。
+- 测试/DoD：异常注入（timeout/429/5xx/model_not_exist）下人格一致性评分不低于阈值；开场/主动/结束语在正常与异常路径风格偏差受控。
+- 依赖：`G/P0-4` `G/P0-8` `H/P0-2`；回滚：feature flag 退回当前 fallback 路径；回滚归属：`AB(A主)`。
+
+### G/P0-11 会话阶段时延剖析与体验预算门禁（Latency Mix Profiler）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`user-feedback/2026-02-24` `spec/24` `extra/48` `I/P0-2`
+- 负责人：`A`
+- 域标签：`state-core`
+- 同步点：`等待 I/P0-2 指标口径冻结后收敛门禁阈值`
+- 阻塞级别：`soft`
+- 实现方式：按回合拆分 `routing/recall/planning/llm_primary/llm_meta/guard/rewrite/emit` 阶段计时；输出时间占比、平均时长、p50/p95、异常占比；接入评估系统生成“简化裁切收益 vs 质量损失”建议。
+- 测试/DoD：CI 自动产出阶段占比报告；关键阶段时延越界可触发门禁 fail；可定位导致“卡顿”的主耗时段与工作流程占比。
+- 依赖：`G/P0-6` `I/P0-2`；回滚：仅保留观测采样，不启用硬门禁；回滚归属：`A`。
 
 ### G/P1-0 MindModel H4：AI 群聊参与控制
 - 原编号：`G/P1-7`
@@ -394,10 +427,18 @@
 - 测试/DoD：继承结果可解释，不突破安全边界。
 - 依赖：`Phase H` 全部 Must 任务完成；回滚：字段保留不启用。
 
+### I/P2-1 Provider Adapter 架构深化（Registry + Capability Matrix + Telemetry）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Could`
+- 来源需求：`engineering/provider_adapter_review(2026-02-24)` `spec/24(可观测)` `archive/17(兼容性说明)`
+- 实现方式：在现有 `openai-compatible + anthropic-native` 基础上，引入 `ProviderRegistry` 与能力矩阵（流式、token 语义、工具调用、重试/降级策略）；统一 adapter 观测事件（provider/model/attempt/error_class/latency）并接入 `--perf` 与 trace 输出。
+- 测试/DoD：跨 provider 行为契约一致；fallback 行为可预测；故障定位不依赖人工复盘日志。
+- 依赖：`I/P0-2` `H/P0-2`；回滚：保留当前双 adapter 直连实现并关闭 Registry 路径。
+
 ## 统一执行顺序（工程落地顺序）
-1. `Phase G`：`G/P0-3 -> G/P0-4 -> G/P0-5 -> G/P0-6 -> G/P0-7 -> G/P0-8 -> G/P1-0 -> G/P1-1`
+1. `Phase G`：`G/P0-3 -> G/P0-4 -> G/P0-5 -> G/P0-6 -> G/P0-7 -> G/P0-8 -> G/P0-9 -> G/P0-10 -> G/P0-11 -> G/P1-0 -> G/P1-1`
 2. `Phase H`：`H/P0-0 -> H/P0-1 -> H/P0-2 -> H/P0-3 -> H/P0-4 -> H/P1-0 -> H/P1-1 -> H/P1-2 -> H/P1-3 -> H/P1-4 -> H/P1-5 -> H/P1-6 -> H/P1-7 -> H/P1-8 -> H/P1-9 -> H/P1-10 -> H/P1-11 -> H/P1-12 -> H/P1-13 -> H/P1-14 -> H/P1-15 -> H/P1-16 -> H/P1-17 -> H/P1-18 -> H/P1-19`
-3. `Phase I`：`I/P0-0 -> I/P0-2 -> I/P0-3 -> I/P2-0`
+3. `Phase I`：`I/P0-0 -> I/P0-2 -> I/P0-3 -> I/P2-0 -> I/P2-1`
 
 ## 覆盖性与漏项结论
 - `2.24.03` 的 `00/01/02/03/04` 已完成覆盖核对并映射到任务；`A-APP-CHANGELOG` 以 `historical` 审计保留。

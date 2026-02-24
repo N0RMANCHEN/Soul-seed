@@ -143,7 +143,7 @@ CLI 入口: ./ss
 
 ```
 <Name>.soulseedpersona/
-  persona.json              # id, displayName, schemaVersion, defaultModel, compatMode(legacy|hybrid|modern), featureFlags
+  persona.json              # id, displayName, schemaVersion, paths, initProfile, sharedSpace（不再持有模型选型）
   identity.json             # 身份锚点（personaId 永不变）
   constitution.json         # 使命/价值/边界/承诺（可修宪，有门槛）
   worldview.json            # 世界观种子（可演化）
@@ -360,27 +360,11 @@ conversation window:
 
 ### Git Commit 规范
 
-**格式**：`<prefix>: <description> (<version>)`
-
-| 字段 | 说明 |
-|---|---|
-| `prefix` | `feat` 新功能 · `fix` 缺陷修复 · `chore` 配置/构建/维护 · `docs` 纯文档 |
-| `description` | 简明描述做了什么，**不能只写 "update"** |
-| `version` | `(月.日.当日序号)` — 例如 `(2.24.07)` = 2月24日第7个提交 |
-
-**示例**：
-```
-feat: migrate core LLM adapter to OpenAICompatAdapter (2.24.07)
-fix: trim trailing slash from SOULSEED_BASE_URL in adapters (2.24.11)
-docs: add dual-team assignment rules to Roadmap (2.24.12)
-chore: update .env.example to SOULSEED_* vars (2.24.09)
-```
-
-**规则**：
-- 按逻辑域拆分提交，不把不相关的变更合成一个 commit
-- 同一批次（同时完成的多个提交）共享同一个 version 号，不必每个 commit 递增
-- version 序号当日连续递增，跨日从 `.01` 重新计数
-- 已推送的 commit 不得 amend / rebase rewrite
+- 格式：`<prefix>: <description> (<version>)`
+- `prefix`：`feat` / `fix` / `chore` / `docs`
+- 同一批次（同时完成的多个提交）可共享同一个 `version` 号
+- `version` 规则：`月.日.序号`（跨日从 `.01` 重新计数）
+- 已推送 commit 禁止 rewrite 历史（禁止 `amend` / 强制改写已共享提交）
 
 ### PR 门禁（`.github/workflows/pr_gate.yml`）
 - TypeScript 编译检查

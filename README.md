@@ -109,9 +109,11 @@ Open `.env` and fill in your credentials:
 
 ```bash
 # Required / 必填 — any OpenAI-compatible provider
+SOULSEED_PROVIDER=deepseek
 SOULSEED_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-SOULSEED_BASE_URL=https://your-openai-compatible-api-provider/v1
-SOULSEED_MODEL=claude-sonnet-4-6
+SOULSEED_BASE_URL=https://api.deepseek.com/v1
+SOULSEED_MODEL=deepseek-chat
+# SOULSEED_MODEL_CANDIDATES=deepseek-reasoner,deepseek-chat
 ```
 
 Or, if you use DeepSeek, the legacy env vars still work:
@@ -133,7 +135,8 @@ Any provider with an **OpenAI-compatible** `/v1/chat/completions` endpoint works
 |---|---|---|
 | **DeepSeek** | `https://api.deepseek.com/v1` | `deepseek-chat` |
 | **OpenAI** | `https://api.openai.com/v1` | `gpt-4o` |
-| **OpenAI-compatible proxy** | `https://<your-proxy>/v1` | `claude-sonnet-4-6`, etc. |
+| **Anthropic (native)** | `https://api.anthropic.com/v1` | `claude-3-5-sonnet-latest` |
+| **OpenAI-compatible proxy** | `https://<your-proxy>/v1` | provider-specific model id |
 
 > ✅ **Any OpenAI-compatible API is supported.**
 > ✅ **支持任意 OpenAI 兼容 API。**
@@ -272,7 +275,7 @@ Each persona is a self-contained, portable directory you fully own.
 
 ```
 <Name>.soulseedpersona/
-  persona.json              # id, displayName, schemaVersion, defaultModel
+  persona.json              # id, displayName, schemaVersion
   identity.json             # identity anchor (personaId never changes)
   constitution.json         # mission / values / boundaries / commitments
   worldview.json            # worldview seed (evolvable)
@@ -295,6 +298,10 @@ Each persona is a self-contained, portable directory you fully own.
   latent/                   # latent vector checkpoints (rollback-capable)
   goals/                    # agent goal and planning context
 ```
+
+Model selection is runtime-managed via environment/config (`SOULSEED_PROVIDER`, `SOULSEED_MODEL`, optional `SOULSEED_MODEL_CANDIDATES`), not stored in persona assets.
+
+> 模型选型由运行时环境配置管理（`SOULSEED_PROVIDER`、`SOULSEED_MODEL`、可选 `SOULSEED_MODEL_CANDIDATES`），不写入 persona 资产文件。
 
 **Invariants / 不变量:**
 - `life.log.jsonl` is append-only; history is immutable (broken chain writes a scar event)
@@ -365,9 +372,12 @@ Available tools: `persona.get_context`, `memory.search`, `memory.search_hybrid`,
 
 | Variable | Default | Description / 说明 |
 |---|---|---|
+| `SOULSEED_PROVIDER` | inferred from base URL | Provider key / 提供方标识 |
 | `SOULSEED_API_KEY` | — | LLM API key (required) / LLM API 密钥（必填） |
 | `SOULSEED_BASE_URL` | — | OpenAI-compatible base URL (required) / 兼容 OpenAI 的接口地址（必填） |
-| `SOULSEED_MODEL` | `claude-sonnet-4-6` | Model name / 模型名称 |
+| `SOULSEED_MODEL` | `deepseek-chat` (for DeepSeek) | Model name / 模型名称 |
+| `SOULSEED_MODEL_CANDIDATES` | — | Optional fallback chain (comma-separated) / 可选候选链（逗号分隔） |
+| `SOULSEED_ANTHROPIC_MAX_TOKENS` | `2048` | Anthropic native `max_tokens` / Anthropic 原生输出上限 |
 | `SOULSEED_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model / 嵌入模型 |
 | `SOULSEED_EMBEDDING_DIM` | `1024` | Embedding dimension / 嵌入维度 |
 | `SOULSEED_LLM_RETRIES` | `2` | Max retries (0–5) / 最大重试次数 |

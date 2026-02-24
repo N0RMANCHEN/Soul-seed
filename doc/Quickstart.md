@@ -35,9 +35,11 @@ Edit `.env` and fill in your key:
 
 ```env
 # Generic (any OpenAI-compatible provider)
+SOULSEED_PROVIDER=deepseek
 SOULSEED_API_KEY=sk-xxxxxxxxxxxxxxxx
-SOULSEED_BASE_URL=https://your-openai-compatible-api-provider/v1
-SOULSEED_MODEL=claude-sonnet-4-6
+SOULSEED_BASE_URL=https://api.deepseek.com/v1
+SOULSEED_MODEL=deepseek-chat
+# SOULSEED_MODEL_CANDIDATES=deepseek-reasoner,deepseek-chat
 
 # Or use legacy DeepSeek config (still works)
 # DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx
