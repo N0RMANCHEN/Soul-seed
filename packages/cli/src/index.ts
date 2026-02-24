@@ -2720,6 +2720,28 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     return fallbackText;
   };
 
+  const isHardRedlineInput = (text: string): boolean => {
+    const normalized = text.trim();
+    if (!normalized) return false;
+    return /(未成年|minor|underage|child|幼女|幼男|现实中|现实里|真实发生|线下|真的去做|in real life|irl|for real|without consent|against (her|his|their) will|未同意|没同意|未经同意|违法|犯罪|illegal|crime|下药|迷奸)/iu.test(
+      normalized
+    );
+  };
+
+  const isSexualContextInput = (text: string): boolean => {
+    const normalized = text.trim();
+    if (!normalized) return false;
+    return /(sex|sexual|nsfw|性爱|做爱|操你|上你|性欲|硬了|硬透|小穴|乳交|口交|肛交|高潮|调教|cnc)/iu.test(normalized);
+  };
+
+  const isRefusalStyleOutput = (text: string): boolean => {
+    const normalized = text.trim();
+    if (!normalized) return false;
+    return /(这个请求我不能协助|我不能按这个方向继续|我可以帮你改成安全合法的方案|符合边界的替代方案|I can't help with that|not allowed|won't help)/iu.test(
+      normalized
+    );
+  };
+
   const hasUngroundedTemporalRecall = (text: string, seedInput?: string): boolean => {
     const normalized = text.trim().toLowerCase();
     if (!normalized) {
@@ -5116,6 +5138,21 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           }
         }
         addLatency("llm_meta", llmMetaStartedAtMs);
+      }
+      const fullAdultUnlocked =
+        isAdultContext &&
+        adultSafetyContext.fictionalRoleplay &&
+        adultSafetyContext.adultMode &&
+        adultSafetyContext.ageVerified &&
+        adultSafetyContext.explicitConsent;
+      if (
+        !trace.refuse &&
+        fullAdultUnlocked &&
+        isSexualContextInput(effectiveInput) &&
+        !isHardRedlineInput(effectiveInput) &&
+        isRefusalStyleOutput(assistantContent)
+      ) {
+        assistantContent = buildContextualReplyFallback(input);
       }
       const rewriteStartedAtMs = Date.now();
       assistantContent = compactReplyForChatPace(assistantContent, input);

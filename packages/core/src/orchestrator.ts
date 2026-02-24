@@ -64,6 +64,7 @@ export function decide(
   const mentionsCoercion = EXPLICIT_COERCION_PATTERN.test(normalized);
   const mentionsRealWorldNonConsensual = EXPLICIT_REALWORLD_NONCONSENSUAL_PATTERN.test(normalized);
   const isRiskyRequest = hasExplicitRiskyIntent || (intentRisk >= 0.75 && !isSexualRequest);
+  const explicitCoreOverride = EXPLICIT_CORE_OVERRIDE_PATTERN.test(normalized);
 
   const safetyRefusalReason = buildAdultSafetyRefusalReason({
     isSexualRequest,
@@ -73,7 +74,8 @@ export function decide(
     safety
   });
   const isRefusal = isRiskyRequest || safetyRefusalReason != null;
-  const coreConflict = projectCoreConflict(normalized) >= 0.62;
+  const projectedCoreConflict = projectCoreConflict(normalized);
+  const coreConflict = explicitCoreOverride || (!isSexualRequest && projectedCoreConflict >= 0.62);
 
   if (personaPkg.userProfile.preferredName) {
     selectedMemories.push(`user_preferred_name=${personaPkg.userProfile.preferredName}`);
