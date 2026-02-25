@@ -48,6 +48,8 @@ export * from "./temporal_phrase_guard.js";
 export * from "./toolbus.js";
 export * from "./web_fetch.js";
 export * from "./goal_store.js";
+export * from "./goals_state.js";
+export * from "./beliefs_state.js";
 export * from "./consistency_kernel.js";
 export * from "./agent_engine.js";
 export * from "./execution_protocol.js";
@@ -88,6 +90,8 @@ export * from "./degraded_persona_composer.js";
 export * from "./turn_latency_profiler.js";
 export * from "./autonomy_utterance.js";
 export * from "./genome.js";
+export * from "./values_rules.js";
+export * from "./personality_profile.js";
 export * from "./genome_derived.js";
 export * from "./genome_randomness.js";
 export * from "./state_delta.js";
@@ -95,6 +99,20 @@ export * from "./state_delta_gates.js";
 export * from "./state_delta_apply.js";
 export * from "./state_delta_writer.js";
 export * from "./invariant_table.js";
+export * from "./imperfection_rules.js";
+export * from "./imperfection_signal_extractor.js";
 export * from "./compat_mode.js";
 export * from "./compat_migration.js";
 export * from "./compat_calibration.js";
+export {
+  MANIFEST_SCHEMA_VERSION,
+  MANIFEST_FILENAME,
+  isPackageManifest,
+  normalizeManifest,
+  type PackageManifest,
+  type ManifestFileEntry,
+  type ManifestCompatMode
+} from "./package_manifest.js";
+export * from "./migration_logger.js";
+export * from "./package_snapshotter.js";
+export * from "./package_loader.js";
