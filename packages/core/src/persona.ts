@@ -33,6 +33,14 @@ import {
   SELF_REFLECTION_FILENAME
 } from "./self_reflection.js";
 import {
+  createDefaultGenome,
+  createDefaultEpigenetics,
+  loadGenome,
+  loadEpigenetics,
+  GENOME_FILENAME,
+  EPIGENETICS_FILENAME
+} from "./genome.js";
+import {
   VOICE_LATENT_DIM,
   BELIEF_LATENT_DIM,
   createVoiceLatentBaseline,
@@ -201,6 +209,8 @@ export async function initPersonaPackage(
   await writeFile(path.join(outPath, "life.log.jsonl"), "", "utf8");
   await writeJson(path.join(outPath, SOCIAL_GRAPH_FILENAME), createEmptySocialGraph());
   await writeJson(path.join(outPath, TEMPORAL_LANDMARKS_FILENAME), createEmptyTemporalLandmarks());
+  await writeJson(path.join(outPath, GENOME_FILENAME), createDefaultGenome({ source: "preset" }));
+  await writeJson(path.join(outPath, EPIGENETICS_FILENAME), createDefaultEpigenetics());
   await ensureMemoryStore(outPath);
 }
 
@@ -235,6 +245,9 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
       }
     : undefined;
 
+  const genome = await loadGenome(rootPath);
+  const epigenetics = await loadEpigenetics(rootPath);
+
   return {
     rootPath,
     persona,
@@ -250,6 +263,8 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
     soulLineage,
     moodState,
     autobiography,
+    genome,
+    epigenetics,
     interests
   };
 }

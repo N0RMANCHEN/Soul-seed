@@ -247,6 +247,9 @@ export interface PersonaPackage {
     curiosity: number;
     updatedAt: string;
   };
+  /** H/P0-4: Genome-derived behavioral params */
+  genome?: import("./genome.js").GenomeConfig;
+  epigenetics?: import("./genome.js").EpigeneticsConfig;
 }
 
 export interface RelationshipDimensions {
