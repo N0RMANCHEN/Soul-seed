@@ -1348,36 +1348,46 @@ async function inspectMemorySourceEventHealth(rootPath: string): Promise<DoctorI
     events.map((event) => (typeof event.hash === "string" ? event.hash : "")).filter((item) => item.length > 0)
   );
 
-  const raw = await runMemoryStoreSql(
+  const groupedCountRaw = await runMemoryStoreSql(
     rootPath,
-    [
-      "SELECT source_event_hash || '|' || COUNT(*)",
-      "FROM memories",
-      "GROUP BY source_event_hash;"
-    ].join("\n")
+    "SELECT COUNT(*) FROM (SELECT source_event_hash FROM memories GROUP BY source_event_hash);"
   );
-  if (!raw.trim()) {
+  const groupedCount = Number(groupedCountRaw.trim());
+  if (!Number.isFinite(groupedCount) || groupedCount <= 0) {
     return issues;
   }
 
   let orphanRows = 0;
   let orphanGroups = 0;
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) {
-      continue;
+  const batchSize = 1000;
+  for (let offset = 0; offset < groupedCount; offset += batchSize) {
+    const raw = await runMemoryStoreSql(
+      rootPath,
+      [
+        "SELECT source_event_hash || '|' || COUNT(*)",
+        "FROM memories",
+        "GROUP BY source_event_hash",
+        "ORDER BY source_event_hash",
+        `LIMIT ${batchSize} OFFSET ${offset};`
+      ].join("\n")
+    );
+    for (const line of raw.split("\n")) {
+      if (!line.trim()) {
+        continue;
+      }
+      const sep = line.lastIndexOf("|");
+      if (sep <= 0) {
+        continue;
+      }
+      const sourceEventHash = line.slice(0, sep);
+      const rowCount = Number.parseInt(line.slice(sep + 1), 10);
+      const isSynthetic = SYNTHETIC_SOURCE_PREFIXES.some((prefix) => sourceEventHash.startsWith(prefix));
+      if (isSynthetic || knownEventHashes.has(sourceEventHash)) {
+        continue;
+      }
+      orphanGroups += 1;
+      orphanRows += Number.isFinite(rowCount) ? rowCount : 1;
     }
-    const sep = line.lastIndexOf("|");
-    if (sep <= 0) {
-      continue;
-    }
-    const sourceEventHash = line.slice(0, sep);
-    const rowCount = Number.parseInt(line.slice(sep + 1), 10);
-    const isSynthetic = SYNTHETIC_SOURCE_PREFIXES.some((prefix) => sourceEventHash.startsWith(prefix));
-    if (isSynthetic || knownEventHashes.has(sourceEventHash)) {
-      continue;
-    }
-    orphanGroups += 1;
-    orphanRows += Number.isFinite(rowCount) ? rowCount : 1;
   }
 
   if (orphanRows > 0) {
@@ -1531,53 +1541,55 @@ async function inspectMemoryEmbeddingHealth(rootPath: string): Promise<DoctorIss
 }
 
 async function inspectRecallTraceHealth(rootPath: string): Promise<DoctorIssue[]> {
-  const raw = await runMemoryStoreSql(
+  const invalidPayloadRaw = await runMemoryStoreSql(
     rootPath,
     [
-      "SELECT id || '|' || selected_ids_json || '|' || scores_json || '|' || budget_json || '|' || created_at",
+      "SELECT json_object(",
+      "'invalidJsonRows', SUM(CASE WHEN",
+      "COALESCE(json_valid(selected_ids_json), 0) = 0 OR COALESCE(json_type(selected_ids_json), '') != 'array' OR",
+      "COALESCE(json_valid(scores_json), 0) = 0 OR COALESCE(json_type(scores_json), '') NOT IN ('object', 'array') OR",
+      "COALESCE(json_valid(budget_json), 0) = 0 OR COALESCE(json_type(budget_json), '') NOT IN ('object', 'array')",
+      "THEN 1 ELSE 0 END),",
+      "'totalRows', COUNT(*)",
+      ")",
       "FROM recall_traces;"
     ].join("\n")
   );
-  if (!raw.trim()) {
+  if (!invalidPayloadRaw.trim()) {
     return [];
   }
 
   let invalidJsonRows = 0;
+  let totalRows = 0;
+  try {
+    const parsed = JSON.parse(invalidPayloadRaw) as Record<string, unknown>;
+    invalidJsonRows = Number(parsed.invalidJsonRows ?? 0);
+    totalRows = Number(parsed.totalRows ?? 0);
+  } catch {
+    invalidJsonRows = 0;
+    totalRows = 0;
+  }
+
   let invalidCreatedAtRows = 0;
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) {
-      continue;
-    }
-    const parts = line.split("|");
-    if (parts.length < 5) {
-      invalidJsonRows += 1;
-      continue;
-    }
-    const selectedRaw = parts[1];
-    const scoresRaw = parts[2];
-    const budgetRaw = parts[3];
-    const createdAt = parts.slice(4).join("|");
-
-    let parsedOk = true;
-    try {
-      const selected = JSON.parse(selectedRaw);
-      const scores = JSON.parse(scoresRaw);
-      const budget = JSON.parse(budgetRaw);
-      const selectedValid = Array.isArray(selected);
-      const scoresValid = isRecord(scores);
-      const budgetValid = isRecord(budget);
-      if (!selectedValid || !scoresValid || !budgetValid) {
-        parsedOk = false;
+  if (totalRows > 0) {
+    const batchSize = 2000;
+    for (let offset = 0; offset < totalRows; offset += batchSize) {
+      const createdAtRaw = await runMemoryStoreSql(
+        rootPath,
+        [
+          "SELECT created_at",
+          "FROM recall_traces",
+          `LIMIT ${batchSize} OFFSET ${offset};`
+        ].join("\n")
+      );
+      for (const line of createdAtRaw.split("\n")) {
+        if (!line.trim()) {
+          continue;
+        }
+        if (!isIsoDate(line.trim())) {
+          invalidCreatedAtRows += 1;
+        }
       }
-    } catch {
-      parsedOk = false;
-    }
-    if (!parsedOk) {
-      invalidJsonRows += 1;
-    }
-
-    if (!isIsoDate(createdAt)) {
-      invalidCreatedAtRows += 1;
     }
   }
 
@@ -1603,28 +1615,82 @@ async function inspectRecallTraceHealth(rootPath: string): Promise<DoctorIssue[]
 
 async function inspectArchiveReferenceHealth(rootPath: string): Promise<DoctorIssue[]> {
   const issues: DoctorIssue[] = [];
-  const rowsRaw = await runMemoryStoreSql(
+  const countRaw = await runMemoryStoreSql(
     rootPath,
-    [
-      "SELECT json_object(",
-      "'id', id,",
-      "'content', content,",
-      "'state', state,",
-      "'excludedFromRecall', excluded_from_recall",
-      ")",
-      "FROM memories",
-      "WHERE deleted_at IS NULL",
-      "AND content LIKE '[archived_ref] %';"
-    ].join("\n")
+    "SELECT COUNT(*) FROM memories WHERE deleted_at IS NULL AND content LIKE '[archived_ref] %';"
   );
-
-  if (!rowsRaw.trim()) {
+  const archivedRefCount = Number(countRaw.trim());
+  if (!Number.isFinite(archivedRefCount) || archivedRefCount <= 0) {
     return issues;
   }
 
-  let segmentsRaw = "";
-  try {
-    segmentsRaw = await runMemoryStoreSql(
+  const refs: Array<{
+    id: string;
+    pathRef: string;
+    state: string;
+    excluded: boolean;
+    ref: { segmentKey: string; checksum: string; id: string };
+  }> = [];
+  const batchSize = 500;
+  for (let offset = 0; offset < archivedRefCount; offset += batchSize) {
+    const rowsRaw = await runMemoryStoreSql(
+      rootPath,
+      [
+        "SELECT json_object(",
+        "'id', id,",
+        "'content', content,",
+        "'state', state,",
+        "'excludedFromRecall', excluded_from_recall",
+        ")",
+        "FROM memories",
+        "WHERE deleted_at IS NULL",
+        "AND content LIKE '[archived_ref] %'",
+        `LIMIT ${batchSize} OFFSET ${offset};`
+      ].join("\n")
+    );
+    for (const line of rowsRaw.split("\n")) {
+      if (!line.trim()) {
+        continue;
+      }
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const id = typeof parsed.id === "string" ? parsed.id : "";
+      const content = typeof parsed.content === "string" ? parsed.content : "";
+      const state = typeof parsed.state === "string" ? parsed.state : "";
+      const excluded = Number(parsed.excludedFromRecall) === 1 || parsed.excludedFromRecall === true;
+      const pathRef = `memory.db:memories:${id || "unknown"}`;
+
+      const ref = parseArchivedRef(content);
+      if (!ref) {
+        issues.push({
+          code: "invalid_archive_reference",
+          severity: "error",
+          message: "archive reference marker exists but cannot be parsed",
+          path: pathRef
+        });
+        continue;
+      }
+      refs.push({ id, pathRef, state, excluded, ref });
+    }
+  }
+
+  if (refs.length === 0) {
+    return issues;
+  }
+
+  const segmentMap = new Map<string, { checksum: string; payloadJson: string }>();
+  const segmentKeys = Array.from(new Set(refs.map((item) => item.ref.segmentKey)));
+  const segmentBatchSize = 200;
+  for (let i = 0; i < segmentKeys.length; i += segmentBatchSize) {
+    const keys = segmentKeys.slice(i, i + segmentBatchSize);
+    const inClause = keys
+      .map((key) => `'${key.replace(/'/g, "''")}'`)
+      .join(", ");
+    const segmentsRaw = await runMemoryStoreSql(
       rootPath,
       [
         "SELECT json_object(",
@@ -1632,86 +1698,57 @@ async function inspectArchiveReferenceHealth(rootPath: string): Promise<DoctorIs
         "'checksum', checksum,",
         "'payloadJson', payload_json",
         ")",
-        "FROM archive_segments;"
+        "FROM archive_segments",
+        `WHERE segment_key IN (${inClause});`
       ].join("\n")
     );
-  } catch {
-    // Schema-health checks already report missing tables; keep doctor resilient.
-    return issues;
-  }
-  const segmentMap = new Map<string, { checksum: string; payloadJson: string }>();
-  for (const line of segmentsRaw.split("\n")) {
-    if (!line.trim()) {
-      continue;
-    }
-    try {
-      const parsed = JSON.parse(line) as Record<string, unknown>;
-      const segmentKey = typeof parsed.segmentKey === "string" ? parsed.segmentKey : "";
-      if (!segmentKey) {
+    for (const line of segmentsRaw.split("\n")) {
+      if (!line.trim()) {
         continue;
       }
-      segmentMap.set(segmentKey, {
-        checksum: typeof parsed.checksum === "string" ? parsed.checksum : "",
-        payloadJson: typeof parsed.payloadJson === "string" ? parsed.payloadJson : ""
-      });
-    } catch {
-      continue;
+      try {
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        const segmentKey = typeof parsed.segmentKey === "string" ? parsed.segmentKey : "";
+        if (!segmentKey) {
+          continue;
+        }
+        segmentMap.set(segmentKey, {
+          checksum: typeof parsed.checksum === "string" ? parsed.checksum : "",
+          payloadJson: typeof parsed.payloadJson === "string" ? parsed.payloadJson : ""
+        });
+      } catch {
+        continue;
+      }
     }
   }
 
-  for (const line of rowsRaw.split("\n")) {
-    if (!line.trim()) {
-      continue;
-    }
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(line) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-    const id = typeof parsed.id === "string" ? parsed.id : "";
-    const content = typeof parsed.content === "string" ? parsed.content : "";
-    const state = typeof parsed.state === "string" ? parsed.state : "";
-    const excluded = Number(parsed.excludedFromRecall) === 1 || parsed.excludedFromRecall === true;
-    const pathRef = `memory.db:memories:${id || "unknown"}`;
-
-    const ref = parseArchivedRef(content);
-    if (!ref) {
-      issues.push({
-        code: "invalid_archive_reference",
-        severity: "error",
-        message: "archive reference marker exists but cannot be parsed",
-        path: pathRef
-      });
-      continue;
-    }
-
-    if (state !== "archive" || !excluded) {
+  for (const item of refs) {
+    if (item.state !== "archive" || !item.excluded) {
       issues.push({
         code: "archive_reference_state_drift",
         severity: "warning",
         message: "archived_ref memory should be state=archive and excluded_from_recall=1",
-        path: pathRef
+        path: item.pathRef
       });
     }
 
-    const seg = segmentMap.get(ref.segmentKey);
+    const seg = segmentMap.get(item.ref.segmentKey);
     if (!seg) {
       issues.push({
         code: "archive_segment_missing",
         severity: "error",
-        message: `archive segment not found: ${ref.segmentKey}`,
-        path: pathRef
+        message: `archive segment not found: ${item.ref.segmentKey}`,
+        path: item.pathRef
       });
       continue;
     }
 
-    if (seg.checksum && ref.checksum && seg.checksum !== ref.checksum) {
+    if (seg.checksum && item.ref.checksum && seg.checksum !== item.ref.checksum) {
       issues.push({
         code: "archive_segment_checksum_mismatch",
         severity: "error",
-        message: `archive checksum mismatch for ${ref.segmentKey}`,
-        path: pathRef
+        message: `archive checksum mismatch for ${item.ref.segmentKey}`,
+        path: item.pathRef
       });
       continue;
     }
@@ -1721,7 +1758,7 @@ async function inspectArchiveReferenceHealth(rootPath: string): Promise<DoctorIs
       issues.push({
         code: "archive_segment_payload_invalid",
         severity: "error",
-        message: `archive payload json is invalid: ${ref.segmentKey}`,
+        message: `archive payload json is invalid: ${item.ref.segmentKey}`,
         path: "memory.db:archive_segments"
       });
       continue;
