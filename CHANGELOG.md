@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - **Genome test suite** (`packages/core/test/genome.test.mjs`): Covers default creation, validation, derived param computation, and daily jitter.
 - Phase H execution plans: `doc/plans/H-State-Closure-Plan.md`, `H1-Foundation.md`, `H2-State-Modules.md`, `H3-Validation-and-Guards.md`.
 - Phase Ha sub-phase plans: `doc/plans/Ha-State-Infra-Plan.md` (high-level), `Ha-1-State-Delta-Invariant.md` (H/P0-0,1), `Ha-2-Compat-Genome.md` (H/P0-2,3,4).
+- Phase Hb sub-phase plans: `doc/plans/Hb-Mind-Model-State-Modules.md` (high-level), `Hb-1-State-Core.md`, `Hb-2-Package-Compat.md` (subplans), `Hb-1-1-Identity-Beliefs.md`, `Hb-1-2-Memory-Relationships.md`, `Hb-1-3-Affect-Module.md`, `Hb-1-4-Imperfection-DoD.md`, `Hb-2-1-Persona-Package.md`, `Hb-2-2-Compat-Checklist.md` (nested subplans).
 - Backlog item for Genome → Memory Lifecycle wiring (4 derived params computed but not yet consumed by `memory_lifecycle.ts`).
 - Cursor rule `progress-tracking.mdc` for session protocol and verification gates.
 - **State Delta Pipeline** (`packages/core/src/state_delta.ts`, `state_delta_gates.ts`, `state_delta_apply.ts`): `proposal → gates → deterministic apply` mechanism for state mutations. 7 gates (identity, recall grounding, relationship, mood, belief, epigenetics, budget). Atomic writes with append-only trace. 12 tests.
@@ -40,6 +41,7 @@ All notable changes to this project will be documented in this file.
 - `DerivedParams` pruned: removed `cardsCap`, `recentWindowTurns`, `entityLinkingThreshold` (no clear consumer or miscalibrated).
 - **Epigenetics gate**: Enhanced with cooldown enforcement — rejects adjustments when `cooldownUntil` is in the future.
 - **E2: Zero direct-write paths**: All state writes (mood, relationship, interests, cognition, voice, social_graph) route through the State Delta Pipeline when persona is in full compat mode. Legacy personas retain direct writes. System-generated writes bypass gates via `systemGenerated` flag. New domains added to `StateDeltaDomain` and `DOMAIN_FILE_MAP`. `state_delta_writer.ts` provides `shouldUseStateDeltaPipelineFromRoot` and `writeStateDelta`. CI gate `scripts/check_direct_writes.mjs` enforces no unauthorized state file writes.
+- **Doc sync**: `contributing_ai.md` (§5.1 verify.sh coverage, §5.3 state file writes), `AGENT.md` (§6.4 E2 gate, §9 scripts), `README.md` (verify.sh description) updated for direct-writes gate and state delta pipeline.
 
 ### Fixed
 - Fixed false-positive policy refusals for benign emotional check-in utterances (e.g. "今天很不对劲...你能感受到吗"), while preserving explicit override refusal behavior.

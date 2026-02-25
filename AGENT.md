@@ -316,7 +316,7 @@ conversation window:
 1. **一次只做一个任务**（最小变更集），禁止"顺手重构"
 2. **任何改动必须保持可 build / 可跑**（至少 `./scripts/verify.sh` 通过）
 3. **Doc Sync Gate（强制）**：任何涉及代码、命令、配置、架构、schema、流程的改动，必须排查受影响文档（至少 `README.md`、`doc/*.md`、`AGENT.md`、`contributing_ai.md`、`CHANGELOG.md`）；若无需更新，交付中必须明确写出“已排查且无需更新”的理由。
-4. **H0 门禁配置属于机器配置资产**：位置固定为 `config/h0/*`；任何修改后必须通过 `npm run h0:check`。
+4. **H0 门禁配置属于机器配置资产**：位置固定为 `config/h0/*`；任何修改后必须通过 `npm run h0:check`。**E2 直接写门禁**：状态文件（mood_state.json、relationship_state.json 等）仅允许 `state_delta_apply.ts` 及指定模块写入；`scripts/check_direct_writes.mjs` 在 `verify.sh` 中执行。
 5. **不删除旧代码**：替换则移动到 `packages/legacy-*` 或归档目录
 6. **改 schema 必须**：`schemaVersion` bump + 迁移策略 + 回归用例
 7. **DecisionTrace schema 一旦发布必须向后兼容**，或提供迁移（回放基石）
@@ -393,6 +393,8 @@ packages/
   mcp-server/   # MCP JSON-RPC 2.0 服务器
 scripts/
   verify.sh                # 单一验证入口
+  check_h0_gate.mjs        # H0 门禁（config/h0/* + invariant_table）
+  check_direct_writes.mjs  # E2 直接写门禁（状态文件仅允许指定模块）
   acceptance.sh            # 在线链路验收
   eval_all.sh              # 质量评测全量
   baseline_delta.mjs       # 基线 delta 对比

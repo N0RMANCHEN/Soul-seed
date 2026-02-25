@@ -77,7 +77,10 @@
 - `CHANGELOG.md` 已同步：当前任务的新增/变更条目必须已写入当前版本节；若确实无用户可见变化，需在交付中说明“不更新 changelog 的理由”。
 - 涉及信息裁切/意图识别的改动，必须声明四层路由设计（`L1 基向量 -> L2 潜向量 -> L3 元认知 -> L4 正则兜底`），且业务主路径不得走 regex。
 - verify.sh 覆盖：
-  - TypeScript 类型检查（三个包）
+  - Lint（TypeScript 类型检查，三个包）
+  - H0 门禁（`npm run h0:check`，含 `config/h0/*` 与 `invariant_table.json`）
+  - Direct-writes 门禁（`scripts/check_direct_writes.mjs`，E2：状态文件仅允许指定模块写入）
+  - Changelog 门禁
   - 全量单元测试（`packages/core` + `packages/cli` + `packages/mcp-server`）
   - 构建（三个包）
 - 若改动涉及在线模型链路（ModelAdapter / chat online path），必须额外运行 `npm run acceptance` 并记录报告路径。
@@ -92,6 +95,7 @@
 ### 5.3 Storage / schema changes（改动 persona 文件结构必须）
 
 - 确保 life.log append-only；不得把二进制塞进 JSON（attachments 引用）。
+- **状态文件写入**：mood_state.json、relationship_state.json、interests.json、cognition_state.json、voice_profile.json、social_graph.json 仅允许通过 `state_delta_writer.ts` 或 `state_delta_apply.ts` 写入；新增状态域必须注册到 `StateDeltaDomain` 与 `DOMAIN_FILE_MAP`，并加入 `scripts/check_direct_writes.mjs` 的允许列表。
 - 若实现 hash 链：必须增加"断链检测"用例（fixture + test）。
 - 增加/变更 schema 必须有 `schemaVersion` 与迁移策略，并提供迁移测试或 fixture。
 - 修改 `memory.db` 结构：必须增加 schema version 校验与升级路径。

@@ -441,7 +441,7 @@ packages/
   cli/            # CLI shell: ./ss entry + interactive logic
   mcp-server/     # MCP JSON-RPC 2.0 server
 scripts/
-  verify.sh              # Single verification entry (lint + typecheck + test + build)
+  verify.sh              # Single verification entry (lint + h0 + direct-writes + changelog + typecheck + test + build)
   acceptance.sh          # Online acceptance (uses QA persona)
   eval_mood.mjs          # Mood latent regression test
 datasets/

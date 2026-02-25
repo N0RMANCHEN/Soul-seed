@@ -297,6 +297,7 @@
 > **出口条件**：所有状态模块插入 `proposal → gates → apply` 管线；imperfection 可表达；Persona Package v0.4 布局稳定。
 > **版本影响**：完成后触发 minor bump。
 > **任务数**：8
+> **计划文件**：`doc/plans/Hb-Mind-Model-State-Modules.md`（高层）；`Hb-1-State-Core.md`、`Hb-2-Package-Compat.md`（子计划）；`Hb-1-1-Identity-Beliefs.md`、`Hb-1-2-Memory-Relationships.md`、`Hb-1-3-Affect-Module.md`、`Hb-1-4-Imperfection-DoD.md`、`Hb-2-1-Persona-Package.md`、`Hb-2-2-Compat-Checklist.md`（嵌套子计划）。
 
 ### H/P1-0 Values / Personality 可运行约束系统
 - 原编号：`G/P2-8`

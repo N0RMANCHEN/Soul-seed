@@ -4,7 +4,8 @@
 > Date: 2026-02-25 (updated)  
 > Status: `in_progress` — H/P0-4 ~85%, H/P0-2 ~40%, H/P0-3 ~30%; H/P0-0 and H/P0-1 not started; all H/P1-x not started  
 > Source: `doc/Roadmap.md` (Phase H) + `04-Archive.md` (v0.3.1 / v0.4 specs)  
-> Scope: 24 tasks (H/P0-0..4 + H/P1-0..10, H/P1-12..19); H/P1-11 moved to Phase I, 8 weeks (W1–W8)  
+> Scope: 24 tasks (H/P0-0..4 + H/P1-0..10, H/P1-12..19); H/P1-11 moved to Phase I, 8 weeks (W1–W8)
+> Sub-phase plans: Ha (`Ha-State-Infra-Plan.md`, `Ha-1-*`, `Ha-2-*`); Hb (`Hb-Mind-Model-State-Modules.md`, `Hb-1-*`, `Hb-2-*`, `Hb-*-*-*`); Hc (TBD)  
 > Note: H/P0-4 was implemented ahead of H/P0-0/H/P0-1 (execution order deviation). Genome wiring goes directly into existing code paths; will need routing through State Delta Pipeline once H/P0-0 lands.
 
 ---
