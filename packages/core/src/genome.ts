@@ -188,7 +188,9 @@ export function clampTraitValue(value: number): number {
 export async function loadGenome(personaRoot: string): Promise<GenomeConfig> {
   const filePath = path.join(personaRoot, GENOME_FILENAME);
   if (!existsSync(filePath)) {
-    return createDefaultGenome();
+    const defaults = createDefaultGenome();
+    try { await writeFile(filePath, JSON.stringify(defaults, null, 2), "utf-8"); } catch {}
+    return defaults;
   }
   const raw = await readFile(filePath, "utf-8");
   const parsed: GenomeConfig = JSON.parse(raw);

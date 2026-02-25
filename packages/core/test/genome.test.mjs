@@ -162,13 +162,12 @@ test("default genome (all 0.5) produces legacy-compatible derived params", () =>
   }
 });
 
-test("high attention_span increases recallTopK and recentWindowTurns", () => {
+test("high attention_span increases recallTopK", () => {
   const g = createDefaultGenome();
   g.traits.attention_span.value = 0.9;
   const e = createDefaultEpigenetics();
   const d = computeDerivedParams(g, e);
   assert.ok(d.recallTopK > 10, "recallTopK should increase");
-  assert.ok(d.recentWindowTurns > 5, "recentWindowTurns should increase");
 });
 
 test("low emotion_recovery slows baseline regression", () => {

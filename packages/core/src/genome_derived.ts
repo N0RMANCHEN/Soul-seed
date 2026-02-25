@@ -22,12 +22,8 @@ import { clamp } from "./genome.js";
 // ─── Derived Params ────────────────────────────────────────────────────────────
 
 export interface DerivedParams {
-  /** Max relationship/context cards per turn */
-  cardsCap: number;
   /** Top-K memories for recall */
   recallTopK: number;
-  /** Recent conversation turns in context */
-  recentWindowTurns: number;
   /** Multiplier on per-turn mood deltas */
   moodDeltaScale: number;
   /** Per-turn mood regression toward baseline */
@@ -40,8 +36,6 @@ export interface DerivedParams {
   salienceGain: number;
   /** Probability of a memory becoming "sticky" (decay-resistant) */
   stickyProbability: number;
-  /** Confidence threshold for entity linking */
-  entityLinkingThreshold: number;
   /** Max entity candidates to consider per mention */
   entityCandidateCount: number;
 }
@@ -49,11 +43,10 @@ export interface DerivedParams {
 // ─── Formula table ─────────────────────────────────────────────────────────────
 //
 //  trait=0.5 produces these "legacy" defaults:
-//    cardsCap=2, recallTopK=10, recentWindowTurns=5,
-//    moodDeltaScale=1.0, baselineRegressionSpeed=0.05,
+//    recallTopK=10, moodDeltaScale=1.0, baselineRegressionSpeed=0.05,
 //    memoryHalfLifeDays=30, archiveThreshold=0.10,
 //    salienceGain=1.0, stickyProbability=0.15,
-//    entityLinkingThreshold=0.70, entityCandidateCount=3
+//    entityCandidateCount=3
 
 interface FormulaEntry {
   trait: GenomeTraitName;
@@ -67,26 +60,10 @@ interface FormulaEntry {
 const FORMULA_TABLE: FormulaEntry[] = [
   {
     trait: "attention_span",
-    param: "cardsCap",
-    formula: (t) => Math.floor(t * 4),
-    clampMin: 1,
-    clampMax: 4,
-    round: true,
-  },
-  {
-    trait: "attention_span",
     param: "recallTopK",
     formula: (t) => Math.floor(t * 20),
     clampMin: 3,
     clampMax: 20,
-    round: true,
-  },
-  {
-    trait: "attention_span",
-    param: "recentWindowTurns",
-    formula: (t) => Math.floor(t * 10),
-    clampMin: 2,
-    clampMax: 10,
     round: true,
   },
   {
@@ -135,14 +112,6 @@ const FORMULA_TABLE: FormulaEntry[] = [
     formula: (t) => t * 0.3,
     clampMin: 0.05,
     clampMax: 0.3,
-    round: false,
-  },
-  {
-    trait: "social_attunement",
-    param: "entityLinkingThreshold",
-    formula: (t) => t * 0.5 + 0.45,
-    clampMin: 0.4,
-    clampMax: 0.95,
     round: false,
   },
   {
@@ -198,16 +167,13 @@ export function computeDerivedParams(
  */
 export function getDefaultDerivedParams(): DerivedParams {
   return {
-    cardsCap: 2,
     recallTopK: 10,
-    recentWindowTurns: 5,
     moodDeltaScale: 1.0,
     baselineRegressionSpeed: 0.05,
     memoryHalfLifeDays: 30,
     archiveThreshold: 0.10,
     salienceGain: 1.0,
     stickyProbability: 0.15,
-    entityLinkingThreshold: 0.70,
     entityCandidateCount: 3,
   };
 }
