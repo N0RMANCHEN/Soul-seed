@@ -7,6 +7,9 @@ npm run lint
 echo "[verify] h0 gate"
 npm run h0:check
 
+echo "[verify] direct-writes gate"
+node scripts/check_direct_writes.mjs
+
 echo "[verify] changelog gate"
 npm run changelog:check
 

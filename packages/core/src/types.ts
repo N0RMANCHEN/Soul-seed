@@ -421,6 +421,10 @@ export interface DecisionTrace {
   soulTraceId?: string;
   latencyBreakdown?: Partial<Record<"routing" | "recall" | "planning" | "llm_primary" | "llm_meta" | "guard" | "rewrite" | "emit", number>>;
   latencyTotalMs?: number;
+  /** Ha: State Delta Pipeline proposal (future LLM integration) */
+  stateDeltaProposal?: import("./state_delta.js").StateDeltaProposal;
+  /** Ha: Result of running gates + apply on state deltas */
+  deltaCommitResult?: import("./state_delta.js").DeltaCommitResult;
 }
 
 export type PersonaJudgmentLabel = "fiction" | "non_fiction" | "mixed" | "uncertain";

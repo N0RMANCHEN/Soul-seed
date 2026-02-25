@@ -161,6 +161,12 @@ export async function ensureRelationshipArtifacts(rootPath: string): Promise<{
 }
 
 export async function writeRelationshipState(rootPath: string, state: RelationshipState): Promise<void> {
+  const { shouldUseStateDeltaPipelineFromRoot, writeStateDelta } = await import("./state_delta_writer.js");
+  if (await shouldUseStateDeltaPipelineFromRoot(rootPath)) {
+    const normalized = normalizeRelationshipState(state as unknown as Record<string, unknown>);
+    await writeStateDelta(rootPath, "relationship", normalized as unknown as Record<string, unknown>, { confidence: 1.0, systemGenerated: true });
+    return;
+  }
   const relationshipPath = path.join(rootPath, "relationship_state.json");
   await writeJson(relationshipPath, normalizeRelationshipState(state as unknown as Record<string, unknown>));
 }

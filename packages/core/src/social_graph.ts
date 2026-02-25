@@ -53,9 +53,14 @@ export async function loadSocialGraph(rootPath: string): Promise<SocialGraph> {
 }
 
 export async function saveSocialGraph(rootPath: string, graph: SocialGraph): Promise<void> {
-  const filePath = path.join(rootPath, SOCIAL_GRAPH_FILENAME);
+  const { shouldUseStateDeltaPipelineFromRoot, writeStateDelta } = await import("./state_delta_writer.js");
   const normalized = normalizeSocialGraph(graph as Partial<SocialGraph>);
   normalized.updatedAt = new Date().toISOString();
+  if (await shouldUseStateDeltaPipelineFromRoot(rootPath)) {
+    await writeStateDelta(rootPath, "social_graph", normalized as unknown as Record<string, unknown>, { confidence: 1.0, systemGenerated: true });
+    return;
+  }
+  const filePath = path.join(rootPath, SOCIAL_GRAPH_FILENAME);
   await writeFile(filePath, JSON.stringify(normalized, null, 2), "utf8");
 }
 

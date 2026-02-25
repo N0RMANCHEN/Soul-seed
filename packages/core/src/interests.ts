@@ -62,6 +62,11 @@ export async function loadInterests(rootPath: string): Promise<InterestsData | n
 }
 
 export async function writeInterests(rootPath: string, data: InterestsData): Promise<void> {
+  const { shouldUseStateDeltaPipelineFromRoot, writeStateDelta } = await import("./state_delta_writer.js");
+  if (await shouldUseStateDeltaPipelineFromRoot(rootPath)) {
+    await writeStateDelta(rootPath, "interests", data as unknown as Record<string, unknown>, { confidence: 1.0, systemGenerated: true });
+    return;
+  }
   await writeFile(path.join(rootPath, INTERESTS_FILENAME), JSON.stringify(data, null, 2), "utf8");
 }
 

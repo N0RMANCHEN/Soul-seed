@@ -132,6 +132,11 @@ export async function loadMoodState(rootPath: string): Promise<MoodState | null>
 }
 
 export async function writeMoodState(rootPath: string, state: MoodState): Promise<void> {
+  const { shouldUseStateDeltaPipelineFromRoot, writeStateDelta } = await import("./state_delta_writer.js");
+  if (await shouldUseStateDeltaPipelineFromRoot(rootPath)) {
+    await writeStateDelta(rootPath, "mood", state as unknown as Record<string, unknown>, { confidence: 1.0, systemGenerated: true });
+    return;
+  }
   const p = path.join(rootPath, MOOD_STATE_FILENAME);
   await writeFile(p, JSON.stringify(state, null, 2), "utf8");
 }

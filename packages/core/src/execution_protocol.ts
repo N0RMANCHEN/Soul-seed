@@ -4,6 +4,11 @@ import { DECISION_TRACE_SCHEMA_VERSION, normalizeDecisionTrace } from "./decisio
 import { decideDualProcessRoute } from "./dual_process_router.js";
 import { runRuntimePipeline, type RuntimeStageTrace } from "./runtime_pipeline.js";
 import type { AdultSafetyContext, DecisionTrace, ExecutionResult, ModelAdapter, PersonaPackage } from "./types.js";
+import { createEmptyProposal } from "./state_delta.js";
+import type { DeltaCommitResult } from "./state_delta.js";
+import { runDeltaGates } from "./state_delta_gates.js";
+import { applyDeltas } from "./state_delta_apply.js";
+import { inferCompatMode, useStateDeltaPipeline } from "./compat_mode.js";
 
 export interface ExecuteTurnResult {
   mode: "soul" | "agent";
@@ -11,6 +16,7 @@ export interface ExecuteTurnResult {
   trace: ReturnType<typeof decide> | null;
   execution: ExecutionResult | null;
   pipelineStages?: RuntimeStageTrace[];
+  deltaCommitResult?: DeltaCommitResult;
 }
 
 export async function executeTurnProtocol(params: {
@@ -110,6 +116,29 @@ export async function executeTurnProtocol(params: {
     }
   });
 
+  // State Delta Pipeline: run gates + apply for non-legacy personas
+  let deltaCommitResult: DeltaCommitResult | undefined;
+  const compatMode = inferCompatMode(params.personaPkg);
+  if (useStateDeltaPipeline(compatMode) && pipeline.trace) {
+    const turnId = pipeline.trace.recallTraceId ?? pipeline.trace.timestamp ?? new Date().toISOString();
+    const proposal = pipeline.trace.stateDeltaProposal ?? createEmptyProposal(turnId);
+
+    if (proposal.deltas.length > 0) {
+      const gateContext = {
+        personaRoot: params.rootPath,
+        currentMood: params.personaPkg.moodState,
+        currentRelationship: params.personaPkg.relationshipState,
+        genome: params.personaPkg.genome,
+        epigenetics: params.personaPkg.epigenetics,
+      };
+      const gateResults = runDeltaGates(proposal, gateContext);
+      deltaCommitResult = await applyDeltas(proposal, gateResults, params.rootPath);
+      if (pipeline.trace) {
+        pipeline.trace.deltaCommitResult = deltaCommitResult;
+      }
+    }
+  }
+
   if (pipeline.mode === "agent" && pipeline.execution) {
     // EA-0: soul trace is now always present in agent mode (pipeline.trace != null)
     const soulTrace = pipeline.trace;
@@ -137,7 +166,8 @@ export async function executeTurnProtocol(params: {
         agentRequest: soulTrace?.agentRequest
       }),
       execution: pipeline.execution,
-      pipelineStages: pipeline.stages
+      pipelineStages: pipeline.stages,
+      deltaCommitResult,
     };
   }
 
@@ -153,6 +183,7 @@ export async function executeTurnProtocol(params: {
             routeReasonCodes: routeDecision.reasonCodes
           },
     execution: null,
-    pipelineStages: pipeline.stages
+    pipelineStages: pipeline.stages,
+    deltaCommitResult,
   };
 }

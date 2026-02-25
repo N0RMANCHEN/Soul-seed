@@ -1228,7 +1228,12 @@ export async function patchCognitionState(
   if (patch.routingWeights === null) {
     delete (next as Partial<CognitionState>).routingWeights;
   }
-  await writeJson(cognitionPath, next);
+  const { shouldUseStateDeltaPipelineFromRoot, writeStateDelta } = await import("./state_delta_writer.js");
+  if (await shouldUseStateDeltaPipelineFromRoot(rootPath)) {
+    await writeStateDelta(rootPath, "cognition", next as unknown as Record<string, unknown>, { confidence: 1.0, systemGenerated: true });
+  } else {
+    await writeJson(cognitionPath, next);
+  }
   return next;
 }
 
@@ -1247,7 +1252,12 @@ export async function patchLatentState(
     ...(isBeliefLatentValid(patch.beliefLatent) ? { beliefLatent: patch.beliefLatent } : {}),
     updatedAt: new Date().toISOString()
   });
-  await writeJson(cognitionPath, next);
+  const { shouldUseStateDeltaPipelineFromRoot, writeStateDelta } = await import("./state_delta_writer.js");
+  if (await shouldUseStateDeltaPipelineFromRoot(rootPath)) {
+    await writeStateDelta(rootPath, "cognition", next as unknown as Record<string, unknown>, { confidence: 1.0, systemGenerated: true });
+  } else {
+    await writeJson(cognitionPath, next);
+  }
   return next;
 }
 
@@ -1266,7 +1276,12 @@ export async function patchVoiceProfile(
     ...(patch.tonePreference ? { tonePreference: patch.tonePreference } : {}),
     ...(patch.stancePreference ? { stancePreference: patch.stancePreference } : {})
   };
-  await writeJson(voicePath, next);
+  const { shouldUseStateDeltaPipelineFromRoot, writeStateDelta } = await import("./state_delta_writer.js");
+  if (await shouldUseStateDeltaPipelineFromRoot(rootPath)) {
+    await writeStateDelta(rootPath, "voice", next as unknown as Record<string, unknown>, { confidence: 1.0, systemGenerated: true });
+  } else {
+    await writeJson(voicePath, next);
+  }
   return next;
 }
 
@@ -1308,7 +1323,12 @@ async function updatePhrasePool(rootPath: string, pool: string[]): Promise<void>
       phrasePool: pool
     }
   };
-  await writeJson(voicePath, next);
+  const { shouldUseStateDeltaPipelineFromRoot, writeStateDelta } = await import("./state_delta_writer.js");
+  if (await shouldUseStateDeltaPipelineFromRoot(rootPath)) {
+    await writeStateDelta(rootPath, "voice", next as unknown as Record<string, unknown>, { confidence: 1.0, systemGenerated: true });
+  } else {
+    await writeJson(voicePath, next);
+  }
 }
 
 /**
