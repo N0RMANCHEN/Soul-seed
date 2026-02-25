@@ -7,6 +7,8 @@ import { decideConversationControl } from "./conversation_control.js";
 import { metaArbitrateConversationSignals, projectConversationSignals, projectCoreConflict } from "./semantic_projection.js";
 import { resolveSemanticRouting } from "./semantic_routing.js";
 import { formatSystemLocalIso, getSystemTimeZone } from "./time.js";
+import { computeDerivedParams } from "./genome_derived.js";
+import { createDefaultGenome, createDefaultEpigenetics } from "./genome.js";
 import type { AdultSafetyContext, ChatMessage, DecisionTrace, LifeEvent, MemoryEvidenceBlock, ModelAdapter, PersonaPackage } from "./types.js";
 
 const EXPLICIT_RISKY_PATTERN = /(hack|malware|exploit|ddos|木马|攻击脚本|违法|犯罪)/i;
@@ -105,8 +107,16 @@ export function decide(
     content: `current_timestamp=${nowLocalIso}`
   });
   const memoryWeights = normalizeMemoryWeights(options?.memoryWeights);
+  const genome = personaPkg.genome ?? createDefaultGenome();
+  const epigenetics = personaPkg.epigenetics ?? createDefaultEpigenetics();
+  const derivedParams = computeDerivedParams(genome, epigenetics);
+  const baseRecallCap = Math.max(3, derivedParams.recallTopK);
   const selectedMemoryCap =
-    recallNavigationIntent.strength === "strong" ? 12 : recallNavigationIntent.strength === "soft" ? 9 : 6;
+    recallNavigationIntent.strength === "strong"
+      ? Math.min(20, baseRecallCap + 4)
+      : recallNavigationIntent.strength === "soft"
+        ? Math.min(16, baseRecallCap + 2)
+        : baseRecallCap;
   const recalledMemories = (options?.recalledMemories ?? [])
     .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     .slice(0, selectedMemoryCap);

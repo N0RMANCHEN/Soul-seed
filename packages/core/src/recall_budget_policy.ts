@@ -1,3 +1,5 @@
+import type { DerivedParams } from "./genome_derived.js";
+
 export interface RecallBudgetPolicyInput {
   userInput: string;
   projection?: {
@@ -7,6 +9,7 @@ export interface RecallBudgetPolicyInput {
   routeDecision?: "instinct" | "deliberative" | null;
   hasPendingGoal?: boolean;
   isFollowup?: boolean;
+  genomeDerived?: DerivedParams;
 }
 
 export interface RecallBudgetPolicyResult {
@@ -41,10 +44,11 @@ export function deriveRecallBudgetPolicy(input: RecallBudgetPolicyInput): Recall
 
   const reasonCodes: string[] = [];
   let profile: RecallBudgetPolicyResult["profile"] = "default";
+  const genomeInjectMax = input.genomeDerived?.recallTopK ?? 7;
   let budget = {
     candidateMax: 180,
     rerankMax: 28,
-    injectMax: 7,
+    injectMax: Math.max(3, Math.min(20, genomeInjectMax)),
     injectCharMax: 2200
   };
 

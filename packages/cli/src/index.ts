@@ -35,6 +35,9 @@ import {
   enforceFactualGroundingGuard,
   enforceRecallGroundingGuard,
   deriveRecallBudgetPolicy,
+  computeDerivedParams,
+  createDefaultGenome,
+  createDefaultEpigenetics,
   composeDegradedPersonaReply,
   applyPromptLeakGuard,
   buildTurnLatencySummary,
@@ -4595,12 +4598,16 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             payload: { ...nextRelationship }
           });
         }
+        const genome = personaPkg.genome ?? createDefaultGenome();
+        const epigenetics = personaPkg.epigenetics ?? createDefaultEpigenetics();
+        const genomeDerived = computeDerivedParams(genome, epigenetics);
         const routingStartedAtMs = Date.now();
         const recallProjection = projectConversationSignals(input);
         const recallBudgetPolicy = deriveRecallBudgetPolicy({
           userInput: input,
           projection: recallProjection,
-          hasPendingGoal: Boolean(lastGoalId)
+          hasPendingGoal: Boolean(lastGoalId),
+          genomeDerived
         });
         addLatency("routing", routingStartedAtMs);
         const recallStartedAtMs = Date.now();
@@ -4678,7 +4685,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const alwaysInjectCtx = await compileAlwaysInjectContext(personaPath, personaPkg, { query: effectiveInput });
         const alwaysInjectBlock = formatAlwaysInjectContext(alwaysInjectCtx);
         // P2-6: compile related person context from social graph
-        const socialBlock = await compileRelatedPersonContext(personaPath, effectiveInput, { lifeEvents: pastEvents });
+        const socialBlock = await compileRelatedPersonContext(personaPath, effectiveInput, { lifeEvents: pastEvents, maxPersons: genomeDerived.entityCandidateCount });
         const importantDates = await listUpcomingTemporalLandmarks(personaPath, { daysAhead: 60, maxItems: 8 });
         const importantDatesBlock = formatUpcomingTemporalLandmarksBlock(importantDates);
         // P5-6: few-shot golden examples injection (skip if disabled by memoryPolicy)
@@ -5423,7 +5430,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         // interest update failure should not block the main dialogue path
       }
       // P2-0: 每轮更新内在情绪状态（非阻塞，静默失败）
-      evolveMoodStateFromTurn(personaPath, { userInput: input, assistantOutput: assistantContent })
+      evolveMoodStateFromTurn(personaPath, { userInput: input, assistantOutput: assistantContent, moodDeltaScale: genomeDerived.moodDeltaScale, baselineRegressionSpeed: genomeDerived.baselineRegressionSpeed })
         .then((mood) => { personaPkg.moodState = mood; })
         .catch(() => {});
       await handleNarrativeDrift(personaPath, personaPkg.constitution, input, assistantContent);

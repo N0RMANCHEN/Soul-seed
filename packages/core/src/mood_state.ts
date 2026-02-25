@@ -139,13 +139,17 @@ export async function writeMoodState(rootPath: string, state: MoodState): Promis
 /**
  * 基于时间向基线衰减情绪（不写盘，只返回新状态）
  */
-export function decayMoodTowardBaseline(state: MoodState): MoodState {
+export function decayMoodTowardBaseline(
+  state: MoodState,
+  opts?: { baselineRegressionSpeed?: number }
+): MoodState {
   const now = Date.now();
   const last = new Date(state.updatedAt).getTime();
   const hoursElapsed = (now - last) / 3_600_000;
   if (hoursElapsed < 0.01) return state; // < 36 秒，不衰减
 
-  const decayFactor = Math.exp(-state.decayRate * hoursElapsed);
+  const effectiveDecayRate = opts?.baselineRegressionSpeed ?? state.decayRate;
+  const decayFactor = Math.exp(-effectiveDecayRate * hoursElapsed);
 
   // EB-1: Decay latent vector if present
   let moodLatent = state.moodLatent;
@@ -190,11 +194,17 @@ export async function evolveMoodStateFromTurn(
     userInput: string;
     assistantOutput: string;
     triggerHash?: string;
+    moodDeltaScale?: number;
+    baselineRegressionSpeed?: number;
   }
 ): Promise<MoodState> {
   const current = (await loadMoodState(rootPath)) ?? createInitialMoodState();
-  const decayed = decayMoodTowardBaseline(current);
-  const next = computeMoodDelta(decayed, params.userInput, params.assistantOutput);
+  const decayed = decayMoodTowardBaseline(current, {
+    baselineRegressionSpeed: params.baselineRegressionSpeed,
+  });
+  const next = computeMoodDelta(
+    decayed, params.userInput, params.assistantOutput, params.moodDeltaScale
+  );
   if (params.triggerHash) {
     next.triggers = [params.triggerHash, ...next.triggers].slice(0, 3);
   }
@@ -209,10 +219,12 @@ export async function evolveMoodStateFromTurn(
 function computeMoodDelta(
   state: MoodState,
   userInput: string,
-  assistantOutput: string
+  assistantOutput: string,
+  moodDeltaScale?: number
 ): MoodState {
   const userText = userInput.trim();
   const assistText = assistantOutput.trim();
+  const scale = moodDeltaScale ?? 1.0;
 
   let deltaV = 0;
   let deltaA = 0;
@@ -250,6 +262,9 @@ function computeMoodDelta(
   if (/[emotion:curious]|有趣|想了解|curious|interesting/i.test(assistText)) {
     deltaA += 0.03;
   }
+
+  deltaV *= scale;
+  deltaA *= scale;
 
   // EB-1: Update latent vector if present (small-step update)
   if (state.moodLatent) {
