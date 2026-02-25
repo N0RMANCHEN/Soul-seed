@@ -43,7 +43,7 @@ export interface DerivedParams {
 // ─── Formula table ─────────────────────────────────────────────────────────────
 //
 //  trait=0.5 produces these "legacy" defaults:
-//    recallTopK=10, moodDeltaScale=1.0, baselineRegressionSpeed=0.05,
+//    recallTopK=6, moodDeltaScale=1.0, baselineRegressionSpeed=0.08,
 //    memoryHalfLifeDays=30, archiveThreshold=0.10,
 //    salienceGain=1.0, stickyProbability=0.15,
 //    entityCandidateCount=3
@@ -61,9 +61,9 @@ const FORMULA_TABLE: FormulaEntry[] = [
   {
     trait: "attention_span",
     param: "recallTopK",
-    formula: (t) => Math.floor(t * 20),
+    formula: (t) => Math.floor(t * 12),
     clampMin: 3,
-    clampMax: 20,
+    clampMax: 12,
     round: true,
   },
   {
@@ -77,9 +77,9 @@ const FORMULA_TABLE: FormulaEntry[] = [
   {
     trait: "emotion_recovery",
     param: "baselineRegressionSpeed",
-    formula: (t) => t * 0.1,
+    formula: (t) => t * 0.16,
     clampMin: 0.01,
-    clampMax: 0.1,
+    clampMax: 0.16,
     round: false,
   },
   {
@@ -167,9 +167,9 @@ export function computeDerivedParams(
  */
 export function getDefaultDerivedParams(): DerivedParams {
   return {
-    recallTopK: 10,
+    recallTopK: 6,
     moodDeltaScale: 1.0,
-    baselineRegressionSpeed: 0.05,
+    baselineRegressionSpeed: 0.08,
     memoryHalfLifeDays: 30,
     archiveThreshold: 0.10,
     salienceGain: 1.0,

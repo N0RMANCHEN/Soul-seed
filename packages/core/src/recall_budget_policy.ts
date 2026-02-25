@@ -44,11 +44,11 @@ export function deriveRecallBudgetPolicy(input: RecallBudgetPolicyInput): Recall
 
   const reasonCodes: string[] = [];
   let profile: RecallBudgetPolicyResult["profile"] = "default";
-  const genomeInjectMax = input.genomeDerived?.recallTopK ?? 7;
+  const genomeRecallTopK = input.genomeDerived?.recallTopK ?? 6;
   let budget = {
     candidateMax: 180,
     rerankMax: 28,
-    injectMax: Math.max(3, Math.min(20, genomeInjectMax)),
+    injectMax: Math.max(3, Math.min(20, genomeRecallTopK + 1)),
     injectCharMax: 2200
   };
 

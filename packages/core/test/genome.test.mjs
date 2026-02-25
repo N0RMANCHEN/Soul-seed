@@ -167,7 +167,7 @@ test("high attention_span increases recallTopK", () => {
   g.traits.attention_span.value = 0.9;
   const e = createDefaultEpigenetics();
   const d = computeDerivedParams(g, e);
-  assert.ok(d.recallTopK > 10, "recallTopK should increase");
+  assert.ok(d.recallTopK > 6, "recallTopK should increase above legacy default");
 });
 
 test("low emotion_recovery slows baseline regression", () => {
@@ -175,7 +175,7 @@ test("low emotion_recovery slows baseline regression", () => {
   g.traits.emotion_recovery.value = 0.1;
   const e = createDefaultEpigenetics();
   const d = computeDerivedParams(g, e);
-  assert.ok(d.baselineRegressionSpeed < 0.05);
+  assert.ok(d.baselineRegressionSpeed < 0.08, "should be slower than legacy default 0.08");
 });
 
 test("high emotion_sensitivity amplifies mood delta", () => {
@@ -196,7 +196,7 @@ test("epigenetic adjustment shifts derived param", () => {
     evidence: ["hash1", "hash2"],
   };
   const d = computeDerivedParams(g, e);
-  assert.ok(d.recallTopK > 10, "epigenetic boost should increase recallTopK");
+  assert.ok(d.recallTopK > 6, "epigenetic boost should increase recallTopK above legacy default");
 });
 
 test("epigenetic adjustment is clamped by its own min/max", () => {

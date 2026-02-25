@@ -113,9 +113,9 @@ export function decide(
   const baseRecallCap = Math.max(3, derivedParams.recallTopK);
   const selectedMemoryCap =
     recallNavigationIntent.strength === "strong"
-      ? Math.min(20, baseRecallCap + 4)
+      ? Math.min(20, baseRecallCap + 6)
       : recallNavigationIntent.strength === "soft"
-        ? Math.min(16, baseRecallCap + 2)
+        ? Math.min(16, baseRecallCap + 3)
         : baseRecallCap;
   const recalledMemories = (options?.recalledMemories ?? [])
     .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
