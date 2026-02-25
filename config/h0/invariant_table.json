@@ -1,0 +1,116 @@
+{
+  "version": "h0/invariant_table/v1",
+  "updatedAt": "2026-02-25T00:00:00.000Z",
+  "rules": [
+    {
+      "id": "rel-max-delta-per-turn",
+      "domain": "relationship",
+      "metric": "max_abs_delta",
+      "threshold": 0.10,
+      "comparator": "lte",
+      "description": "Relationship delta per turn must not exceed 0.10",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "id": "rel-evidence-required",
+      "domain": "relationship",
+      "metric": "evidence_count",
+      "threshold": 1,
+      "comparator": "gte",
+      "description": "Relationship changes require at least 1 evidence",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "id": "mood-max-delta",
+      "domain": "mood",
+      "metric": "max_abs_delta",
+      "threshold": 0.20,
+      "comparator": "lte",
+      "description": "Mood delta must not exceed 0.20",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "id": "belief-min-confidence",
+      "domain": "belief",
+      "metric": "confidence",
+      "threshold": 0.30,
+      "comparator": "gte",
+      "description": "Belief changes require minimum confidence 0.30",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "id": "belief-max-delta",
+      "domain": "belief",
+      "metric": "max_abs_delta",
+      "threshold": 0.10,
+      "comparator": "lte",
+      "description": "Belief delta should not exceed 0.10",
+      "severity": "warn",
+      "enabled": true
+    },
+    {
+      "id": "epi-max-adjustment",
+      "domain": "epigenetics",
+      "metric": "max_abs_delta",
+      "threshold": 0.05,
+      "comparator": "lte",
+      "description": "Epigenetic adjustment must not exceed 0.05",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "id": "epi-evidence-required",
+      "domain": "epigenetics",
+      "metric": "evidence_count",
+      "threshold": 2,
+      "comparator": "gte",
+      "description": "Epigenetic changes require at least 2 evidence",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "id": "value-min-confidence",
+      "domain": "value",
+      "metric": "confidence",
+      "threshold": 0.70,
+      "comparator": "gte",
+      "description": "Value changes require minimum confidence 0.70",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "id": "personality-min-confidence",
+      "domain": "personality",
+      "metric": "confidence",
+      "threshold": 0.70,
+      "comparator": "gte",
+      "description": "Personality changes require minimum confidence 0.70",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "id": "eng-max-delta",
+      "domain": "engagement",
+      "metric": "max_abs_delta",
+      "threshold": 0.15,
+      "comparator": "lte",
+      "description": "Engagement delta should not exceed 0.15 (placeholder)",
+      "severity": "warn",
+      "enabled": true
+    },
+    {
+      "id": "pro-max-delta",
+      "domain": "proactive",
+      "metric": "max_abs_delta",
+      "threshold": 0.20,
+      "comparator": "lte",
+      "description": "Proactive delta should not exceed 0.20 (placeholder)",
+      "severity": "warn",
+      "enabled": true
+    }
+  ]
+}

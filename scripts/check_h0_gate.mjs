@@ -18,6 +18,11 @@ const REQUIRED = [
   {
     file: "config/h0/regression_index.json",
     key: "regression_index"
+  },
+  {
+    file: "config/h0/invariant_table.json",
+    key: "rules",
+    minRules: 10
   }
 ];
 
@@ -36,6 +41,12 @@ async function main() {
       }
       if (!parsed[item.key] || typeof parsed[item.key] !== "object") {
         failures.push(`${item.file}: missing required key "${item.key}"`);
+      }
+      if (item.minRules !== undefined) {
+        const arr = parsed[item.key];
+        if (!Array.isArray(arr) || arr.length < item.minRules) {
+          failures.push(`${item.file}: "${item.key}" must be an array with at least ${item.minRules} entries`);
+        }
       }
     } catch (error) {
       failures.push(`${item.file}: ${error instanceof Error ? error.message : String(error)}`);
