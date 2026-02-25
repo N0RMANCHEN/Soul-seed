@@ -69,10 +69,10 @@
 - 未完成分工规划时，Phase 任务状态不得从 `todo` 切换到 `in_progress`。
 
 ## 当前执行总览（重排后）
-- `in_progress`：Phase Ha — `H/P0-2`（~40%）、`H/P0-3`（~30%）、`H/P0-4`（~85%）
+- `done`：Phase Ha — `H/P0-0`、`H/P0-1`、`H/P0-2`、`H/P0-3`、`H/P0-4` 全部完成
 - `blocked`：`none`
-- `todo`：Phase Ha 剩余 `H/P0-0`、`H/P0-1`；Phase Hb 全部 8 项；Phase Hc 全部 11 项
-- **执行偏差说明**：Genome MVP（H/P0-4）及其依赖的 Compat 任务（H/P0-2、H/P0-3）先于 State Delta Pipeline（H/P0-0）落地，运行时直接接入现有代码路径。待 H/P0-0 完成后需将 genome-derived 状态变更统一纳入 `proposal → gates → apply` 管线。
+- `todo`：Phase Hb 全部 8 项；Phase Hc 全部 11 项
+- **Phase Ha 完成说明**：State Delta Pipeline（H/P0-0）+ Invariant Table（H/P0-1）+ Compat Migration（H/P0-2）+ Compat Constants（H/P0-3）+ Genome MVP（H/P0-4）全部落地，662 core tests 全部通过。
 
 ## 现状评估（兴趣/注意力/主动交互）
 - 结论：`部分搭成，尚未形成完整闭环`。
@@ -214,7 +214,7 @@
 
 ### H/P0-0 MindModel H5：State Delta Pipeline
 - 原编号：`G/P2-3`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`02-Phases/H5` `01-Spec/§2.2,§11` `04-Archive/§10`
 - 实现方式：统一 `StateDeltaProposal → gates → deterministic apply` 管线，所有状态写入必须经过此路径。LLM 只输出提案（含置信度、证据指针），系统引擎做 clamp / rate-limit / evidence-check / compat-check 后决定 apply 或 reject。
 - 测试/DoD：delta 可审计（traceId + evidenceIds）、可回放（同输入→同 delta）、可拒绝（gate reject 有 reason + trace）；超阈值变化必须满足证据门槛。
@@ -229,7 +229,7 @@
 
 ### H/P0-1 Invariant Table 回归落地
 - 原编号：`G/P2-6`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`03-Engineering/§3` `01-Spec/§11` `04-Archive/§11`
 - 实现方式：为 6 个状态域（Relationship / Beliefs / Mood-Affect / Engagement / Proactive / Group Chat）定义硬不变量（clamp / rate-limit / cooldown / 证据门槛），以 config 驱动、CI 强制。
 - 测试/DoD：任何不变量越界直接 CI fail；每条不变量有 domain + actual-vs-threshold 审计。
@@ -244,7 +244,7 @@
 
 ### H/P0-2 MindModel H7：Compatibility & Migration
 - 原编号：`G/P2-5`
-- 状态：`in_progress`（~40%：2-tier legacy/full 模型、auto-default genome 加载、行为对等已验证；缺正式迁移脚本、shadow mode、compat 回归夹具），必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`02-Phases/H7` `01-Spec/§13` `03-Engineering/§5` `04-Archive/§16`
 - 实现方式：2-tier compatMode（`legacy` / `full`）。Legacy 自动推断 genome（traits=0.5）；迁移走推断→锁定→校准流程；shadow mode 验证后再激活。
 - 测试/DoD：存量 persona 漂移在阈值内，无“换人”。
@@ -260,7 +260,7 @@
 
 ### H/P0-3 compat 常数清单与校准文件
 - 原编号：`G/P2-7`
-- 状态：`in_progress`（~30%：genome 公式校准完成 trait=0.5→legacy defaults；缺版本化配置文件、缺项 lint fail），必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`03-Engineering/§5` `01-Spec/§13`
 - 实现方式：定义版本化 `compat_calibration.json` 记录旧常数基线（reply_len_avg / emoji_rate / recall_topK_baseline / mood_decay_rate / 认真程度基线），支持从 `life.log.jsonl` 最近 200 turns 推断 → lock → 校准。
 - 测试/DoD：迁移样本通过；缺项触发 lint fail；hybrid 输出校准到旧基线（允许轻微误差）。
@@ -275,7 +275,7 @@
 
 ### H/P0-4 MindModel H6：Genome & Epigenetics MVP
 - 原编号：`G/P2-4`
-- 状态：`in_progress`（~85%：6 traits、DerivedParams 映射、持久化、可复现 jitter、运行时接线 orchestrator/recall/mood/social 均完成；缺 epigenetics 慢漂移运行时证据收集与应用），必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`02-Phases/H6` `01-Spec/§5.3,§11.2` `04-Archive/§13`
 - 实现方式：固定 6 trait（emotion_sensitivity / emotion_recovery / memory_retention / memory_imprint / attention_span / social_attunement），建立 Genome→Budget 映射（clamped formulas）、seed-based 可复现随机（daily jitter ±0.02）、Epigenetics 慢漂移规则（多证据 + cooldown + bounded + 可回滚）。
 - 测试/DoD：差异可解释（两个 persona 不同 trait → 不同 recallTopK，可追溯公式）；随机可复现（同 seed+date → 同 jitter）；epigenetics 无证据更新 = 0。

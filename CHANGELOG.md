@@ -12,8 +12,16 @@ All notable changes to this project will be documented in this file.
 - **Reproducible daily jitter** (`packages/core/src/genome_randomness.ts`): Seed-based PRNG with inertial smoothing (±0.02 bounded).
 - **Genome test suite** (`packages/core/test/genome.test.mjs`): Covers default creation, validation, derived param computation, and daily jitter.
 - Phase H execution plans: `doc/plans/H-State-Closure-Plan.md`, `H1-Foundation.md`, `H2-State-Modules.md`, `H3-Validation-and-Guards.md`.
+- Phase Ha sub-phase plans: `doc/plans/Ha-State-Infra-Plan.md` (high-level), `Ha-1-State-Delta-Invariant.md` (H/P0-0,1), `Ha-2-Compat-Genome.md` (H/P0-2,3,4).
 - Backlog item for Genome → Memory Lifecycle wiring (4 derived params computed but not yet consumed by `memory_lifecycle.ts`).
 - Cursor rule `progress-tracking.mdc` for session protocol and verification gates.
+- **State Delta Pipeline** (`packages/core/src/state_delta.ts`, `state_delta_gates.ts`, `state_delta_apply.ts`): `proposal → gates → deterministic apply` mechanism for state mutations. 7 gates (identity, recall grounding, relationship, mood, belief, epigenetics, budget). Atomic writes with append-only trace. 12 tests.
+- **Invariant Table** (`packages/core/src/invariant_table.ts`, `config/h0/invariant_table.json`): Config-driven threshold rules for all state domains. Completeness checker ensures required domains are covered. 11 tests.
+- **Compat Mode** (`packages/core/src/compat_mode.ts`): Explicit 2-tier `legacy`/`full` mode inference from genome state. Feature flag `useStateDeltaPipeline`.
+- **Compat Migration** (`packages/core/src/compat_migration.ts`): Legacy→full migration path with pre-migration snapshot, backup, idempotency check, and rollback. 10 tests.
+- **Compat Calibration** (`packages/core/src/compat_calibration.ts`): Versioned calibration config with inference from life.log events, lock mechanism, and validation. 8 tests.
+- **Genome Presets** (`config/genome_presets.json`): 4 personality presets (balanced, empathetic, analytical, social) with `loadGenomePresets()` and `createGenomeFromPreset()`.
+- **Persona Lint genome rules** (`packages/core/src/persona_lint.ts`): `genome_schema_invalid`, `genome_trait_out_of_range`, `epigenetics_adjustment_out_of_range`.
 
 ### Changed
 - Core conflict policy now uses **explicit-only refusal**: explicit core override still refuses; implicit semantic tension degrades to cautious clarify/brief response instead of hard refusal.
@@ -21,7 +29,8 @@ All notable changes to this project will be documented in this file.
 - Soul-mode meta-review is now conditionally triggered on risk/quality/deep-path signals to reduce unnecessary slow-path latency.
 - Thinking preview default threshold adjusted to `1000ms` (persona defaults + CLI defaults), reusing existing `voice_profile.thinkingPreview` contract.
 - **Persona init/load** (`packages/core/src/persona.ts`): New personas auto-create `genome.json` + `epigenetics.json`; `loadPersonaPackage` includes genome/epigenetics with fallback to defaults.
-- **PersonaPackage type** (`packages/core/src/types.ts`): Added optional `genome` and `epigenetics` fields.
+- **PersonaPackage type** (`packages/core/src/types.ts`): Added optional `genome` and `epigenetics` fields; added `stateDeltaProposal` and `deltaCommitResult` to `DecisionTrace`; added `state_delta_committed` and `state_delta_rejected` life event types.
+- **ExecuteTurnResult** (`packages/core/src/execution_protocol.ts`): Added optional `deltaCommitResult` field for pipeline output.
 - **Orchestrator** (`packages/core/src/orchestrator.ts`): `selectedMemoryCap` now derived from `derivedParams.recallTopK` instead of hardcoded values (legacy parity: base 6, strong +6=12, soft +3=9).
 - **Recall budget policy** (`packages/core/src/recall_budget_policy.ts`): Accepts `genomeDerived` param; `injectMax` baseline from `recallTopK + 1` (legacy=7); all profiles respect genome baseline via `Math.max`.
 - **Mood state** (`packages/core/src/mood_state.ts`): `decayMoodTowardBaseline` and `evolveMoodStateFromTurn` accept genome-derived `moodDeltaScale` and `baselineRegressionSpeed`.
@@ -29,6 +38,8 @@ All notable changes to this project will be documented in this file.
 - **CLI wiring** (`packages/cli/src/index.ts`): Computes `genomeDerived` per turn and passes to recall budget, mood evolution, and social graph.
 - **2-tier compat model**: Legacy personas auto-load default genome (all traits=0.5) with no behavior change; no hybrid tier.
 - `DerivedParams` pruned: removed `cardsCap`, `recentWindowTurns`, `entityLinkingThreshold` (no clear consumer or miscalibrated).
+- **Epigenetics gate**: Enhanced with cooldown enforcement — rejects adjustments when `cooldownUntil` is in the future.
+- **E2: Zero direct-write paths**: All state writes (mood, relationship, interests, cognition, voice, social_graph) route through the State Delta Pipeline when persona is in full compat mode. Legacy personas retain direct writes. System-generated writes bypass gates via `systemGenerated` flag. New domains added to `StateDeltaDomain` and `DOMAIN_FILE_MAP`. `state_delta_writer.ts` provides `shouldUseStateDeltaPipelineFromRoot` and `writeStateDelta`. CI gate `scripts/check_direct_writes.mjs` enforces no unauthorized state file writes.
 
 ### Fixed
 - Fixed false-positive policy refusals for benign emotional check-in utterances (e.g. "今天很不对劲...你能感受到吗"), while preserving explicit override refusal behavior.
