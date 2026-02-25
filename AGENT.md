@@ -405,9 +405,10 @@ datasets/
   quality/retrieval/ grounding/ safety/  # 评测数据集（JSONL）
 doc/
   CLI.md                   # 完整命令参考（含 Phase D/E 所有新命令）
-  Roadmap.md               # 产品阶段总览（Phase A-G；含 G 阶段 H0-H8 扩展轨道）
+  Roadmap.md               # 产品阶段总览与执行排期（任务按逻辑依赖排列）
   Quality-Evaluation.md    # 分层评测框架（L0-L5）
   Product-Standards.md     # 全产品实施标准（门禁/降级/兼容/迁移）
+  plans/                   # Sub-phase 计划文档（Roadmap §1.3：大 Phase 切分后每个 sub-phase 一份）
 ```
 
 ---
