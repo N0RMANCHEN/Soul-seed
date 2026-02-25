@@ -318,6 +318,8 @@ Each persona is a self-contained, portable directory you fully own.
   relationship_state.json   # relationshipLatent[64]
   cognition_state.json      # voiceLatent[16] / beliefLatent[32] / routingWeights
   mood_state.json           # moodLatent[32] (valence/arousal projection)
+  genome.json               # 6 genome traits (near-immutable persona DNA)
+  epigenetics.json          # slow-drift adjustments (evidence-gated)
   soul_lineage.json         # parent/children lineage, consentMode
   life.log.jsonl            # append-only event stream (prevHash/hash chain)
   memory.db                 # SQLite 4-state memory store

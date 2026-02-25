@@ -197,8 +197,8 @@
 | 时间线回看意图识别 | `packages/core/src/recall_navigation_intent.ts` |
 | 人称角色守卫 | `packages/core/src/pronoun_role_guard.ts` |
 | 主动交互引擎（当前入口） | `packages/core/src/proactive/engine.ts` |
-| Genome/天赋（规划项） | `doc/Roadmap.md`（`H/P0-4`） |
-| Epigenetics/表观学习（规划项） | `doc/Roadmap.md`（`H/P0-4`） |
+| Genome/天赋 | `packages/core/src/genome.ts`、`genome_derived.ts`、`genome_randomness.ts` |
+| Epigenetics/表观学习 | `packages/core/src/genome.ts`（EpigeneticsConfig）；运行时漂移门控待 `H/P0-0` |
 | 周期自我反思 | `packages/core/src/self_reflection.ts` |
 | 内容安全语义评估 | `packages/core/src/content_safety_semantic.ts` |
 | Agent 记忆提案协议 | `packages/core/src/agent_memory_proposal.ts` |
