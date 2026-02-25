@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — Phase H (State Closure & Compatibility Fulfillment)
+
+### Added
+- **Genome system** (`packages/core/src/genome.ts`): 6 fixed traits (`emotion_sensitivity`, `emotion_recovery`, `memory_retention`, `memory_imprint`, `attention_span`, `social_attunement`) with typed `GenomeConfig` / `EpigeneticsConfig`, validation, and persistent storage.
+- **Genome-derived parameters** (`packages/core/src/genome_derived.ts`): Formula table mapping traits to system params (`recallTopK`, `moodDeltaScale`, `baselineRegressionSpeed`, `memoryHalfLifeDays`, `archiveThreshold`, `salienceGain`, `stickyProbability`, `entityCandidateCount`) with clamping.
+- **Reproducible daily jitter** (`packages/core/src/genome_randomness.ts`): Seed-based PRNG with inertial smoothing (±0.02 bounded).
+- **Genome test suite** (`packages/core/test/genome.test.mjs`): Covers default creation, validation, derived param computation, and daily jitter.
+- Phase H execution plans: `doc/plans/H-State-Closure-Plan.md`, `H1-Foundation.md`, `H2-State-Modules.md`, `H3-Validation-and-Guards.md`.
+- Backlog item for Genome → Memory Lifecycle wiring (4 derived params computed but not yet consumed by `memory_lifecycle.ts`).
+- Cursor rule `progress-tracking.mdc` for session protocol and verification gates.
+
+### Changed
+- **Persona init/load** (`packages/core/src/persona.ts`): New personas auto-create `genome.json` + `epigenetics.json`; `loadPersonaPackage` includes genome/epigenetics with fallback to defaults.
+- **PersonaPackage type** (`packages/core/src/types.ts`): Added optional `genome` and `epigenetics` fields.
+- **Orchestrator** (`packages/core/src/orchestrator.ts`): `selectedMemoryCap` now derived from `derivedParams.recallTopK` instead of hardcoded values (legacy parity: base 6, strong +6=12, soft +3=9).
+- **Recall budget policy** (`packages/core/src/recall_budget_policy.ts`): Accepts `genomeDerived` param; `injectMax` baseline from `recallTopK + 1` (legacy=7); all profiles respect genome baseline via `Math.max`.
+- **Mood state** (`packages/core/src/mood_state.ts`): `decayMoodTowardBaseline` and `evolveMoodStateFromTurn` accept genome-derived `moodDeltaScale` and `baselineRegressionSpeed`.
+- **Memory recall** (`packages/core/src/memory_recall.ts`): `injectMax` clamp raised from 12 to 20 to support high-trait personas.
+- **CLI wiring** (`packages/cli/src/index.ts`): Computes `genomeDerived` per turn and passes to recall budget, mood evolution, and social graph.
+- **2-tier compat model**: Legacy personas auto-load default genome (all traits=0.5) with no behavior change; no hybrid tier.
+- `DerivedParams` pruned: removed `cardsCap`, `recentWindowTurns`, `entityLinkingThreshold` (no clear consumer or miscalibrated).
+
+### Fixed
+- `loadGenome` handles corrupted JSON and validation failures by persisting defaults (prevents random seed regeneration).
+- Genome formula calibration: `recallTopK` at trait=0.5 produces 6 (matches legacy), `baselineRegressionSpeed` at trait=0.5 produces 0.08 (matches legacy `decayRate`).
+
 ## [0.3.0] - 2026-02-25
 
 ### Added
