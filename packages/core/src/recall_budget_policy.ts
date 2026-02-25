@@ -44,11 +44,11 @@ export function deriveRecallBudgetPolicy(input: RecallBudgetPolicyInput): Recall
 
   const reasonCodes: string[] = [];
   let profile: RecallBudgetPolicyResult["profile"] = "default";
-  const genomeRecallTopK = input.genomeDerived?.recallTopK ?? 6;
+  const genomeBase = Math.max(3, Math.min(20, (input.genomeDerived?.recallTopK ?? 6) + 1));
   let budget = {
     candidateMax: 180,
     rerankMax: 28,
-    injectMax: Math.max(3, Math.min(20, genomeRecallTopK + 1)),
+    injectMax: genomeBase,
     injectCharMax: 2200
   };
 
@@ -61,7 +61,7 @@ export function deriveRecallBudgetPolicy(input: RecallBudgetPolicyInput): Recall
     budget = {
       candidateMax: 200,
       rerankMax: 30,
-      injectMax: 8,
+      injectMax: Math.max(8, genomeBase),
       injectCharMax: 2400
     };
     reasonCodes.push("followup_context");
@@ -72,7 +72,7 @@ export function deriveRecallBudgetPolicy(input: RecallBudgetPolicyInput): Recall
     budget = {
       candidateMax: 220,
       rerankMax: 34,
-      injectMax: 10,
+      injectMax: Math.max(10, genomeBase),
       injectCharMax: 3000
     };
     reasonCodes.push("task_or_deep_intent");
@@ -83,7 +83,7 @@ export function deriveRecallBudgetPolicy(input: RecallBudgetPolicyInput): Recall
     budget = {
       candidateMax: 230,
       rerankMax: 36,
-      injectMax: 10,
+      injectMax: Math.max(10, genomeBase),
       injectCharMax: 3200
     };
     reasonCodes.push("goal_active");
@@ -92,7 +92,7 @@ export function deriveRecallBudgetPolicy(input: RecallBudgetPolicyInput): Recall
   if (input.projection && confidence < 0.45) {
     budget = {
       ...budget,
-      injectMax: Math.min(10, budget.injectMax + 1),
+      injectMax: Math.min(20, budget.injectMax + 1),
       injectCharMax: Math.min(3400, budget.injectCharMax + 200)
     };
     reasonCodes.push("low_projection_confidence");
