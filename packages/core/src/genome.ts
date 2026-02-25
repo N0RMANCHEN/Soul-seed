@@ -187,16 +187,24 @@ export function clampTraitValue(value: number): number {
 
 export async function loadGenome(personaRoot: string): Promise<GenomeConfig> {
   const filePath = path.join(personaRoot, GENOME_FILENAME);
-  if (!existsSync(filePath)) {
+  const persistDefaults = async () => {
     const defaults = createDefaultGenome();
     try { await writeFile(filePath, JSON.stringify(defaults, null, 2), "utf-8"); } catch {}
     return defaults;
+  };
+  if (!existsSync(filePath)) {
+    return persistDefaults();
   }
-  const raw = await readFile(filePath, "utf-8");
-  const parsed: GenomeConfig = JSON.parse(raw);
+  let parsed: GenomeConfig;
+  try {
+    const raw = await readFile(filePath, "utf-8");
+    parsed = JSON.parse(raw);
+  } catch {
+    return persistDefaults();
+  }
   const issues = validateGenome(parsed);
   if (issues.some((i) => i.code === "missing_trait" || i.code === "missing_field")) {
-    return createDefaultGenome();
+    return persistDefaults();
   }
   for (const name of GENOME_TRAIT_NAMES) {
     parsed.traits[name].value = clampTraitValue(parsed.traits[name].value);
