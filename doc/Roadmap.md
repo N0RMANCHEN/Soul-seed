@@ -7,7 +7,7 @@
 
 ### 1) Phase 展示与优先级规则
 - Phase 可无限扩展：`Phase F -> G -> H -> I -> J -> K ...`。
-- 当前执行优先级（跨 Phase）：`Phase H > Phase J > Phase K > Phase I`。
+- 当前执行优先级（跨 Phase）：`Phase Ha > Hb > Hc > Phase J > Phase K > Phase I`。
 - 同一时刻默认只允许一个 Phase 进入主开发态，后续 Phase 以前序 Phase 的出口条件为门禁。
 
 ### 1.1) Phase 与版本联动规则（强制）
@@ -24,11 +24,17 @@
 - 切分后必须显式声明：`新 Phase 目标`、`入口条件`、`出口条件`、`与前一 Phase 的依赖边界`、`版本影响（是否触发 minor 递增）`。
 - 新 Phase 的任务编号必须连续追加，不得改写既有任务 ID。
 
+### 1.3) Sub-phase 计划文档规则（强制）
+- 当一个 Phase 被切分为多个 sub-phase（如 Ha/Hb/Hc），每个 sub-phase 必须在 `doc/plans/` 下有独立计划文件，命名 `{SubPhase}-{ShortTitle}.md`（如 `Ha-State-Infra.md`）。
+- 计划文件必须包含：目标摘要、任务清单（含依赖链）、入口/出口条件、A/B 分工、风险与回滚策略。
+- 高层汇总计划（如 `H-State-Closure-Plan.md`）继续保留作为跨 sub-phase 的总览与同步点说明。
+- 计划文件创建后，实现进度以 Roadmap 为准；计划文件只在 scope 变更时更新，不做逐任务进度同步。
+
 ### 2) 任务编号规则
 - 本次执行一次性重编号（2026-02-24），用于清理历史混编编号。
 - 重编号后规则生效：任务 ID 冻结，不再改号；新增任务仅追加编号。
 - 格式：`{Phase}/P{priority}-{seq}`，例如 `F/P0-0`。
-- 排序规则：`P0（阻塞） -> P1（核心） -> P2（优化）`，每档内部按 `seq` 升序。
+- 排列规则：按**逻辑依赖顺序**排列（先基础后上层），不强制按 P0/P1/P2 分组展示。
 
 ### 3) 任务信息完整性规则
 - 每个任务必须包含：`原编号`、`来源需求`、`实现方式`、`测试/DoD`、`依赖`、`回滚`。
@@ -63,9 +69,10 @@
 - 未完成分工规划时，Phase 任务状态不得从 `todo` 切换到 `in_progress`。
 
 ## 当前执行总览（重排后）
-- `in_progress`：`none`
+- `in_progress`：Phase Ha — `H/P0-2`（~40%）、`H/P0-3`（~30%）、`H/P0-4`（~85%）
 - `blocked`：`none`
-- `todo`：其余 active 任务
+- `todo`：Phase Ha 剩余 `H/P0-0`、`H/P0-1`；Phase Hb 全部 8 项；Phase Hc 全部 11 项
+- **执行偏差说明**：Genome MVP（H/P0-4）及其依赖的 Compat 任务（H/P0-2、H/P0-3）先于 State Delta Pipeline（H/P0-0）落地，运行时直接接入现有代码路径。待 H/P0-0 完成后需将 genome-derived 状态变更统一纳入 `proposal → gates → apply` 管线。
 
 ## 现状评估（兴趣/注意力/主动交互）
 - 结论：`部分搭成，尚未形成完整闭环`。
@@ -94,28 +101,47 @@
 
 - `Phase G` 已完成并从 active 列表移除（按归档规则由 Git 历史保留）。
 
-### Phase H 分工
+### Phase Ha 分工（State Infrastructure & Compat Foundation，5 tasks）
 
-| Person A（状态 + 记忆 + 情绪） | Person B（兼容 + Schema + 治理） |
+| Person A | Person B |
 |---|---|
-| **H/P0-0 AB共建** | **H/P0-0 AB共建** |
+| **H/P0-0 AB共建** State Delta Pipeline | **H/P0-0 AB共建** |
 | H/P0-1 Invariant Table | H/P0-2 Compat & Migration |
-| H/P1-0 Values / Personality | H/P0-3 compat 常数清单（← H/P0-2） |
-| H/P1-1 Goals / Beliefs | H/P0-4 Genome & Epigenetics（← H/P0-2 + H/P0-3） |
-| H/P1-2 记忆遗忘与压缩 | H/P1-4 Persona Package（← H/P0-2） |
-| H/P1-3 Relationship state（← H/P1-2） | H/P1-7 兼容说明落地校核（← H/P0-2） |
-| H/P1-5 Affect 三层状态机 ⚠sync | H/P1-10 治理验收回归集 ⚠sync |
-| H/P1-6 人类化不完美 DoD | H/P1-14 Epigenetics 暗门防护（← H/P0-4） |
-| H/P1-8 关系连续性回归（← H/P1-3） | H/P1-15 Genome trait 闸门（← H/P0-4） |
-| H/P1-9 情绪厚度回归（← H/P1-5） | H/P1-16 LLM 直写封禁 |
-| H/P1-12 风险护栏：过度数值化 | H/P1-17 附录示例契约化（← H/P1-4） |
-| H/P1-13 风险护栏：Relationship 噪音（← H/P1-3） | H/P1-18 Spec 附录A Schema（← H/P1-17） |
-| | H/P1-19 Spec 附录B 接入点核查 |
+| | H/P0-3 Compat Constants |
+| | H/P0-4 Genome & Epigenetics |
 
-- ⚠ 同步点 1（B→A）：A 的 `H/P1-5` 需等 B 完成 `H/P0-4`
-- ⚠ 同步点 2（A→B）：B 的 `H/P1-10` 需等 A 完成 `H/P0-1`
-- `H/P1-11`（可观测性回归）已移至 Phase I 重编号为 `I/P1-11`，依赖 `I/P0-2`，归 B
-- 任务数：A=11 + 共建1 | B=12 + 共建1 | 差距 ~8%
+- 任务数：A=2 + 共建1 | B=4 + 共建1
+- ⚠ 同步点（B→A）：H/P0-4 依赖 H/P0-2 + H/P0-3
+
+### Phase Hb 分工（Mind Model State Modules，8 tasks）
+
+| Person A | Person B |
+|---|---|
+| H/P1-0 Values / Personality | H/P1-4 Persona Package v0.4 |
+| H/P1-1 Goals / Beliefs | H/P1-7 Compat Checklist |
+| H/P1-2 Memory Forgetting |  |
+| H/P1-3 Relationship State |  |
+| H/P1-5 Affect 3-Layer ⚠sync |  |
+| H/P1-6 Imperfection DoD |  |
+
+- 任务数：A=6 | B=2
+- ⚠ 同步点（B→A）：A 的 `H/P1-5` 需等 Phase Ha 的 `H/P0-4` 完成
+
+### Phase Hc 分工（Verification & Governance，11 tasks）
+
+| Person A | Person B |
+|---|---|
+| H/P1-8 Relationship Regression | H/P1-10 Governance Regression |
+| H/P1-9 Emotional Depth Regression | H/P1-14 Epigenetics Backdoor Guard |
+| H/P1-12 Over-numericalization Guard | H/P1-15 Genome Trait Gate |
+| H/P1-13 Relationship Noise Guard | H/P1-16 LLM Direct-Write Ban |
+| | H/P1-17 Schema Contracts |
+| | H/P1-18 Appendix A Schemas |
+| | H/P1-19 Access-Point Checklist |
+
+- 任务数：A=4 | B=7
+- `H/P1-11`（可观测性回归）已移至 Phase I 重编号为 `I/P1-11`
+- 注：Hc 中 H/P1-10, H/P1-14, H/P1-15, H/P1-16, H/P1-19 仅依赖 Phase Ha，可与 Phase Hb 并行启动
 
 ### Phase I 分工
 
@@ -155,12 +181,13 @@
 ## 全量重排排期（不丢失）
 
 ### 迭代窗口与批次策略
-- `W1-W3`：Phase H / Batch-H0（高耦合、hard 风险，严格串行）
+- `W1-W3`：Phase Ha（State Infrastructure，高耦合，严格串行）
   - `H/P0-0 -> H/P0-1 -> H/P0-2 -> H/P0-3 -> H/P0-4`
-- `W4-W6`：Phase H / Batch-H1（中耦合，串行主 + 小并行）
+- `W4-W6`：Phase Hb（Mind Model Modules，中耦合，串行主 + 小并行）
   - `H/P1-0 -> H/P1-1 -> H/P1-2 -> H/P1-3 -> H/P1-4 -> H/P1-5 -> H/P1-6 -> H/P1-7`
-- `W7-W8`：Phase H / Batch-H2（验收与风险护栏，分组并行）
-  - `H/P1-8 -> H/P1-9 -> H/P1-10 -> H/P1-12 -> H/P1-13 -> H/P1-14 -> H/P1-15 -> H/P1-16 -> H/P1-17 -> H/P1-18 -> H/P1-19`（H/P1-11 移至 Phase I）
+- `W7-W8`：Phase Hc（Verification & Governance，低耦合，分组并行）
+  - `(H/P1-8 || H/P1-12) -> (H/P1-9 || H/P1-13) -> H/P1-10 -> (H/P1-14 || H/P1-15 || H/P1-16) -> H/P1-17 -> H/P1-18 -> H/P1-19`
+  - 注：H/P1-10, H/P1-14..16, H/P1-19 仅依赖 Ha，可提前启动
 - `W9-W10`：Phase J（交互体验闭环，`P0` 串行，`P1` 条件并行）
   - `J/P0-0 -> J/P0-1 -> J/P0-2 -> (J/P1-0 || J/P1-1) -> J/P1-2`
 - `W11-W12`：Phase K（多人格聊天系统，仲裁链路串行，工具/评测并行）
@@ -169,53 +196,107 @@
   - `I/P0-0 -> I/P0-2 -> I/P0-3 -> I/P2-0 -> I/P2-1`
 
 ### 任务保全映射（防丢失）
-- `Phase H`：`24` 项（`H/P0-0..4` + `H/P1-0..10` + `H/P1-12..19`）；`H/P1-11` 移至 Phase I 重编号为 `I/P1-11`。
+- `Phase Ha`：`5` 项（`H/P0-0..4`）— State Infrastructure & Compat
+- `Phase Hb`：`8` 项（`H/P1-0..7`）— Mind Model State Modules
+- `Phase Hc`：`11` 项（`H/P1-8..10` + `H/P1-12..19`）— Verification & Governance；`H/P1-11` 移至 Phase I 重编号为 `I/P1-11`。
 - `Phase J`：保留全部 `6` 项（`J/P0-0..2` + `J/P1-0..2`），无删减。
 - `Phase K`：新增 `7` 项（多人格聊天完整链路）。
 - `Phase I`：`6` 项（`I/P0-0`、`I/P0-2`、`I/P0-3`、`I/P1-11`、`I/P2-0`、`I/P2-1`）；`I/P1-11` 从 Phase H 移入。
 - `Phase G`：已归档，历史完成项保持在 Git 记录中，不回写 active 列表。
 
-## Phase H（第二优先级：状态闭环与兼容兑现）
+## Phase Ha（State Infrastructure & Compat Foundation）
+
+> **目标**：构建状态变更管线、不变量表、兼容机制、Genome MVP — 后续所有状态模块的基础设施。
+> **入口条件**：Phase G 归档完成；四层语义路由门禁可用（Phase F）。
+> **出口条件**：`proposal → gates → apply` 管线可用；invariant CI green；compat migration 在 legacy persona 上验证通过；genome derived params 在线。
+> **版本影响**：完成后触发 minor bump。
+> **任务数**：5
 
 ### H/P0-0 MindModel H5：State Delta Pipeline
 - 原编号：`G/P2-3`
 - 状态：`todo`，必要性：`Must`
-- 来源需求：`phases/H5` `spec/21` `extra/40`
-- 实现方式：`proposal -> gates -> deterministic apply`，禁止 LLM 直写状态。
-- 测试/DoD：delta 可审计、可回放、可拒绝。
+- 来源需求：`02-Phases/H5` `01-Spec/§2.2,§11` `04-Archive/§10`
+- 实现方式：统一 `StateDeltaProposal → gates → deterministic apply` 管线，所有状态写入必须经过此路径。LLM 只输出提案（含置信度、证据指针），系统引擎做 clamp / rate-limit / evidence-check / compat-check 后决定 apply 或 reject。
+- 测试/DoD：delta 可审计（traceId + evidenceIds）、可回放（同输入→同 delta）、可拒绝（gate reject 有 reason + trace）；超阈值变化必须满足证据门槛。
 - 依赖：`前序控制面任务出口条件满足`；回滚：保留旧路径并行。
+- 代码锚点：`packages/core/src/state_delta.ts`（新）、`state_delta_apply.ts`（新）、`state_delta_gates.ts`（新）、`execution_protocol.ts`（改）
+- 子任务：
+  - [ ] `.1` [AB] 定义 `StateDeltaProposal` 类型（type / targetId / patch / confidence / supportingEventHashes / notes）
+  - [ ] `.2` [A] 实现 `applyDeltas()` 引擎：clamp + rate-limit + evidence-check + compat-check
+  - [ ] `.3` [B] 实现 7 类 gate 框架（identity / relational / recall / mood / belief / epigenetics / budget）→ `01-Spec §11.1`
+  - [ ] `.4` [A] 接入 turn pipeline：meta-review 之后、commit 之前 → `01-Spec 附录B §3`
+  - [ ] `.5` [B] Gate reject 审计事件写入 life.log + DecisionTrace
 
 ### H/P0-1 Invariant Table 回归落地
 - 原编号：`G/P2-6`
 - 状态：`todo`，必要性：`Must`
-- 来源需求：`engineering/3,6` `spec/24` `extra/48`
-- 实现方式：固化 Relationship/Beliefs/Mood/Engagement/Proactive/Group Chat 不变量阈值并纳入 CI。
-- 测试/DoD：阈值越界直接 fail。
+- 来源需求：`03-Engineering/§3` `01-Spec/§11` `04-Archive/§11`
+- 实现方式：为 6 个状态域（Relationship / Beliefs / Mood-Affect / Engagement / Proactive / Group Chat）定义硬不变量（clamp / rate-limit / cooldown / 证据门槛），以 config 驱动、CI 强制。
+- 测试/DoD：任何不变量越界直接 CI fail；每条不变量有 domain + actual-vs-threshold 审计。
 - 依赖：`H/P0-0`；回滚：阈值可配置回退。
+- 代码锚点：`packages/core/src/invariant_table.ts`（新）、CI config
+- 子任务：
+  - [ ] `.1` [A] 定义 Relationship 不变量：|Δtrust| ≤ 0.03/turn, audit if ≥ 0.10, 证据 ≥ 2 → `03-Engineering §3.1`
+  - [ ] `.2` [A] 定义 Beliefs 不变量：cooldown ≥ 7 天, |Δconf| ≤ 0.10, sources 绑定 → `03-Engineering §3.2`
+  - [ ] `.3` [A] 定义 Mood/Affect 不变量：baseline 回归速度 [0.02, 0.08]/hr, 外显频率门禁 → `03-Engineering §3.3`
+  - [ ] `.4` [B] 定义 Engagement / Proactive / Group Chat 不变量 → `03-Engineering §3.4-§3.6`
+  - [ ] `.5` [B] 实现 config-driven invariant engine + CI 集成（违规 = 阻断）
 
 ### H/P0-2 MindModel H7：Compatibility & Migration
 - 原编号：`G/P2-5`
-- 状态：`todo`，必要性：`Must`
-- 来源需求：`phases/H7` `spec/23` `extra/46`
-- 实现方式：compat 三档、推断+锁定+校准流程、会话控制兼容桥接。
+- 状态：`in_progress`（~40%：2-tier legacy/full 模型、auto-default genome 加载、行为对等已验证；缺正式迁移脚本、shadow mode、compat 回归夹具），必要性：`Must`
+- 来源需求：`02-Phases/H7` `01-Spec/§13` `03-Engineering/§5` `04-Archive/§16`
+- 实现方式：2-tier compatMode（`legacy` / `full`）。Legacy 自动推断 genome（traits=0.5）；迁移走推断→锁定→校准流程；shadow mode 验证后再激活。
 - 测试/DoD：存量 persona 漂移在阈值内，无“换人”。
 - 依赖：`H/P0-0`；回滚：可回滚迁移前快照。
+- 代码锚点：`packages/core/src/genome.ts`（改，部分完成）、`persona.ts`（改，部分完成）、`compat_mode.ts`（新）、`compat_migration.ts`（新）
+- 子任务：
+  - [x] `.1` [B] 定义 CompatMode 类型 + 自动推断 genome 加载（已完成）
+  - [x] `.2` [B] loadPersonaPackage 包含 genome/epigenetics（已完成）
+  - [ ] `.3` [B] 实现迁移路径 legacy→full：pre-migration snapshot + rollback entry
+  - [ ] `.4` [B] 实现 shadow mode（trace-only，对比后再激活）
+  - [ ] `.5` [A] 构建 compat 回归夹具：旧版 persona fixture → doctor PASS
+  - [ ] `.6` [B] 迁移幂等检查（连续两次不改写文件）
 
 ### H/P0-3 compat 常数清单与校准文件
 - 原编号：`G/P2-7`
-- 状态：`todo`，必要性：`Must`
-- 来源需求：`engineering/5` `spec/23`
-- 实现方式：落地 compat 常数与校准配置，版本化管理。
-- 测试/DoD：迁移样本通过，缺项触发 lint fail。
+- 状态：`in_progress`（~30%：genome 公式校准完成 trait=0.5→legacy defaults；缺版本化配置文件、缺项 lint fail），必要性：`Must`
+- 来源需求：`03-Engineering/§5` `01-Spec/§13`
+- 实现方式：定义版本化 `compat_calibration.json` 记录旧常数基线（reply_len_avg / emoji_rate / recall_topK_baseline / mood_decay_rate / 认真程度基线），支持从 `life.log.jsonl` 最近 200 turns 推断 → lock → 校准。
+- 测试/DoD：迁移样本通过；缺项触发 lint fail；hybrid 输出校准到旧基线（允许轻微误差）。
 - 依赖：`H/P0-2`；回滚：回退上一个校准版本。
+- 代码锚点：`packages/core/src/compat_constants.ts`（新）、`config/compat_calibration.schema.json`（新）、`persona_lint.ts`（改/新）
+- 子任务：
+  - [x] `.1` [B] genome 公式校准：trait=0.5 → legacy defaults（已完成，`genome_derived.ts`）
+  - [ ] `.2` [B] 定义版本化 `compat_calibration.json` schema → `03-Engineering §5.1`
+  - [ ] `.3` [B] 实现从 `life.log.jsonl` 最近 200 turns 推断基线 → `03-Engineering §5.2`
+  - [ ] `.4` [A] 实现 calibration lock 机制（推断后锁定，版本化管理）
+  - [ ] `.5` [B] 添加 lint 规则：缺项触发 CI fail
 
 ### H/P0-4 MindModel H6：Genome & Epigenetics MVP
 - 原编号：`G/P2-4`
-- 状态：`todo`，必要性：`Must`
-- 来源需求：`phases/H6` `spec/15` `extra/43`
-- 实现方式：固定 6 trait，建立 Genome->Budget 映射与慢漂移规则。
-- 测试/DoD：差异可解释，随机可复现。
-- 依赖：`H/P0-2` `H/P0-3`；回滚：降级静态 trait。
+- 状态：`in_progress`（~85%：6 traits、DerivedParams 映射、持久化、可复现 jitter、运行时接线 orchestrator/recall/mood/social 均完成；缺 epigenetics 慢漂移运行时证据收集与应用），必要性：`Must`
+- 来源需求：`02-Phases/H6` `01-Spec/§5.3,§11.2` `04-Archive/§13`
+- 实现方式：固定 6 trait（emotion_sensitivity / emotion_recovery / memory_retention / memory_imprint / attention_span / social_attunement），建立 Genome→Budget 映射（clamped formulas）、seed-based 可复现随机（daily jitter ±0.02）、Epigenetics 慢漂移规则（多证据 + cooldown + bounded + 可回滚）。
+- 测试/DoD：差异可解释（两个 persona 不同 trait → 不同 recallTopK，可追溯公式）；随机可复现（同 seed+date → 同 jitter）；epigenetics 无证据更新 = 0。
+- 依赖：`H/P0-2` `H/P0-3`；回滚：降级静态 trait（删 genome.json 即回到 0.5 default）。
+- 代码锚点：`packages/core/src/genome.ts`（已完成）、`genome_derived.ts`（已完成）、`genome_randomness.ts`（已完成）、`state_delta_gates.ts`（新，epigenetics gate 部分）、`config/genome_presets.json`（新）
+- 子任务：
+  - [x] `.1` [B] 定义 GenomeConfig / EpigeneticsConfig 类型 + 6 traits（已完成）
+  - [x] `.2` [B] 实现 DerivedParams 映射 + clamped formulas（已完成）
+  - [x] `.3` [B] 实现 seed-based 可复现 daily jitter（已完成）
+  - [x] `.4` [B] 运行时接线：orchestrator / recall_budget / mood / social（已完成）
+  - [ ] `.5` [B] 实现 epigenetics gate：evidence ≥ 2, cooldown ≥ 48h, |Δ| ≤ 0.05, bounded → `state_delta_gates.ts`
+  - [ ] `.6` [B] 创建 genome presets（balanced / empathetic / analytical / social）→ `config/genome_presets.json`
+  - [ ] `.7` [A] 添加 persona lint 规则：genome schema 校验 + trait 范围检查
+
+## Phase Hb（Mind Model State Modules）
+
+> **目标**：将 7 块心智模型域（Values / Personality / Goals / Beliefs / Memory / Relationships / Affect）升级为 first-class 状态机，加上人类化不完美 DoD 与兼容检查单。
+> **入口条件**：Phase Ha 出口条件满足（State Delta Pipeline + Invariant Table + Compat + Genome 可用）。
+> **出口条件**：所有状态模块插入 `proposal → gates → apply` 管线；imperfection 可表达；Persona Package v0.4 布局稳定。
+> **版本影响**：完成后触发 minor bump。
+> **任务数**：8
 
 ### H/P1-0 Values / Personality 可运行约束系统
 - 原编号：`G/P2-8`
@@ -280,6 +361,14 @@
 - 实现方式：把 High-Level 兼容说明拆成工程检查单（入口、存储、召回、回滚）并纳入 CI 文档校核。
 - 测试/DoD：兼容检查单全通过，且每项有证据路径。
 - 依赖：`F/P0-3` `H/P0-2`；回滚：退回人工审查流程。
+
+## Phase Hc（Verification, Risk Guards & Schema Contracts）
+
+> **目标**：回归验收套件、5 项风险护栏、schema 契约化、接入点核查 — 确保 Ha/Hb 产出经得起治理与回归检验。
+> **入口条件**：Phase Ha 出口条件满足（部分任务仅依赖 Ha，可与 Hb 并行）。完整入口需 Phase Hb 对应状态模块完成（H/P1-8 依赖 H/P1-3，H/P1-9 依赖 H/P1-5）。
+> **出口条件**：3 项回归套件 green；5 项风险护栏 CI active；schema contracts binding；access-point checklist mapped。
+> **版本影响**：完成后触发 minor bump。
+> **任务数**：11（H/P1-11 已移至 Phase I）
 
 ### H/P1-8 关系连续性验收回归集
 - 原编号：`新增（A18.1）`
@@ -531,11 +620,13 @@
 - 依赖：`K/P0-2` `K/P1-0`；回滚：降级为 nightly 观测。
 
 ## 统一执行顺序（工程落地顺序）
-1. `Phase H`：`H/P0-0 -> H/P0-1 -> H/P0-2 -> H/P0-3 -> H/P0-4 -> H/P1-0 -> H/P1-1 -> H/P1-2 -> H/P1-3 -> H/P1-4 -> H/P1-5 -> H/P1-6 -> H/P1-7 -> H/P1-8 -> H/P1-9 -> H/P1-10 -> H/P1-12 -> H/P1-13 -> H/P1-14 -> H/P1-15 -> H/P1-16 -> H/P1-17 -> H/P1-18 -> H/P1-19`
-2. `Phase J`：`J/P0-0 -> J/P0-1 -> J/P0-2 -> J/P1-0 -> J/P1-1 -> J/P1-2`
-3. `Phase K`：`K/P0-0 -> K/P0-1 -> K/P0-2 -> K/P1-0 -> K/P1-1 -> K/P1-2 -> K/P1-3`
-4. `Phase I`：`I/P0-0 -> I/P0-2 -> I/P1-11 -> I/P0-3 -> I/P2-0 -> I/P2-1`
+1. `Phase Ha`：`H/P0-0 -> H/P0-1 -> H/P0-2 -> H/P0-3 -> H/P0-4`
+2. `Phase Hb`：`H/P1-0 -> H/P1-1 -> H/P1-2 -> H/P1-3 -> H/P1-4 -> H/P1-5 -> H/P1-6 -> H/P1-7`
+3. `Phase Hc`：`(H/P1-8 || H/P1-12) -> (H/P1-9 || H/P1-13) -> H/P1-10 -> (H/P1-14 || H/P1-15 || H/P1-16) -> H/P1-17 -> H/P1-18 -> H/P1-19`
+4. `Phase J`：`J/P0-0 -> J/P0-1 -> J/P0-2 -> J/P1-0 -> J/P1-1 -> J/P1-2`
+5. `Phase K`：`K/P0-0 -> K/P0-1 -> K/P0-2 -> K/P1-0 -> K/P1-1 -> K/P1-2 -> K/P1-3`
+6. `Phase I`：`I/P0-0 -> I/P0-2 -> I/P1-11 -> I/P0-3 -> I/P2-0 -> I/P2-1`
 
 ## 覆盖性与漏项结论
 - `2.24.03` 的 `00/01/02/03/04` 已完成覆盖核对并映射到任务；`A-APP-CHANGELOG` 以 `historical` 审计保留。
-- 本次重排后保全结论：`H(24) + J(6) + K(7) + I(6)` 全量保留/新增映射完成，`missing=0`、`partial=0`（active 范围）。H/P1-11 移至 Phase I 重编号为 I/P1-11。
+- 本次重排后保全结论：`Ha(5) + Hb(8) + Hc(11) + J(6) + K(7) + I(6) = 43` 全量保留/新增映射完成，`missing=0`、`partial=0`（active 范围）。H/P1-11 移至 Phase I 重编号为 I/P1-11。
