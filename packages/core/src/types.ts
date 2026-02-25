@@ -392,6 +392,9 @@ export interface DecisionTrace {
   consistencyTraceId?: string;
   routeDecision?: "instinct" | "deliberative";
   routeReasonCodes?: string[];
+  reasoningDepth?: "fast" | "deep";
+  l3Triggered?: boolean;
+  l3TriggerReason?: string;
   routing?: {
     tier: "L1" | "L2" | "L3" | "L4";
     reasonCodes: string[];
@@ -405,6 +408,8 @@ export interface DecisionTrace {
   riskLatent?: [number, number, number];
   /** EB-0: 使用的风险评估路径 */
   riskAssessmentPath?: "semantic" | "regex_fallback";
+  coreConflictMode?: "explicit_only";
+  implicitCoreTension?: boolean;
   /** EA-0: Soul 对是否需要调用 Agent 的裁决 */
   agentRequest?: {
     needed: boolean;

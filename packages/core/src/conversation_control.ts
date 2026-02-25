@@ -9,6 +9,7 @@ export interface ConversationControlInput {
   isRiskyRequest: boolean;
   isRefusal: boolean;
   coreConflict: boolean;
+  implicitCoreTension?: boolean;
   impulseWindow: boolean;
   interests?: {
     topTopics: string[];
@@ -32,6 +33,15 @@ export function decideConversationControl(input: ConversationControlInput): Conv
       engagementTier: "REACT",
       topicAction: "maintain",
       responsePolicy: "safety_refusal",
+      reasonCodes
+    };
+  }
+  if (input.implicitCoreTension) {
+    reasonCodes.push("implicit_core_tension_degrade");
+    return {
+      engagementTier: "LIGHT",
+      topicAction: "clarify",
+      responsePolicy: "light_response",
       reasonCodes
     };
   }

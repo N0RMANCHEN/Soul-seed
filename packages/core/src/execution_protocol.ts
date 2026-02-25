@@ -41,6 +41,7 @@ export async function executeTurnProtocol(params: {
   goalId?: string;
   mode?: "auto" | "soul" | "agent";
   maxSteps?: number;
+  adaptiveReasoningEnabled?: boolean;
 }): Promise<ExecuteTurnResult> {
   const desiredMode = params.mode ?? "auto";
   const routeDecision = decideDualProcessRoute({
@@ -63,7 +64,8 @@ export async function executeTurnProtocol(params: {
       const semantic = await precomputeSemanticSignals({
         userInput: params.userInput,
         personaPkg: params.personaPkg,
-        llmAdapter: params.plannerAdapter
+        llmAdapter: params.plannerAdapter,
+        adaptiveReasoningEnabled: params.adaptiveReasoningEnabled
       });
       const trace = decide(params.personaPkg, params.userInput, params.model, {
         lifeEvents: params.lifeEvents,
@@ -76,6 +78,9 @@ export async function executeTurnProtocol(params: {
         riskAssessmentPath: semantic.riskAssessmentPath,
         conversationProjection: semantic.conversationProjection
       });
+      trace.reasoningDepth = semantic.reasoningDepth;
+      trace.l3Triggered = semantic.l3Triggered;
+      trace.l3TriggerReason = semantic.l3TriggerReason;
       trace.executionMode = shouldUseAgent ? "agent" : "soul";
       // EA-0: Populate agentRequest so pipeline knows whether to invoke agent
       trace.agentRequest = {

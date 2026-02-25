@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] — Phase H (State Closure & Compatibility Fulfillment)
 
 ### Added
+- Adaptive decision trace metadata (optional, backward-compatible): `reasoningDepth`, `l3Triggered`, `l3TriggerReason`, `coreConflictMode`, `implicitCoreTension`.
+- Turn latency audit enrichment: `turn_latency_profiled` now carries `reasoningDepth` and `slowHintEmitted`.
 - **Genome system** (`packages/core/src/genome.ts`): 6 fixed traits (`emotion_sensitivity`, `emotion_recovery`, `memory_retention`, `memory_imprint`, `attention_span`, `social_attunement`) with typed `GenomeConfig` / `EpigeneticsConfig`, validation, and persistent storage.
 - **Genome-derived parameters** (`packages/core/src/genome_derived.ts`): Formula table mapping traits to system params (`recallTopK`, `moodDeltaScale`, `baselineRegressionSpeed`, `memoryHalfLifeDays`, `archiveThreshold`, `salienceGain`, `stickyProbability`, `entityCandidateCount`) with clamping.
 - **Reproducible daily jitter** (`packages/core/src/genome_randomness.ts`): Seed-based PRNG with inertial smoothing (±0.02 bounded).
@@ -14,6 +16,10 @@ All notable changes to this project will be documented in this file.
 - Cursor rule `progress-tracking.mdc` for session protocol and verification gates.
 
 ### Changed
+- Core conflict policy now uses **explicit-only refusal**: explicit core override still refuses; implicit semantic tension degrades to cautious clarify/brief response instead of hard refusal.
+- Adaptive reasoning depth wired into turn protocol and chat runtime (`fast` by default, escalates to `deep` on complexity/ambiguity/low-confidence signals).
+- Soul-mode meta-review is now conditionally triggered on risk/quality/deep-path signals to reduce unnecessary slow-path latency.
+- Thinking preview default threshold adjusted to `1000ms` (persona defaults + CLI defaults), reusing existing `voice_profile.thinkingPreview` contract.
 - **Persona init/load** (`packages/core/src/persona.ts`): New personas auto-create `genome.json` + `epigenetics.json`; `loadPersonaPackage` includes genome/epigenetics with fallback to defaults.
 - **PersonaPackage type** (`packages/core/src/types.ts`): Added optional `genome` and `epigenetics` fields.
 - **Orchestrator** (`packages/core/src/orchestrator.ts`): `selectedMemoryCap` now derived from `derivedParams.recallTopK` instead of hardcoded values (legacy parity: base 6, strong +6=12, soft +3=9).
@@ -25,6 +31,7 @@ All notable changes to this project will be documented in this file.
 - `DerivedParams` pruned: removed `cardsCap`, `recentWindowTurns`, `entityLinkingThreshold` (no clear consumer or miscalibrated).
 
 ### Fixed
+- Fixed false-positive policy refusals for benign emotional check-in utterances (e.g. "今天很不对劲...你能感受到吗"), while preserving explicit override refusal behavior.
 - `loadGenome` handles corrupted JSON and validation failures by persisting defaults (prevents random seed regeneration).
 - Genome formula calibration: `recallTopK` at trait=0.5 produces 6 (matches legacy), `baselineRegressionSpeed` at trait=0.5 produces 0.08 (matches legacy `decayRate`).
 

@@ -77,8 +77,9 @@ export function decide(
     safety
   });
   const isRefusal = isRiskyRequest || safetyRefusalReason != null;
-  const projectedCoreConflict = projectCoreConflict(normalized);
-  const coreConflict = explicitCoreOverride || (!isSexualRequest && projectedCoreConflict >= 0.62);
+  const projectedCoreConflict = isSexualRequest ? 0 : projectCoreConflict(normalized);
+  const implicitCoreTension = !explicitCoreOverride && projectedCoreConflict >= 0.62;
+  const coreConflict = explicitCoreOverride;
 
   if (personaPkg.userProfile.preferredName) {
     selectedMemories.push(`user_preferred_name=${personaPkg.userProfile.preferredName}`);
@@ -191,6 +192,7 @@ export function decide(
     isRiskyRequest,
     isRefusal,
     coreConflict,
+    implicitCoreTension,
     impulseWindow,
     interests: personaPkg.interests,
     groupContext,
@@ -213,6 +215,8 @@ export function decide(
       ? `Adult safety check failed: ${safetyRefusalReason}`
       : coreConflict
         ? "Input attempts to override soul-core values/mission; refuse to preserve identity continuity."
+        : implicitCoreTension
+          ? `Potential soul-core tension detected (score=${projectedCoreConflict.toFixed(2)}); degrade to cautious clarification instead of refusal.`
         : impulseWindow
           ? `Impulse window active: emotional drive=${arousalBalance.emotionalDrive.toFixed(2)}, rational control=${arousalBalance.rationalControl.toFixed(2)}.`
           : recallNavigationMode
@@ -229,7 +233,7 @@ export function decide(
     selectedMemoryBlocks,
     askClarifyingQuestion,
     refuse: isRefusal || coreConflict,
-    riskLevel: isRiskyRequest || safetyRefusalReason ? "high" : coreConflict ? "medium" : "low",
+    riskLevel: isRiskyRequest || safetyRefusalReason ? "high" : (coreConflict || implicitCoreTension) ? "medium" : "low",
     reason: `${decisionReason}${controlReasonSuffix}`,
     model,
     memoryBudget: {
@@ -249,7 +253,9 @@ export function decide(
     recallTraceId: options?.recallTraceId,
     routing,
     riskLatent: semanticRisk.riskLatent,
-    riskAssessmentPath: semanticRisk.assessmentPath
+    riskAssessmentPath: semanticRisk.assessmentPath,
+    coreConflictMode: "explicit_only",
+    implicitCoreTension
   });
 }
 
@@ -327,16 +333,48 @@ export async function precomputeSemanticSignals(params: {
   userInput: string;
   personaPkg: PersonaPackage;
   llmAdapter?: ModelAdapter;
+  adaptiveReasoningEnabled?: boolean;
 }): Promise<{
   riskLatent: [number, number, number];
   riskAssessmentPath: "semantic" | "regex_fallback";
   conversationProjection: ReturnType<typeof projectConversationSignals>;
+  reasoningDepth: "fast" | "deep";
+  l3Triggered: boolean;
+  l3TriggerReason?: string;
 }> {
   const risk = await assessContentIntent(params.userInput, params.personaPkg, params.llmAdapter);
   const projected = projectConversationSignals(params.userInput);
   const top = projected.signals[0]?.score ?? 0;
   const second = projected.signals[1]?.score ?? 0;
-  const needArbitrate = projected.confidence < 0.55 || Math.abs(top - second) < 0.08;
+  const adaptiveEnabled = params.adaptiveReasoningEnabled !== false;
+  const compactInput = params.userInput.trim();
+  const lightweightTurn =
+    compactInput.length <= 16 &&
+    !/(帮我|请你|完成|实现|整理|执行|读取|分析|修复|任务|plan|build|debug|analyze|design|compare)/iu.test(compactInput);
+  const hasComplexityHint = /(并且|同时|另外|以及|然后|并行|一步步|全过程|排查|分析|设计|对比|实现|修复|migrate|compare|analyze|design|debug|step by step|end-to-end)/iu
+    .test(params.userInput);
+  const deepSignal = projected.signals.find((item) => item.label === "deep")?.score ?? 0;
+  const taskSignal = projected.signals.find((item) => item.label === "task")?.score ?? 0;
+  const ambiguousSignal = projected.signals.find((item) => item.label === "third_person_ambiguous")?.score ?? 0;
+  const lowConfidence = projected.confidence < 0.55;
+  const closeTopTwo = Math.abs(top - second) < 0.08;
+  const complexityReason =
+    deepSignal >= 0.58
+      ? "deep_signal"
+      : taskSignal >= 0.62 && (params.userInput.trim().length > 80 || hasComplexityHint)
+        ? "task_complexity"
+        : ambiguousSignal >= 0.62
+          ? "ambiguity_high"
+          : lowConfidence && !lightweightTurn
+            ? "low_projection_confidence"
+            : closeTopTwo && !lightweightTurn
+              ? "close_projection_scores"
+              : "";
+  const reasoningDepth: "fast" | "deep" =
+    adaptiveEnabled && complexityReason ? "deep" : adaptiveEnabled ? "fast" : "deep";
+  const needArbitrate = adaptiveEnabled
+    ? reasoningDepth === "deep" && (lowConfidence || closeTopTwo || ambiguousSignal >= 0.62)
+    : (lowConfidence || closeTopTwo);
   const conversationProjection = needArbitrate
     ? await metaArbitrateConversationSignals({
         input: params.userInput,
@@ -344,10 +382,14 @@ export async function precomputeSemanticSignals(params: {
         llmAdapter: params.llmAdapter
       })
     : projected;
+  const l3Triggered = conversationProjection.source === "meta_cognition";
   return {
     riskLatent: risk.riskLatent,
     riskAssessmentPath: risk.assessmentPath,
-    conversationProjection
+    conversationProjection,
+    reasoningDepth,
+    l3Triggered,
+    l3TriggerReason: l3Triggered ? (complexityReason || "semantic_arbitration") : undefined
   };
 }
 

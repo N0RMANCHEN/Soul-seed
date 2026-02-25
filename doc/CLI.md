@@ -250,11 +250,20 @@ SHA-256 哈希校验后导入，失败自动回滚并列出错误。输出：`{o
 
 模型优先级：`--model` > `SOULSEED_MODEL`/`DEEPSEEK_MODEL` 环境变量 > 按 provider/baseUrl 推断（DeepSeek 默认 `deepseek-chat`）
 
+**会话运行时开关（环境变量）**：
+- `SOULSEED_ADAPTIVE_REASONING`：是否启用自适应思考深度（`fast/deep`，默认 `1`）。
+- `SOULSEED_THINKING_PREVIEW`：是否启用慢回复前置短提示（默认跟随 persona voice profile）。
+- `SOULSEED_THINKING_PREVIEW_THRESHOLD_MS`：思考提示阈值（默认 `1000` ms）。
+- `SOULSEED_THINKING_PREVIEW_MODEL_FALLBACK`：是否允许用模型生成 thinking preview（默认 `0`）。
+- `SOULSEED_THINKING_PREVIEW_MAX_MODEL_MS`：thinking preview 模型调用超时（默认 `220` ms）。
+
 **自动行为**：
 - 会话启动时后台触发轻量记忆整合（`trigger=chat_open`）
 - 会话退出时后台触发轻量记忆整合（`trigger=chat_close`）
 - 每轮调用 `extractUserFactsFromTurn()` 提取用户事实
 - 每轮检查 life.log 行数；若 `persona.memoryPolicy.maxLifeLogEntries` 已设定且超出，自动轮换（最旧 20% 归档到 `summaries/life_archive.jsonl`，写入 scar event）
+- 自适应思考深度默认开启：轻量回合优先 fast 路径，复杂/低置信/冲突回合再升到 deep（L3 仲裁仅按需触发）
+- `turn_latency_profiled` 事件包含每轮延迟摘要，并附带 `reasoningDepth` 与 `slowHintEmitted` 审计字段
 
 **Owner 授权**（敏感能力门控）：
 - 会话内输入 `owner <口令>` 激活 15 分钟 owner 权限

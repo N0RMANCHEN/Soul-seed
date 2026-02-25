@@ -670,7 +670,7 @@ function resolveThinkingPreviewThresholdMs(
   if (Number.isFinite(fromProfile)) {
     return Math.max(1, Math.min(4000, Math.round(fromProfile)));
   }
-  return 1200;
+  return 1000;
 }
 
 function resolveThinkingPreviewModelFallback(options: Record<string, string | boolean>): boolean {
@@ -693,6 +693,16 @@ function resolveThinkingPreviewModelMaxMs(options: Record<string, string | boole
     return Math.max(80, Math.min(1200, Math.round(fromEnv)));
   }
   return 220;
+}
+
+function resolveAdaptiveReasoningEnabled(options: Record<string, string | boolean>): boolean {
+  const fromOption = optionString(options, "adaptive-reasoning");
+  if (typeof fromOption === "string") {
+    const normalized = fromOption.trim().toLowerCase();
+    return !(normalized === "0" || normalized === "false" || normalized === "off" || normalized === "no");
+  }
+  const raw = (process.env.SOULSEED_ADAPTIVE_REASONING ?? "1").trim().toLowerCase();
+  return !(raw === "0" || raw === "false" || raw === "off" || raw === "no");
 }
 
 /**
@@ -805,6 +815,13 @@ function compactDecisionTrace(trace: DecisionTrace): Record<string, unknown> {
     consistencyVerdict: trace.consistencyVerdict ?? null,
     consistencyRuleHits: trace.consistencyRuleHits ?? null,
     consistencyTraceId: trace.consistencyTraceId ?? null,
+    routeDecision: trace.routeDecision ?? null,
+    routeReasonCodes: trace.routeReasonCodes ?? null,
+    reasoningDepth: trace.reasoningDepth ?? null,
+    l3Triggered: trace.l3Triggered ?? null,
+    l3TriggerReason: trace.l3TriggerReason ?? null,
+    coreConflictMode: trace.coreConflictMode ?? null,
+    implicitCoreTension: trace.implicitCoreTension ?? null,
     latencyBreakdown: trace.latencyBreakdown ?? null,
     latencyTotalMs: trace.latencyTotalMs ?? null
   };
@@ -911,7 +928,7 @@ function buildInitOptionsFromTemplate(params: {
       stancePreference,
       thinkingPreview: {
         enabled: true,
-        thresholdMs: 1200,
+        thresholdMs: 1000,
         phrasePool: [],
         allowFiller: true
       }
@@ -2057,6 +2074,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   const thinkingPreviewThresholdMs = resolveThinkingPreviewThresholdMs(options, personaPkg.voiceProfile);
   const thinkingPreviewModelFallback = resolveThinkingPreviewModelFallback(options);
   const thinkingPreviewModelMaxMs = resolveThinkingPreviewModelMaxMs(options);
+  const adaptiveReasoningEnabled = resolveAdaptiveReasoningEnabled(options);
   let adultSafetyContext = resolveAdultSafetyContext(options, personaPkg.persona.adultSafetyDefaults);
   const ownerKey =
     (typeof options["owner-key"] === "string" ? options["owner-key"] : process.env.SOULSEED_OWNER_KEY ?? "").trim();
@@ -2348,37 +2366,38 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     };
   };
 
-  const emitThinkingPreviewIfNeeded = async (input: string, turnRef: string): Promise<void> => {
+  const emitThinkingPreviewIfNeeded = async (input: string, turnRef: string): Promise<boolean> => {
     if (!thinkingPreviewEnabled || streamRawAssistant) {
-      return;
+      return false;
     }
     if (turnRef === lastThinkingPreviewTurnRef) {
-      return;
+      return false;
     }
     if (turnsSinceThinkingPreview < 4) {
-      return;
+      return false;
     }
     const compact = input.trim();
     const lightTurn =
       compact.length <= 14 &&
       !/(怎么|如何|为什么|分析|总结|学习|计划|阅读|读取|继续|接着|帮我|请|是否|吗|嘛|呢|what|why|how|\?|？)/iu.test(compact);
     if (lightTurn) {
-      return;
+      return false;
     }
     const estimatedLatencyMs = estimateReplyLatencyMs(input);
-    const threshold = thinkingPreviewThresholdMs <= 50 ? thinkingPreviewThresholdMs : Math.max(2300, thinkingPreviewThresholdMs);
+    const threshold =
+      thinkingPreviewThresholdMs <= 50 ? thinkingPreviewThresholdMs : Math.max(200, Math.min(4000, thinkingPreviewThresholdMs));
     if (estimatedLatencyMs < threshold) {
-      return;
+      return false;
     }
     const nowMs = Date.now();
     const elapsedSinceLast = nowMs - lastThinkingPreviewAtMs;
     if (elapsedSinceLast < 30000) {
-      return;
+      return false;
     }
     try {
       const preview = await buildThinkingPreviewText();
       if (!preview.text.trim()) {
-        return;
+        return false;
       }
       lastThinkingPreviewTurnRef = turnRef;
       lastThinkingPreviewAtMs = nowMs;
@@ -2395,6 +2414,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           turnRef
         }
       });
+      return true;
     } catch (error: unknown) {
       await appendLifeEvent(personaPath, {
         type: "conflict_logged",
@@ -2404,6 +2424,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           turnRef
         }
       });
+      return false;
     }
   };
 
@@ -4534,7 +4555,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
 
         const turnRef = createHash("sha256").update(`${turnStartedAtMs}|${input}`, "utf8").digest("hex").slice(0, 12);
-        await emitThinkingPreviewIfNeeded(input, turnRef);
+        const slowHintEmitted = await emitThinkingPreviewIfNeeded(input, turnRef);
         const latencyStartedAtMs = Date.now();
         const latencyBreakdown: Partial<Record<"routing" | "recall" | "planning" | "llm_primary" | "llm_meta" | "guard" | "rewrite" | "emit", number>> = {};
         const addLatency = (
@@ -4661,7 +4682,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           safetyContext: adultSafetyContext,
           plannerAdapter,
           goalId: goalAssist.kind === "resume" ? goalAssist.goalId : undefined,
-          mode: executionMode
+          mode: executionMode,
+          adaptiveReasoningEnabled
         });
         addLatency("planning", planningStartedAtMs);
         const trace: DecisionTrace = turnExecution.trace ?? {
@@ -5171,7 +5193,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       }
       // 保存本轮 meta-review 风格信号，用于后续 self_revision 替代关键字硬匹配
       let metaReviewStyleSignals: { concise: number; reflective: number; direct: number; warm: number } | undefined;
-      if (turnExecution.mode === "soul") {
+      const shouldRunMetaReview =
+        turnExecution.mode === "soul" &&
+        (trace.reasoningDepth !== "fast" ||
+          trace.riskLevel !== "low" ||
+          (trace.consistencyVerdict ?? "allow") !== "allow" ||
+          (soulConsistencyReasons?.length ?? 0) > 0);
+      if (shouldRunMetaReview) {
         const llmMetaStartedAtMs = Date.now();
         const metaAdapter = getAdapterForRoute("meta");
         const metaReview = await runMetaReviewLlm({
@@ -5375,7 +5403,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         type: "turn_latency_profiled",
         payload: {
           totalMs: trace.latencyTotalMs ?? null,
-          breakdown: trace.latencyBreakdown ?? null
+          breakdown: trace.latencyBreakdown ?? null,
+          reasoningDepth: trace.reasoningDepth ?? "deep",
+          slowHintEmitted
         }
       });
       lastAssistantOutput = assistantContent;

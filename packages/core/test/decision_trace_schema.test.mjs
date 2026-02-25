@@ -149,3 +149,27 @@ test("normalizeDecisionTrace keeps semantic routing fields", () => {
   assert.equal(normalized.routing?.arbitrationTriggered, true);
   assert.deepEqual(normalized.routing?.reasonCodes, ["meta_cognition_arbitration"]);
 });
+
+test("normalizeDecisionTrace keeps adaptive reasoning and core conflict metadata", () => {
+  const normalized = normalizeDecisionTrace({
+    version: DECISION_TRACE_SCHEMA_VERSION,
+    timestamp: "2026-02-25T00:00:00.000Z",
+    selectedMemories: [],
+    askClarifyingQuestion: false,
+    refuse: false,
+    riskLevel: "medium",
+    reason: "implicit tension",
+    model: "deepseek-chat",
+    reasoningDepth: "fast",
+    l3Triggered: false,
+    l3TriggerReason: "low_projection_confidence",
+    coreConflictMode: "explicit_only",
+    implicitCoreTension: true
+  });
+
+  assert.equal(normalized.reasoningDepth, "fast");
+  assert.equal(normalized.l3Triggered, false);
+  assert.equal(normalized.l3TriggerReason, "low_projection_confidence");
+  assert.equal(normalized.coreConflictMode, "explicit_only");
+  assert.equal(normalized.implicitCoreTension, true);
+});

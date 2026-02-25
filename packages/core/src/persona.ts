@@ -122,7 +122,7 @@ const DEFAULT_VOICE_PROFILE: VoiceProfile = {
   forbiddenSelfLabels: ["personal assistant", "local runtime role", "为你服务", "你的助手"],
   thinkingPreview: {
     enabled: true,
-    thresholdMs: 1200,
+    thresholdMs: 1000,
     phrasePool: [],
     allowFiller: true
   }
@@ -742,21 +742,25 @@ export async function appendLifeEvent(rootPath: string, event: LifeEventInput): 
   let fullEvent: LifeEvent | null = null;
   try {
     await previous.catch(() => undefined);
-    const prevHash = (await getLastHash(lifeLogPath)) ?? "GENESIS";
+    await withPersonaLock(rootPath, async () => {
+      const prevHash = (await getLastHash(lifeLogPath)) ?? "GENESIS";
+      const eventWithoutHash = {
+        ts: isoNow(),
+        type: event.type,
+        payload: event.payload,
+        prevHash
+      };
+      const hash = eventHash(prevHash, eventWithoutHash);
+      fullEvent = { ...eventWithoutHash, hash };
 
-    const eventWithoutHash = {
-      ts: isoNow(),
-      type: event.type,
-      payload: event.payload,
-      prevHash
-    };
-    const hash = eventHash(prevHash, eventWithoutHash);
-    fullEvent = { ...eventWithoutHash, hash };
-
-    await writeFile(lifeLogPath, `${JSON.stringify(fullEvent)}\n`, {
-      encoding: "utf8",
-      flag: "a"
+      await writeFile(lifeLogPath, `${JSON.stringify(fullEvent)}\n`, {
+        encoding: "utf8",
+        flag: "a"
+      });
     });
+    if (!fullEvent) {
+      throw new Error("failed to append life event");
+    }
     await ingestLifeEventMemory(rootPath, fullEvent);
   } finally {
     releaseQueue();

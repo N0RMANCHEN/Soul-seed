@@ -119,3 +119,19 @@ test("group participation allows speak when addressed and cooldown is low", () =
   assert.equal(control.groupParticipation?.mode, "speak");
   assert.equal(control.groupParticipation?.score >= 0.62, true);
 });
+
+test("conversation control degrades on implicit core tension without safety refusal", () => {
+  const control = decideConversationControl({
+    userInput: "你今天是不是很不对劲",
+    recallNavigationMode: false,
+    isRiskyRequest: false,
+    isRefusal: false,
+    coreConflict: false,
+    implicitCoreTension: true,
+    impulseWindow: false
+  });
+
+  assert.equal(control.engagementTier, "LIGHT");
+  assert.equal(control.topicAction, "clarify");
+  assert.equal(control.responsePolicy, "light_response");
+});

@@ -236,6 +236,8 @@ Beta is for developers debugging persona behavior or system issues.
   *四类记忆 — 情节、语义、关系、程序；SQLite + 混合 RAG 检索*
 - **Five-stage cognitive pipeline** — perception → idea → deliberation → meta-review → commit
   *五阶段认知流水线 — 感知 → 构想 → 审议 → 元审查 → 提交*
+- **Adaptive reasoning depth** — defaults to fast path, escalates to deep only when complexity/ambiguity requires it
+  *自适应思考深度 — 默认 fast，仅在复杂/歧义场景提升到 deep*
 - **Five-layer consistency guard** — identity · relational · recall · factual · constitution
   *五层一致性守护 — 身份、关系、记忆接地、事实接地、宪法规则*
 - **Soul-first execution** — orchestrator always decides before any agent acts
@@ -417,6 +419,11 @@ Available tools: `persona.get_context`, `memory.search`, `memory.search_hybrid`,
 | `SOULSEED_EMBEDDING_DIM` | `1024` | Embedding dimension / 嵌入维度 |
 | `SOULSEED_LLM_RETRIES` | `2` | Max retries (0–5) / 最大重试次数 |
 | `SOULSEED_LLM_TIMEOUT_MS` | `35000` | Request timeout in ms / 请求超时（毫秒） |
+| `SOULSEED_ADAPTIVE_REASONING` | `1` | Adaptive fast/deep reasoning gate / 自适应 fast/deep 思考开关 |
+| `SOULSEED_THINKING_PREVIEW` | follows persona profile | Enable slow-turn preview utterance / 启用慢回合思考前置短提示 |
+| `SOULSEED_THINKING_PREVIEW_THRESHOLD_MS` | `1000` | Preview threshold in ms / 前置提示触发阈值（毫秒） |
+| `SOULSEED_THINKING_PREVIEW_MODEL_FALLBACK` | `0` | Allow LLM fallback for preview text / 是否允许用模型生成前置提示 |
+| `SOULSEED_THINKING_PREVIEW_MAX_MODEL_MS` | `220` | Max preview LLM time in ms / 前置提示模型最大耗时（毫秒） |
 | `SOULSEED_MCP_ALLOW_WRITES` | `false` | Enable write tools in MCP / 启用 MCP 写入工具 |
 | `SOULSEED_MCP_TOKEN` | — | Auth token for HTTP MCP / HTTP MCP 鉴权 Token |
 | `SOULSEED_OWNER_KEY` | — | Owner-level auth / 所有者级别鉴权 |

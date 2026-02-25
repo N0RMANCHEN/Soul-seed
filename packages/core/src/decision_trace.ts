@@ -226,6 +226,10 @@ function normalizeExecutionMode(value: unknown): DecisionTrace["executionMode"] 
   return value === "agent" || value === "soul" ? value : undefined;
 }
 
+function normalizeReasoningDepth(value: unknown): DecisionTrace["reasoningDepth"] {
+  return value === "fast" || value === "deep" ? value : undefined;
+}
+
 function normalizeConsistencyVerdict(value: unknown): DecisionTrace["consistencyVerdict"] {
   return value === "allow" || value === "rewrite" || value === "reject" ? value : undefined;
 }
@@ -342,6 +346,11 @@ export function normalizeDecisionTrace(input: unknown): DecisionTrace {
     routeDecision: normalizeRouteDecision(input.routeDecision),
     routeReasonCodes: normalizeStringArray(input.routeReasonCodes, 16),
     routing: normalizeRouting(input.routing),
+    reasoningDepth: normalizeReasoningDepth(input.reasoningDepth),
+    l3Triggered: input.l3Triggered === true,
+    l3TriggerReason: typeof input.l3TriggerReason === "string" && input.l3TriggerReason.trim()
+      ? input.l3TriggerReason.trim()
+      : undefined,
     routeTag: normalizeRouteTag(input.routeTag),
     modelUsed: typeof input.modelUsed === "string" && input.modelUsed.trim() ? input.modelUsed.trim() : undefined,
     agentRequest: normalizeAgentRequest(input.agentRequest),
@@ -351,6 +360,8 @@ export function normalizeDecisionTrace(input: unknown): DecisionTrace {
     riskAssessmentPath: (input.riskAssessmentPath === "semantic" || input.riskAssessmentPath === "regex_fallback")
       ? input.riskAssessmentPath
       : undefined,
+    coreConflictMode: input.coreConflictMode === "explicit_only" ? "explicit_only" : undefined,
+    implicitCoreTension: input.implicitCoreTension === true,
     latencyBreakdown: normalizeLatencyBreakdown(input.latencyBreakdown),
     latencyTotalMs: normalizePositiveInteger(input.latencyTotalMs)
   };

@@ -120,7 +120,7 @@ export const DEFAULT_VOICE_PROFILE: VoiceProfile = {
   forbiddenSelfLabels: ["personal assistant", "local runtime role", "为你服务", "你的助手"],
   thinkingPreview: {
     enabled: true,
-    thresholdMs: 1200,
+    thresholdMs: 1000,
     phrasePool: [],
     allowFiller: true
   }
@@ -810,7 +810,7 @@ function normalizeVoiceProfile(raw: Record<string, unknown>): VoiceProfile {
   const thinkingThresholdRaw = Number(thinkingRaw.thresholdMs);
   const thinkingThresholdMs = Number.isFinite(thinkingThresholdRaw)
     ? Math.max(500, Math.min(4000, Math.round(thinkingThresholdRaw)))
-    : DEFAULT_VOICE_PROFILE.thinkingPreview?.thresholdMs ?? 1200;
+    : DEFAULT_VOICE_PROFILE.thinkingPreview?.thresholdMs ?? 1000;
   const phrasePool = Array.isArray(thinkingRaw.phrasePool)
     ? thinkingRaw.phrasePool
         .filter((item): item is string => typeof item === "string")
