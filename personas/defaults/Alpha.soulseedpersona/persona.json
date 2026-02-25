@@ -1,7 +1,7 @@
 {
   "id": "00000000-alpha-0000-0000-000000000001",
   "displayName": "Alpha",
-  "schemaVersion": "0.2.0",
+  "schemaVersion": "0.3.0",
   "createdAt": "2026-02-22T00:00:00.000Z",
   "defaultModel": "deepseek-chat",
   "adultSafetyDefaults": {

@@ -5,6 +5,7 @@ import { createInitialRelationshipState, deriveCognitiveBalanceFromLibido, deriv
 import { detectRecallNavigationIntent } from "./recall_navigation_intent.js";
 import { decideConversationControl } from "./conversation_control.js";
 import { metaArbitrateConversationSignals, projectConversationSignals, projectCoreConflict } from "./semantic_projection.js";
+import { resolveSemanticRouting } from "./semantic_routing.js";
 import { formatSystemLocalIso, getSystemTimeZone } from "./time.js";
 import type { AdultSafetyContext, ChatMessage, DecisionTrace, LifeEvent, MemoryEvidenceBlock, ModelAdapter, PersonaPackage } from "./types.js";
 
@@ -185,6 +186,14 @@ export function decide(
     groupContext,
     semanticProjection: conversationProjection
   });
+  const routing = resolveSemanticRouting({
+    projectionSource: conversationProjection.source,
+    projectionConfidence: conversationProjection.confidence,
+    usedLatentEvaluation: true,
+    usedRegexFallback: semanticRisk.assessmentPath === "regex_fallback",
+    fallbackReason: semanticRisk.assessmentPath === "regex_fallback" ? "risk_assessment_regex_fallback" : undefined,
+    isBusinessPath: true
+  });
   const askClarifyingQuestionByPolicy = conversationControl.topicAction === "clarify";
   const askClarifyingQuestion =
     !isRefusal && !coreConflict && (askClarifyingQuestionByPolicy || (normalized.length < 4 && !impulseWindow));
@@ -228,6 +237,7 @@ export function decide(
     conversationControl,
     relationshipStateSnapshot: personaPkg.relationshipState,
     recallTraceId: options?.recallTraceId,
+    routing,
     riskLatent: semanticRisk.riskLatent,
     riskAssessmentPath: semanticRisk.assessmentPath
   });

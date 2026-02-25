@@ -1,7 +1,7 @@
 {
   "name": "@soulseed/core",
-  "version": "0.2.0",
-  "license": "MIT",
+  "version": "0.3.0",
+  "license": "CC-BY-NC-ND-4.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "src/index.ts",

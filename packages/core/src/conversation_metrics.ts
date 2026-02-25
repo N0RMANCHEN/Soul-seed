@@ -5,6 +5,12 @@ export interface ConversationMetrics {
   servicePhraseRate: number;
   fabricatedRecallRate: number;
   providerLeakRate: number;
+  l1HitRate: number;
+  l2HitRate: number;
+  l3ArbitrationRate: number;
+  l4RegexFallbackRate: number;
+  businessPathRegexRate: number;
+  promptLeakBlockedRate: number;
 }
 
 const SERVICE_PATTERNS = [
@@ -30,13 +36,26 @@ export function computeConversationMetrics(events: LifeEvent[]): ConversationMet
       assistantMessageCount: 0,
       servicePhraseRate: 0,
       fabricatedRecallRate: 0,
-      providerLeakRate: 0
+      providerLeakRate: 0,
+      l1HitRate: 0,
+      l2HitRate: 0,
+      l3ArbitrationRate: 0,
+      l4RegexFallbackRate: 0,
+      businessPathRegexRate: 0,
+      promptLeakBlockedRate: 0
     };
   }
 
   let serviceHits = 0;
   let fabricatedHits = 0;
   let providerHits = 0;
+  let routingCount = 0;
+  let l1Hits = 0;
+  let l2Hits = 0;
+  let l3Hits = 0;
+  let l4Hits = 0;
+  let businessRegexHits = 0;
+  let promptLeakHits = 0;
 
   for (const event of assistant) {
     const text = String(event.payload.text ?? "");
@@ -49,12 +68,35 @@ export function computeConversationMetrics(events: LifeEvent[]): ConversationMet
     if (PROVIDER_LEAK_PATTERNS.some((p) => p.test(text))) {
       providerHits += 1;
     }
+    const routing = (event.payload.trace as { routing?: { tier?: string; isBusinessPath?: boolean } } | undefined)?.routing;
+    if (routing && typeof routing.tier === "string") {
+      routingCount += 1;
+      if (routing.tier === "L1") l1Hits += 1;
+      if (routing.tier === "L2") l2Hits += 1;
+      if (routing.tier === "L3") l3Hits += 1;
+      if (routing.tier === "L4") {
+        l4Hits += 1;
+        if (routing.isBusinessPath !== false) {
+          businessRegexHits += 1;
+        }
+      }
+    }
+    const promptLeakGuard = event.payload.promptLeakGuard as { leak_type?: string } | undefined;
+    if (promptLeakGuard?.leak_type) {
+      promptLeakHits += 1;
+    }
   }
 
   return {
     assistantMessageCount: count,
     servicePhraseRate: serviceHits / count,
     fabricatedRecallRate: fabricatedHits / count,
-    providerLeakRate: providerHits / count
+    providerLeakRate: providerHits / count,
+    l1HitRate: routingCount > 0 ? l1Hits / routingCount : 0,
+    l2HitRate: routingCount > 0 ? l2Hits / routingCount : 0,
+    l3ArbitrationRate: routingCount > 0 ? l3Hits / routingCount : 0,
+    l4RegexFallbackRate: routingCount > 0 ? l4Hits / routingCount : 0,
+    businessPathRegexRate: routingCount > 0 ? businessRegexHits / routingCount : 0,
+    promptLeakBlockedRate: promptLeakHits / count
   };
 }

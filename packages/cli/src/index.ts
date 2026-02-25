@@ -36,6 +36,7 @@ import {
   enforceRecallGroundingGuard,
   deriveRecallBudgetPolicy,
   composeDegradedPersonaReply,
+  applyPromptLeakGuard,
   buildTurnLatencySummary,
   projectConversationSignals,
   enforcePronounRoleGuard,
@@ -196,6 +197,7 @@ import {
   isEnvironmentReady,
   deriveTemporalAnchor,
   enforceTemporalPhraseGuard,
+  generateAutonomyUtterance,
   listLibraryBlocks,
   lintPersona,
   addLibraryBlock,
@@ -2120,8 +2122,36 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   }
 
   const assistantLabel = (): string => `${personaPkg.persona.displayName}>`;
+  let lastOutputGuardTrace:
+    | {
+        leak_type: "system_prompt" | "execution_state" | "provider_meta";
+        source_stage: "reply" | "proactive" | "farewell" | "greeting" | "exit_confirm" | "tool_preflight" | "tool_result" | "tool_failure";
+        rewrite_applied: boolean;
+      }
+    | null = null;
+  const guardAssistantOutput = (
+    content: string,
+    stage: "reply" | "proactive" | "farewell" | "greeting" | "exit_confirm" | "tool_preflight" | "tool_result" | "tool_failure"
+  ): string => {
+    const guarded = applyPromptLeakGuard({
+      text: content,
+      sourceStage: stage,
+      mode: "rewrite"
+    });
+    if (guarded.leakType) {
+      lastOutputGuardTrace = {
+        leak_type: guarded.leakType,
+        source_stage: guarded.sourceStage,
+        rewrite_applied: guarded.rewriteApplied
+      };
+    } else {
+      lastOutputGuardTrace = null;
+    }
+    return guarded.text;
+  };
   const sayAsAssistant = (content: string, emotionPrefix = ""): void => {
-    console.log(`${assistantLabel()} ${emotionPrefix}${content}`);
+    const safeContent = guardAssistantOutput(content, "reply");
+    console.log(`${assistantLabel()} ${emotionPrefix}${safeContent}`);
   };
   const applyHumanPacedDelay = async (startedAtMs: number, replyText: string): Promise<void> => {
     if (!humanPacedMode) {
@@ -2742,34 +2772,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     );
   };
 
-  const hasUngroundedTemporalRecall = (text: string, seedInput?: string): boolean => {
-    const normalized = text.trim().toLowerCase();
-    if (!normalized) {
-      return false;
-    }
-    const cue = /(昨天|上次|之前|先前|你说的|你提到的|你推荐的|你先提到|you said|last time|earlier|you mentioned|you recommended)/iu;
-    if (!cue.test(normalized)) {
-      return false;
-    }
-    const seed = (seedInput ?? "").trim().toLowerCase();
-    if (!seed) {
-      return true;
-    }
-    const tokens = seed.match(/[\p{L}\p{N}_]{2,}/gu) ?? [];
-    const stop = new Set(["昨天", "上次", "之前", "先前", "你", "我", "我们", "you", "i", "we", "last", "time", "earlier"]);
-    const meaningful = tokens.filter((token) => !stop.has(token)).slice(0, 12);
-    if (meaningful.length === 0) {
-      return false;
-    }
-    const hit = meaningful.some((token) => normalized.includes(token));
-    return !hit;
-  };
-
   const streamPersonaAutonomy = async (params: {
     mode: "greeting" | "proactive" | "farewell" | "exit_confirm";
     fallback: string;
     emitTokens?: boolean;
-  }): Promise<{ text: string; streamed: boolean }> => {
+  }): Promise<{ text: string; streamed: boolean; source: "llm" | "degraded" | "fallback"; reasonCodes: string[] }> => {
     const temporalAnchor = deriveTemporalAnchor({
       nowMs: Date.now(),
       lastUserAtMs: Number.isFinite(lastUserAt) ? lastUserAt : null,
@@ -2782,13 +2789,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       lastAssistantOutput,
       temporalHint: temporalAnchor.silenceMinutes < 20 ? "just_now" : "earlier"
     });
-    if (params.mode === "greeting" && !lastUserInput.trim()) {
-      return { text: degradedReply || params.fallback, streamed: false };
-    }
     const apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
-    if (!apiKey || apiKey === "test-key") {
-      return { text: degradedReply || params.fallback, streamed: false };
-    }
     const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
     const anchor = deriveTemporalAnchor({
       nowMs: Date.now(),
@@ -2814,62 +2815,64 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       proactiveMissStreak,
       taskContextHint: lastGoalId ? `有未完成目标 goal:${lastGoalId.slice(0, 8)}` : null
     };
-    const modeInstruction =
-      params.mode === "farewell"
-        ? "场景：结束对话。请给一句有温度的收束，不要流程化确认语。"
-        : params.mode === "exit_confirm"
-          ? "场景：用户询问能否退出。请自然说明可以离开并给出简短确认方式。"
-          : params.mode === "greeting"
-            ? "场景：刚开始会话。请自然开场，不要官方问候句。"
-            : `场景：主动发起对话，关系状态=${relationship.state}，沉默时间=${silenceMin.toFixed(1)}分钟${context.taskContextHint ? `，${context.taskContextHint}` : ""}。`;
-    const messages = [
-      {
-        role: "system" as const,
-        content:
-          `你是一个有连续人格的中文对话者。${modeInstruction} 请说1-2句自然口语，像你自己突然想说的话，不要模板腔，不要条目，不要解释规则，不要括号舞台说明。避免固定开场白，尽量贴合上下文。若上下文有未完成问题，直接接着它说。\n` +
-          `你具备系统时钟与历史时间锚：可以根据 currentTimeIso、lastUserAtIso、silenceMinutes 判断真实间隔。请基于这些时间锚组织“刚才/之前/昨晚/上次”等时间词；不要声称“我不知道时间”或“需要用户提醒我看表”。`
-      },
-      {
-        role: "user" as const,
-        content: `请基于上下文给一句自然发言：${JSON.stringify(context)}`
-      }
-    ];
-    let content = "";
     let started = false;
     const emitTokens = params.emitTokens !== false;
-    try {
-      await adapter.streamChat(
-        messages,
-        {
-          onToken: (chunk: string) => {
-            content += chunk;
-            if (!emitTokens) {
-              return;
-            }
-            if (!started) {
-              process.stdout.write(`\n${assistantLabel()} `);
-              started = true;
-            }
-            process.stdout.write(chunk);
-          },
-          onDone: () => {
-            if (emitTokens && started) {
-              process.stdout.write("\n");
-            }
-          }
+    const generated = await generateAutonomyUtterance({
+      mode: params.mode,
+      adapter,
+      allowLlm: Boolean(apiKey) && apiKey !== "test-key",
+      fallbackText: params.fallback,
+      degradedText: degradedReply,
+      context,
+      onToken: (chunk: string) => {
+        if (!emitTokens) {
+          return;
         }
-      );
-    } catch {
-      return { text: degradedReply || params.fallback, streamed: false };
+        if (!started) {
+          process.stdout.write(`\n${assistantLabel()} `);
+          started = true;
+        }
+        process.stdout.write(chunk);
+      }
+    });
+    if (emitTokens && started && generated.streamed) {
+      process.stdout.write("\n");
     }
-    const normalized = normalizeConversationalReply(content, params.mode, params.fallback, lastUserInput);
-    if (!normalized) {
-      return { text: degradedReply || params.fallback, streamed: false };
+    return generated;
+  };
+
+  const appendAutonomyAssistantMessage = async (params: {
+    text: string;
+    mode: "greeting" | "proactive" | "farewell" | "exit_confirm";
+    source: "llm" | "degraded" | "fallback";
+    reasonCodes: string[];
+    proactive?: boolean;
+    trigger?: string;
+    excludedFromRecall?: boolean;
+  }): Promise<void> => {
+    const memoryMeta = buildMemoryMeta({
+      tier: "pattern",
+      source: "system",
+      contentLength: params.text.length
+    });
+    if (params.excludedFromRecall === true) {
+      memoryMeta.excludedFromRecall = true;
+      memoryMeta.credibilityScore = Math.min(memoryMeta.credibilityScore ?? 0.4, 0.3);
+      memoryMeta.contaminationFlags = [...new Set([...(memoryMeta.contaminationFlags ?? []), "control_prompt"])];
     }
-    if ((params.mode === "greeting" || params.mode === "proactive") && hasUngroundedTemporalRecall(normalized, lastUserInput)) {
-      return { text: degradedReply || params.fallback, streamed: false };
-    }
-    return { text: normalized, streamed: true };
+    await appendLifeEvent(personaPath, {
+      type: "assistant_message",
+      payload: {
+        text: params.text,
+        proactive: params.proactive === true,
+        trigger: params.trigger ?? null,
+        autonomyMode: params.mode,
+        autonomySource: params.source,
+        autonomyReasonCodes: params.reasonCodes,
+        memoryMeta,
+        promptLeakGuard: lastOutputGuardTrace
+      }
+    });
   };
 
   const sendProactiveMessage = async (): Promise<void> => {
@@ -2915,6 +2918,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     );
     const proactiveAdjusted = proactiveNormalized !== proactiveText;
     proactiveText = proactiveNormalized;
+    proactiveText = guardAssistantOutput(proactiveText, "proactive");
     if (
       !proactiveGenerated.streamed ||
       identityGuard.corrected ||
@@ -2947,7 +2951,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         relationalGuard,
         recallGroundingGuard,
         proactiveTemporalGuard,
-        proactiveFactualGrounding
+        proactiveFactualGrounding,
+        autonomyMode: "proactive",
+        autonomySource: proactiveGenerated.source,
+        autonomyReasonCodes: proactiveGenerated.reasonCodes,
+        promptLeakGuard: lastOutputGuardTrace
       }
     });
     await appendLifeEvent(personaPath, {
@@ -3062,6 +3070,36 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     sayAsAssistant(lines.join("\n"));
   };
 
+  const explainToolPreflight = (capability: string, target?: string): string => {
+    if (capability === "session.read_file") {
+      return `我可以先读取这个文件：${target ?? ""}。确认后我会先给结论，再给关键依据。`.trim();
+    }
+    if (capability === "session.fetch_url") {
+      return `我可以先打开这个网址并抓取内容：${target ?? ""}。确认后我会先提炼重点，再给可核对细节。`.trim();
+    }
+    return "我可以先执行这个操作，执行后我会解释结果和下一步建议。";
+  };
+
+  const explainToolSuccess = (capability: string, target?: string): string => {
+    if (capability === "session.read_file") {
+      return `已读取：${target ?? "目标文件"}。我会基于内容继续分析。`;
+    }
+    if (capability === "session.fetch_url") {
+      return `已抓取：${target ?? "目标网址"}。我会基于抓取内容继续回答。`;
+    }
+    return "操作已完成，我继续基于结果处理。";
+  };
+
+  const explainToolFailure = (capability: string, errorText: string): string => {
+    const base = capability === "session.fetch_url" ? "网址抓取失败" : capability === "session.read_file" ? "文件读取失败" : "操作失败";
+    const hint = /not allowed|allowlist|权限|outside|scope/i.test(errorText)
+      ? "建议先确认权限或路径范围。"
+      : /timeout|network|429|5\d\d/i.test(errorText)
+        ? "建议稍后重试，或改成更小输入范围。"
+        : "建议检查参数后重试。";
+    return `${base}：${errorText} ${hint}`;
+  };
+
   const handleCapabilityIntent = async (input: string): Promise<"handled" | "not_matched" | "exit"> => {
     const resolvedIntent = resolveCapabilityIntent(input);
     if (!resolvedIntent.matched || !resolvedIntent.request) {
@@ -3146,7 +3184,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         input,
         capability: effectiveRequest.name,
         reason: resolvedIntent.reason,
-        confidence: resolvedIntent.confidence
+        confidence: resolvedIntent.confidence,
+        routingTier: resolvedIntent.routingTier ?? "L4",
+        fallbackReason: resolvedIntent.fallbackReason ?? null
       }
     });
 
@@ -3182,14 +3222,21 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         if (!prompt.streamed) {
           sayAsAssistant(prompt.text);
         }
+        await appendAutonomyAssistantMessage({
+          text: prompt.text,
+          mode: "exit_confirm",
+          source: prompt.source,
+          reasonCodes: prompt.reasonCodes,
+          excludedFromRecall: true
+        });
       } else if (guarded.capability === "session.read_file") {
         const normalizedPath = String(guarded.normalizedInput.path ?? "");
         pendingReadConfirmPath = normalizedPath;
-        sayAsAssistant(`我可以现在打开这个文件：${normalizedPath}。你回“好”我就开始，不想读就回“取消”。`);
+        sayAsAssistant(`${explainToolPreflight(guarded.capability, normalizedPath)} 你回“好”我就开始，不想读就回“取消”。`);
       } else if (guarded.capability === "session.fetch_url") {
         const normalizedUrl = String(guarded.normalizedInput.url ?? "");
         pendingFetchConfirmUrl = normalizedUrl;
-        sayAsAssistant(`我可以现在打开这个网址：${normalizedUrl}。你回“好”我就开始，不想读就回“取消”。`);
+        sayAsAssistant(`${explainToolPreflight(guarded.capability, normalizedUrl)} 你回“好”我就开始，不想读就回“取消”。`);
       } else if (guarded.capability === "session.set_mode") {
         sayAsAssistant("这是高风险设置，请在命令后补充 `confirmed=true` 再执行。");
       } else if (guarded.capability === "session.create_persona") {
@@ -3311,65 +3358,93 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
 
     if (guarded.capability === "session.read_file") {
       const normalizedPath = String(guarded.normalizedInput.path ?? "");
-      await performReadAttachment({
-        rawPath: normalizedPath,
-        personaPath,
-        toolSession,
-        setAbortController: (controller: AbortController | null) => {
-          currentToolAbort = controller;
-        },
-        onDone: () => {
-          currentToolAbort = null;
-        },
-        attachedFiles,
-        approvedReadPaths,
-        onLoaded: (loaded) => {
-          setActiveReadingSource({
-            kind: "file",
-            uri: loaded.path,
-            content: loaded.content
-          });
-        }
-      });
-      await appendLifeEvent(personaPath, {
-        type: "capability_call_succeeded",
-        payload: {
-          capability: guarded.capability,
-          path: normalizedPath
-        }
-      });
+      try {
+        await performReadAttachment({
+          rawPath: normalizedPath,
+          personaPath,
+          toolSession,
+          setAbortController: (controller: AbortController | null) => {
+            currentToolAbort = controller;
+          },
+          onDone: () => {
+            currentToolAbort = null;
+          },
+          attachedFiles,
+          approvedReadPaths,
+          onLoaded: (loaded) => {
+            setActiveReadingSource({
+              kind: "file",
+              uri: loaded.path,
+              content: loaded.content
+            });
+          }
+        });
+        sayAsAssistant(explainToolSuccess(guarded.capability, normalizedPath));
+        await appendLifeEvent(personaPath, {
+          type: "capability_call_succeeded",
+          payload: {
+            capability: guarded.capability,
+            path: normalizedPath
+          }
+        });
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        sayAsAssistant(explainToolFailure(guarded.capability, msg));
+        await appendLifeEvent(personaPath, {
+          type: "capability_call_rejected",
+          payload: {
+            capability: guarded.capability,
+            reason: "tool_execution_failed",
+            detail: msg
+          }
+        });
+      }
       return "handled";
     }
 
     if (guarded.capability === "session.fetch_url") {
       const rawUrl = String(guarded.normalizedInput.url ?? "");
-      await performUrlFetch({
-        url: rawUrl,
-        personaPath,
-        toolSession,
-        setAbortController: (controller: AbortController | null) => {
-          currentToolAbort = controller;
-        },
-        onDone: () => {
-          currentToolAbort = null;
-        },
-        fetchedUrls,
-        approvedFetchOrigins,
-        onLoaded: (loaded) => {
-          setActiveReadingSource({
-            kind: "web",
-            uri: loaded.url,
-            content: loaded.content
-          });
-        }
-      });
-      await appendLifeEvent(personaPath, {
-        type: "capability_call_succeeded",
-        payload: {
-          capability: guarded.capability,
-          url: rawUrl
-        }
-      });
+      try {
+        await performUrlFetch({
+          url: rawUrl,
+          personaPath,
+          toolSession,
+          setAbortController: (controller: AbortController | null) => {
+            currentToolAbort = controller;
+          },
+          onDone: () => {
+            currentToolAbort = null;
+          },
+          fetchedUrls,
+          approvedFetchOrigins,
+          onLoaded: (loaded) => {
+            setActiveReadingSource({
+              kind: "web",
+              uri: loaded.url,
+              content: loaded.content
+            });
+          }
+        });
+        sayAsAssistant(explainToolSuccess(guarded.capability, rawUrl));
+        await appendLifeEvent(personaPath, {
+          type: "capability_call_succeeded",
+          payload: {
+            capability: guarded.capability,
+            url: rawUrl
+          }
+        });
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        sayAsAssistant(explainToolFailure(guarded.capability, msg));
+        await appendLifeEvent(personaPath, {
+          type: "capability_call_rejected",
+          payload: {
+            capability: guarded.capability,
+            reason: "tool_execution_failed",
+            detail: msg
+          }
+        });
+      }
       return "handled";
     }
 
@@ -3463,6 +3538,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       if (!farewell.streamed) {
         sayAsAssistant(farewell.text);
       }
+      await appendAutonomyAssistantMessage({
+        text: farewell.text,
+        mode: "farewell",
+        source: farewell.source,
+        reasonCodes: farewell.reasonCodes
+      });
       await appendLifeEvent(personaPath, {
         type: "capability_call_succeeded",
         payload: {
@@ -3723,6 +3804,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     await applyHumanPacedDelay(greetingStartedAtMs, greetingText);
     sayAsAssistant(greetingText);
   }
+  await appendAutonomyAssistantMessage({
+    text: greetingText,
+    mode: "greeting",
+    source: greetingGenerated.source,
+    reasonCodes: greetingGenerated.reasonCodes
+  });
   lastAssistantOutput = greetingText;
   lastAssistantAt = Date.now();
   scheduleProactiveTick();
@@ -3863,6 +3950,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             if (!farewell.streamed) {
               sayAsAssistant(farewell.text);
             }
+            await appendAutonomyAssistantMessage({
+              text: farewell.text,
+              mode: "farewell",
+              source: farewell.source,
+              reasonCodes: farewell.reasonCodes
+            });
             rl.close();
             return;
           }
@@ -4707,10 +4800,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
 
         if (trace.refuse) {
       const refusal = "这个请求我不能协助。我可以帮你改成安全合法的方案。";
+      const refusalSafe = guardAssistantOutput(refusal, "reply");
       const emitStartedAtMs = Date.now();
-      sayAsAssistant(refusal);
+      sayAsAssistant(refusalSafe);
       addLatency("emit", emitStartedAtMs);
-      lastAssistantOutput = refusal;
+      lastAssistantOutput = refusalSafe;
       lastAssistantAt = Date.now();
       const refusalLatency = buildTurnLatencySummary({
         breakdown: latencyBreakdown,
@@ -4742,23 +4836,24 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       await appendLifeEvent(personaPath, {
         type: "assistant_message",
         payload: {
-          text: refusal,
+          text: refusalSafe,
           trace: compactDecisionTrace(trace),
+          promptLeakGuard: lastOutputGuardTrace,
           memoryMeta: buildMemoryMeta({
             tier: classifyMemoryTier({
               userInput: input,
-              assistantReply: refusal,
+              assistantReply: refusalSafe,
               trace
             }),
             source: "chat",
-            contentLength: refusal.length
+            contentLength: refusalSafe.length
           })
         }
       });
       lastAssistantAt = Date.now();
       const relationshipAfterRefusal = evolveRelationshipStateFromAssistant(
         personaPkg.relationshipState ?? createInitialRelationshipState(),
-        refusal,
+        refusalSafe,
         await readLifeEvents(personaPath)
       );
       if (
@@ -4777,7 +4872,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       try {
         const nextInterests = await updateInterestsFromTurn(personaPath, {
           userInput: input,
-          assistantOutput: refusal,
+          assistantOutput: refusalSafe,
           llmAdapter: adapter
         });
         personaPkg.interests = {
@@ -4788,7 +4883,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       } catch {
         // interest update failure should not block the main dialogue path
       }
-      await handleNarrativeDrift(personaPath, personaPkg.constitution, input, refusal);
+      await handleNarrativeDrift(personaPath, personaPkg.constitution, input, refusalSafe);
       await runSelfRevisionLoop({
         personaPath,
         personaPkg,
@@ -5158,6 +5253,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       assistantContent = compactReplyForChatPace(assistantContent, input);
       const compactedEmotion = parseEmotionTag(assistantContent);
       assistantContent = compactedEmotion.text;
+      assistantContent = guardAssistantOutput(assistantContent, "reply");
       addLatency("rewrite", rewriteStartedAtMs);
       const resolvedEmotion = compactedEmotion.emotion ?? emotion.emotion ?? inferEmotionFromText(assistantContent);
       const shouldDisplayAssistant = !(loopBreak.triggered && assistantContent.trim().length === 0);
@@ -5260,6 +5356,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           text: assistantContent,
           trace: compactDecisionTrace(trace),
           metaTraceId: metaTraceId ?? null,
+          promptLeakGuard: lastOutputGuardTrace,
           identityGuard,
           relationalGuard,
           recallGroundingGuard,

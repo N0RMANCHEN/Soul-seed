@@ -1,14 +1,28 @@
 # Soulseed Roadmap (Execution-Oriented, Reindexed, Archive-Complete)
 
 ## 文档规则总纲
-- 更新日期：2026-02-24
+- 更新日期：2026-02-25
 - 核验范围：`/Users/hirohi/Soul-seed` + `/Users/hirohi/Downloads/Soul-seed-2.24.03/doc/`
 - 状态定义：`todo` / `in_progress` / `blocked` / `done` / `deferred` / `historical`
 
 ### 1) Phase 展示与优先级规则
-- Phase 可无限扩展：`Phase F -> G -> H -> I -> J ...`。
-- 当前执行优先级（跨 Phase）：`Phase G > Phase H > Phase I`。
+- Phase 可无限扩展：`Phase F -> G -> H -> I -> J -> K ...`。
+- 当前执行优先级（跨 Phase）：`Phase H > Phase J > Phase K > Phase I`。
 - 同一时刻默认只允许一个 Phase 进入主开发态，后续 Phase 以前序 Phase 的出口条件为门禁。
+
+### 1.1) Phase 与版本联动规则（强制）
+- 每当一个完整 Phase 达到“全部任务完成并归档”的状态，必须同步执行一次版本号 `minor` 递增（即 `x.y.z` 中 `y` 加 1）。
+- 递增 minor 时，必须同步更新：`package.json`、workspace 包版本、`CHANGELOG.md` 当前版本节、README 版本徽标以及相关门禁文件中的版本常量。
+- 若 Phase 完成但暂不发布版本，必须在 Roadmap 与交付说明里明确“延迟发布原因”和计划发布时间。
+
+### 1.2) Phase 切分规则（强制）
+- 每个 Phase 必须是“单一目标域”的可交付切片，不允许把 `状态内核`、`交互体验`、`产品化治理` 三类高耦合目标混在同一 Phase。
+- 触发切分条件（任一满足即必须拆新 Phase）：
+  - 任务规模超过 `12` 个 active 项；
+  - 出现 `>=3` 条跨域硬依赖链（如状态内核任务直接阻塞交互体验任务）；
+  - 验收口径不一致（同一 Phase 同时需要结构门禁 + UX 体验门禁且无法同批验证）。
+- 切分后必须显式声明：`新 Phase 目标`、`入口条件`、`出口条件`、`与前一 Phase 的依赖边界`、`版本影响（是否触发 minor 递增）`。
+- 新 Phase 的任务编号必须连续追加，不得改写既有任务 ID。
 
 ### 2) 任务编号规则
 - 本次执行一次性重编号（2026-02-24），用于清理历史混编编号。
@@ -35,25 +49,50 @@
 - 同一 Phase 任务工作量差距建议控制在 30% 以内；超出需注明原因。
 - AB 共建任务必须写主副责（例如 `AB(A主/B辅)`）。
 
+### 5.1) 执行前任务分组评估规则（强制）
+- 每次开始执行计划前，必须先做一次任务分组评估：`复杂度`（S/M/L）+ `耦合度`（low/medium/high）+ `风险等级`（soft/hard）。
+- 分组决策规则：
+  - `低耦合 + S/M`：可并行执行，单次建议 `2-3` 个任务。
+  - `中耦合`：建议串行为主，必要时并行但必须设同步点。
+  - `高耦合 或 hard 风险`：必须串行，单次仅 `1` 个任务，完成并验证后再进入下一项。
+- 交付时必须写明本次选择“并行/串行”的依据与分组结果。
+
+### 5.2) 新 Phase 接手前分工规划规则（强制）
+- 每次进入一个新 Phase 前，必须先完成该 Phase 的分工规划，再开始编码实现。
+- 分工规划至少包含：`任务归属(A/B/AB)`、`关键依赖链`、`同步点`、`并行批次划分`、`回滚责任归属`。
+- 未完成分工规划时，Phase 任务状态不得从 `todo` 切换到 `in_progress`。
+
 ## 当前执行总览（重排后）
 - `in_progress`：`none`
 - `blocked`：`none`
 - `todo`：其余 active 任务
 
+## 现状评估（兴趣/注意力/主动交互）
+- 结论：`部分搭成，尚未形成完整闭环`。
+- 已有能力（代码已接主链路）：
+  - 兴趣更新：`interests.json` 每轮演化与 `curiosity` 计算已落地。
+  - 注意力映射：已存在 `Interest -> Attention -> EngagementTier` 决策链。
+  - 主动消息：CLI 已有定时 tick、概率决策、静默时段与 cooldown 机制。
+- 核心缺口（未达产品愿景）：
+  - 缺 `topic_state / unresolved_threads / engagement_plan / proactive_plan` 的工程化落盘与治理闭环。
+  - 主动消息未实现“先规划后生成”的强约束（intent/topic/entity/goal/justification 契约不完整）。
+  - 交互形态仍以 `user turn -> assistant turn` 为主，缺少更接近人类对话的连续会话策略（插话节流、重叠意图处理、自然停顿协商）。
+  - 体验质量门禁未形成独立赛道（缺“非轮询式交互体验”专项回归与阈值）。
+
+## 现状评估（多人格聊天系统）
+- 结论：`未搭成可发布版本`，当前仅有群聊参与判定雏形，缺完整系统能力。
+- 已有能力（局部）：
+  - 单 persona 的 `groupParticipation` 决策字段与基础 cooldown 判定。
+  - 主动消息/会话控制可输出 group 相关 reason codes。
+- 核心缺口（必须补齐）：
+  - 缺多人格会话编排层（speaker registry、回合调度、冲突仲裁、抢答抑制）。
+  - 缺 persona 间上下文隔离与共享边界（shared context vs private memory）策略。
+  - 缺多人格主动消息协调器（避免多 persona 同时触发主动打扰）。
+  - 缺多人格评测赛道（覆盖 addressing 命中率、插话冲突率、persona identity leakage）。
+
 ## 分工总览（双人并行）
 
-### Phase G 分工
-
-| Person A（MindModel + 记忆） | Person B（路由 + 安全 + 工具） |
-|---|---|
-| G/P0-3 回忆动态调度 | G/P0-5 工具调用自然化 |
-| G/P0-4 Proactive 主动系统 | G/P0-6 四层语义路由门禁 |
-| G/P1-0 群聊参与控制（← G/P0-4） | G/P0-7 业务 regex 清零（← G/P0-6） |
-| G/P1-1 开场/结束语短语库 | G/P0-8 安全 fallback 收敛（← G/P0-6） |
-
-- 同步点：无（全部从"控制面稳定"独立展开）
-- A 关键链：`G/P0-4 → G/P1-0`；B 关键链：`G/P0-6 → G/P0-7 / G/P0-8`
-- 任务数：A=4 | B=4 | 差距 0%
+- `Phase G` 已完成并从 active 列表移除（按归档规则由 Git 历史保留）。
 
 ### Phase H 分工
 
@@ -89,112 +128,52 @@
 - ⚠ 同步点（A→B）：B 的 `H/P1-11` 需等 A 完成 `I/P0-2`
 - 任务数：A=2 | B=3 | I/P2-0 为 Could 级可选
 
-## Phase G（第一优先级：会话控制与交互闭环）
+### Phase J 分工
 
-### G/P0-3 回忆动态调度（Task-aware Recall Budget）
-- 原编号：`G/P1-9`
-- 状态：`done`，必要性：`Must`
-- 来源需求：`spec/3` `spec/11` `extra/34`
-- 实现方式：按任务类型动态分配 recall budget，相关优先，长尾抑制。
-- 测试/DoD：token 成本下降且相关性不降。
-- 执行证据：`packages/core/src/recall_budget_policy.ts` `packages/core/test/recall_budget_policy.test.mjs` `packages/cli/src/index.ts`
-- 依赖：`Phase G 控制面稳定`；回滚：固定 recall budget。
+| Person A | Person B |
+|---|---|
+| J/P0-0 Interest-Attention 状态闭环 | J/P0-1 Proactive Planner 契约化 |
+| J/P0-2 非轮询会话循环（核心交互层） | J/P1-0 Engagement Plan + 预算门禁 |
+| J/P1-1 多话题上下文调度器 | J/P1-2 交互体验评测赛道 |
 
-### G/P0-4 MindModel H3：Proactive 主动系统
-- 原编号：`G/P1-6`
-- 状态：`done`，必要性：`Must`
-- 来源需求：`phases/H3` `spec/19`
-- 实现方式：主动意图规划器（关心/跟进/提醒/分享）+ 频率门禁 + 关系约束。
-- 测试/DoD：触发频率与主题相关率达标。
-- 执行证据：`packages/core/src/proactive/engine.ts` `packages/core/test/capabilities.test.mjs` `packages/cli/src/index.ts`
-- 依赖：`Phase G 控制面稳定`；回滚：降级为被动。
+- ⚠ 同步点（A→B）：`J/P1-2` 需等 `J/P0-2` 稳定后才能固化阈值
+- 任务数：A=3 | B=3 | 差距 0%
 
-### G/P0-5 工具调用自然化与意图确认闭环
-- 原编号：`G/P1-10`
-- 状态：`todo`，必要性：`Must`
-- 来源需求：`spec/16` `spec/18`
-- 实现方式：工具前确认、工具后人格化解释、失败重试建议闭环。
-- 测试/DoD：工具调用全链路可理解。
-- 依赖：`Phase G 控制面稳定`；回滚：关闭确认层。
+### Phase K 分工
 
-### G/P0-6 四层语义路由门禁落地（L1/L2/L3/L4）
-- 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
-- 来源需求：`Product-Standards/3.6` `Quality-Evaluation/Lx`
-- 实现方式：统一路由层级输出（L1/L2/L3/L4）与原因字段；将路由层级纳入 `decision_trace` 与质量报表。
-- 测试/DoD：业务链路可观测路由层级；`BusinessPathRegexRate == 0`。
-- 依赖：`Phase G 控制面稳定`；回滚：先监控后拦截（保留告警）。
+| Person A | Person B |
+|---|---|
+| K/P0-0 多人格会话图谱与注册表 | K/P0-1 多人格发言仲裁器（addressing 优先） |
+| K/P0-2 回合调度与抢答抑制 | K/P1-0 上下文总线与私有记忆隔离 |
+| K/P1-1 多人格主动协同规划器 | K/P1-2 CLI 多人格交互命令与会话视图 |
+| K/P1-3 多人格评测赛道（AB共建） | K/P1-3 多人格评测赛道（AB共建） |
 
-### G/P0-7 业务 regex 主路径清零（会话/召回/代词）
-- 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
-- 来源需求：`Product-Standards/3.6` `archive/18.3`
-- 实现方式：将 `conversation/recall/pronoun` 的业务判定迁移到向量/潜向量主路径，regex 仅保留安全/兼容兜底。
-- 测试/DoD：核心模块不再以 regex 作为第一判定分支；语义回归通过。
-- 依赖：`G/P0-6`；回滚：按模块 feature flag 退回旧路径。
+- ⚠ 同步点 1（A→B）：`K/P1-2` 需等 `K/P0-0` 注册表结构冻结
+- ⚠ 同步点 2（B→A）：`K/P1-1` 需等 `K/P0-1` 仲裁策略稳定
+- 任务数：A=4（含共建1）| B=4（含共建1）| 差距 0%
 
-### G/P0-8 安全 fallback 单入口收敛
-- 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
-- 来源需求：`Product-Standards/3.6` `archive/20.5`
-- 实现方式：收敛重复安全 fallback 逻辑到单入口（统一评估、统一 trace、统一审计字段）。
-- 测试/DoD：fallback 逻辑单源且可追踪；安全回归不退化。
-- 依赖：`G/P0-6`；回滚：保留 legacy 兼容代理层。
+## 全量重排排期（不丢失）
 
-### G/P0-9 系统提示泄漏治理（Prompt Leak Guard）
-- 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
-- 来源需求：`user-feedback/2026-02-24` `spec/18` `Quality-Evaluation/L4RegexFallbackRate`
-- 负责人：`B`
-- 域标签：`control-plane`
-- 同步点：`等待 G/P0-8 统一 fallback 入口`
-- 阻塞级别：`hard`
-- 实现方式：新增系统语句泄漏检测（如“系统提示/执行状态/观察你”等元叙事措辞）；在回复提交前增加人格层 rewrite/reject gate；记录结构化 trace（`leak_type` `source_stage` `rewrite_applied`）。
-- 测试/DoD：系统提示泄漏样本阻断率 100%；正常对话误杀率受控（<=1%）。
-- 依赖：`G/P0-6` `G/P0-8`；回滚：降级为只告警不拦截；回滚归属：`B`。
+### 迭代窗口与批次策略
+- `W1-W3`：Phase H / Batch-H0（高耦合、hard 风险，严格串行）
+  - `H/P0-0 -> H/P0-1 -> H/P0-2 -> H/P0-3 -> H/P0-4`
+- `W4-W6`：Phase H / Batch-H1（中耦合，串行主 + 小并行）
+  - `H/P1-0 -> H/P1-1 -> H/P1-2 -> H/P1-3 -> H/P1-4 -> H/P1-5 -> H/P1-6 -> H/P1-7`
+- `W7-W8`：Phase H / Batch-H2（验收与风险护栏，分组并行）
+  - `H/P1-8 -> H/P1-9 -> H/P1-10 -> H/P1-11 -> H/P1-12 -> H/P1-13 -> H/P1-14 -> H/P1-15 -> H/P1-16 -> H/P1-17 -> H/P1-18 -> H/P1-19`
+- `W9-W10`：Phase J（交互体验闭环，`P0` 串行，`P1` 条件并行）
+  - `J/P0-0 -> J/P0-1 -> J/P0-2 -> (J/P1-0 || J/P1-1) -> J/P1-2`
+- `W11-W12`：Phase K（多人格聊天系统，仲裁链路串行，工具/评测并行）
+  - `K/P0-0 -> K/P0-1 -> K/P0-2 -> (K/P1-0 || K/P1-2) -> K/P1-1 -> K/P1-3`
+- `W13+`：Phase I（产品化收口）
+  - `I/P0-0 -> I/P0-2 -> I/P0-3 -> I/P2-0 -> I/P2-1`
 
-### G/P0-10 网络异常下人格回路保真（Degraded Persona Path Integrity）
-- 原编号：`新增`
-- 状态：`done`，必要性：`Must`
-- 来源需求：`user-feedback/2026-02-24` `spec/18` `spec/19`
-- 负责人：`AB(A主/B辅)`
-- 域标签：`shared`
-- 同步点：`A 等待 B 完成 G/P0-9 泄漏门禁；B 等待 A 完成语气策略基线`
-- 阻塞级别：`hard`
-- 实现方式：将中间主动询问、开场白、结束语统一接入人格主回路（同一 voice policy/relationship state/context gate）；网络异常与 fallback 场景禁用固定模板直出，改为 `persona-aware degraded composer`。
-- 测试/DoD：异常注入（timeout/429/5xx/model_not_exist）下人格一致性评分不低于阈值；开场/主动/结束语在正常与异常路径风格偏差受控。
-- 执行证据：`packages/core/src/degraded_persona_composer.ts` `packages/core/test/degraded_persona_composer.test.mjs` `packages/cli/src/index.ts`
-- 依赖：`G/P0-4` `G/P0-8` `H/P0-2`；回滚：feature flag 退回当前 fallback 路径；回滚归属：`AB(A主)`。
-
-### G/P0-11 会话阶段时延剖析与体验预算门禁（Latency Mix Profiler）
-- 原编号：`新增`
-- 状态：`done`，必要性：`Must`
-- 来源需求：`user-feedback/2026-02-24` `spec/24` `extra/48` `I/P0-2`
-- 负责人：`A`
-- 域标签：`state-core`
-- 同步点：`等待 I/P0-2 指标口径冻结后收敛门禁阈值`
-- 阻塞级别：`soft`
-- 实现方式：按回合拆分 `routing/recall/planning/llm_primary/llm_meta/guard/rewrite/emit` 阶段计时；输出时间占比、平均时长、p50/p95、异常占比；接入评估系统生成“简化裁切收益 vs 质量损失”建议。
-- 测试/DoD：CI 自动产出阶段占比报告；关键阶段时延越界可触发门禁 fail；可定位导致“卡顿”的主耗时段与工作流程占比。
-- 执行证据：`packages/core/src/turn_latency_profiler.ts` `scripts/latency_report.mjs` `packages/cli/src/index.ts`
-- 依赖：`G/P0-6` `I/P0-2`；回滚：仅保留观测采样，不启用硬门禁；回滚归属：`A`。
-
-### G/P1-0 MindModel H4：AI 群聊参与控制
-- 原编号：`G/P1-7`
-- 状态：`done`，必要性：`Should`
-- 来源需求：`phases/H4` `spec/20`
-- 实现方式：参与门槛 + 仲裁器，限制抢答/连发。
-- 测试/DoD：打断率、刷屏率达标。
-- 执行证据：`packages/core/src/conversation_control.ts` `packages/core/src/orchestrator.ts` `packages/core/test/conversation_control.test.mjs` `packages/core/test/orchestrator_memory_selection.test.mjs` `packages/cli/src/index.ts`
-- 依赖：`G/P0-4`；回滚：回退轮询仲裁。
-
-### G/P1-1 开场/结束语短语库（voice_profile 扩展）
-- 原编号：`F/P1-1`
-- 状态：`todo`，必要性：`Should`
-- 来源需求：`spec/18` `spec/27`
-- 实现方式：扩展 `greeting/farewell` 池，按关系/情绪/场景抽样。
-- 测试/DoD：语料去重与人格一致性评测通过。
-- 依赖：`Phase G 控制面稳定`；回滚：回到固定模板。
+### 任务保全映射（防丢失）
+- `Phase H`：保留全部 `25` 项（`H/P0-0..4` + `H/P1-0..19`），无删减。
+- `Phase J`：保留全部 `6` 项（`J/P0-0..2` + `J/P1-0..2`），无删减。
+- `Phase K`：新增 `7` 项（多人格聊天完整链路）。
+- `Phase I`：保留全部 `5` 项（`I/P0-0`、`I/P0-2`、`I/P0-3`、`I/P2-0`、`I/P2-1`），无删减。
+- `Phase G`：已归档，历史完成项保持在 Git 记录中，不回写 active 列表。
 
 ## Phase H（第二优先级：状态闭环与兼容兑现）
 
@@ -204,7 +183,7 @@
 - 来源需求：`phases/H5` `spec/21` `extra/40`
 - 实现方式：`proposal -> gates -> deterministic apply`，禁止 LLM 直写状态。
 - 测试/DoD：delta 可审计、可回放、可拒绝。
-- 依赖：`Phase G` 出口条件满足；回滚：保留旧路径并行。
+- 依赖：`前序控制面任务出口条件满足`；回滚：保留旧路径并行。
 
 ### H/P0-1 Invariant Table 回归落地
 - 原编号：`G/P2-6`
@@ -292,7 +271,7 @@
 - 来源需求：`archive/12.人类化不完美`
 - 实现方式：把“非全知、非稳定满分、允许不完美”转换成可测规则，加入输出策略与回归断言。
 - 测试/DoD：禁止持续“完美答复”模式，允许合理不确定表达，且不降低安全合规。
-- 依赖：`G/P0-6` `H/P0-1`；回滚：仅保留监控不做硬门禁。
+- 依赖：`四层语义路由门禁（已完成）` `H/P0-1`；回滚：仅保留监控不做硬门禁。
 
 ### H/P1-7 与现有架构兼容说明落地校核
 - 原编号：`新增（A17）`
@@ -340,7 +319,7 @@
 - 来源需求：`archive/20.1`
 - 实现方式：限制面板化参数外显，要求回复保持自然语言主导。
 - 测试/DoD：数值化过载率低于阈值。
-- 依赖：`G/P0-6`；回滚：以告警替代拦截。
+- 依赖：`四层语义路由门禁（已完成）`；回滚：以告警替代拦截。
 
 ### H/P1-13 风险护栏：Relationship 注入噪音（A20.2）
 - 原编号：`新增`
@@ -396,7 +375,7 @@
 - 来源需求：`spec/29` `archive/17`
 - 实现方式：把附录B接入点列表转为工程检查单，逐项绑定代码锚点与回归用例，防止“接错层/侵入过深”。
 - 测试/DoD：接入点检查单全通过，且每项都有代码证据与回归案例。
-- 依赖：`F/P0-3` `G/P0-6` `H/P0-0`；回滚：回退到人工架构评审。
+- 依赖：`F/P0-3` `四层语义路由门禁（已完成）` `H/P0-0`；回滚：回退到人工架构评审。
 
 ## Phase I（第三优先级：产品化与后置演进）
 
@@ -440,11 +419,120 @@
 - 测试/DoD：跨 provider 行为契约一致；fallback 行为可预测；故障定位不依赖人工复盘日志。
 - 依赖：`I/P0-2` `H/P0-2`；回滚：保留当前双 adapter 直连实现并关闭 Registry 路径。
 
+## Phase J（第二优先级：会话体验闭环与非轮询交互）
+
+### J/P0-0 Interest-Attention 状态闭环（topic_state + unresolved threads）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`AGENT.md 1.2` `spec/28(A3)` `doc/Product-Standards.md 3.1/3.2/3.6`
+- 实现方式：将兴趣/注意力从“仅分值”升级为“线程化状态”，落盘 `topic_state.json`（activeTopic、threadStack、unresolvedThreads、lastShiftReason），并接入 `proposal -> gates -> deterministic apply`。
+- 测试/DoD：可追踪线程切换原因；跨会话可恢复未闭环线程；业务主路径不走 regex。
+- 依赖：`H/P0-0` `H/P0-1`；回滚：退回当前 score-only 路径。
+
+### J/P0-1 Proactive Planner 契约化（先规划后生成）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`AGENT.md 1.2` `doc/Product-Standards.md 3.4` `spec/28(A4)`
+- 实现方式：新增 `proactive_plan.json` 与 planner 产物契约：`intent + topic/entity + goal + justification + deferReason`；生成回复前必须先过 planner gate。
+- 测试/DoD：所有主动消息都能回放到 plan；无 plan 的主动输出为 0。
+- 依赖：`J/P0-0` `H/P0-1`；回滚：仅允许低频 fallback 模式并强审计。
+
+### J/P0-2 非轮询会话循环（Human-like Turn Flow）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`AGENT.md 1.2(Interaction Modes)` `README 产品愿景（持续陪伴而非客服轮询）`
+- 实现方式：在 CLI 主循环增加“连续会话层”：自然停顿窗口、用户未说完保护、轻量 backchannel、插话节流、主动消息与用户输入冲突仲裁。
+- 测试/DoD：不再只表现为固定一问一答；无抢答/无连续打断；可配置降级到 legacy 轮询模式。
+- 依赖：`J/P0-1`；回滚：feature flag 关闭连续会话层。
+
+### J/P1-0 Engagement Plan 落盘与预算门禁
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Should`
+- 来源需求：`spec/28(A1)` `doc/Product-Standards.md 3.1/4`
+- 实现方式：新增 `engagement_plan.json`（tier、budget、depth ceiling、interrupt policy），每轮执行前先决策并绑定 token/latency 预算。
+- 测试/DoD：`IGNORE/REACT/LIGHT/NORMAL/DEEP` 行为与预算一致；超时按降级合同执行。
+- 依赖：`J/P0-0`；回滚：保留静态预算。
+
+### J/P1-1 多话题上下文调度器（Context Scheduler）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Should`
+- 来源需求：`AGENT.md 1.2` `doc/Quality-Evaluation.md L3`
+- 实现方式：实现话题优先队列与上下文窗口调度，支持“主线程 + 支线程”并行保留，减少上下文突然跳题。
+- 测试/DoD：多轮对话 topic drift 下降；未闭环话题召回成功率提升。
+- 依赖：`J/P0-0` `J/P1-0`；回滚：单线程上下文策略。
+
+### J/P1-2 会话体验评测赛道（Continuity + Interaction）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`doc/Quality-Evaluation.md L3/L5` `AGENT.md Doc Sync Gate`
+- 实现方式：新增“交互形态”指标与回归集：`TurnNaturalnessRate`、`InterruptCollisionRate`、`UnfinishedThoughtRespectRate`、`ProactiveRelevancePassRate`。
+- 测试/DoD：PR/Nightly 可自动出分；低于阈值阻断发布。
+- 依赖：`J/P0-2`；回滚：降级为观测告警。
+
+## Phase K（第三优先级：多人格聊天系统）
+
+### K/P0-0 Multi-Persona Session Graph（会话图谱与注册表）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`AGENT.md 1.2(Group Chat)` `doc/Product-Standards.md 3.4`
+- 实现方式：建立多人格会话图谱（persona registry、speaker metadata、turn ownership、session scope），并接入统一决策 trace。
+- 测试/DoD：会话可稳定加载多个 persona；每轮发言归属可追溯。
+- 依赖：`J/P0-0` `H/P0-0`；回滚：退回单 persona 会话模式。
+
+### K/P0-1 多人格发言仲裁器（Addressing-First）
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`AGENT.md 1.2(Group Chat)` `doc/Product-Standards.md 3.4/3.6`
+- 实现方式：实现 deterministic arbitration：addressing > safety > task relevance > interest，避免多人格抢答。
+- 测试/DoD：点名命中率达标；非点名场景无多 persona 同时抢答。
+- 依赖：`K/P0-0` `H/P0-1`；回滚：启用单 persona 主讲兜底模式。
+
+### K/P0-2 多人格回合调度与插话节流
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`README 愿景（自然陪伴）` `doc/Quality-Evaluation.md L3`
+- 实现方式：新增 turn scheduler、per-persona cooldown、冲突窗口和延迟重试机制，避免“连环插话”。
+- 测试/DoD：插话冲突率低于阈值；连续两轮以上抢答为 0。
+- 依赖：`K/P0-1` `J/P0-2`；回滚：固定轮询主讲策略。
+
+### K/P1-0 Shared Context Bus 与私有记忆隔离
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`AGENT.md Core-first + Memory Boundary` `doc/Product-Standards.md 2/5`
+- 实现方式：定义共享上下文总线（会话公共事实）与 persona 私有记忆边界（private life log / private memory tier）。
+- 测试/DoD：persona 间无未授权记忆泄漏；共享事实同步可审计。
+- 依赖：`K/P0-0` `H/P0-2`；回滚：仅共享显式用户输入文本。
+
+### K/P1-1 多人格主动协同规划器
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Should`
+- 来源需求：`J/P0-1 proactive planner` `AGENT.md Interaction Modes`
+- 实现方式：扩展 proactive planner 到多人格：每个 tick 只允许单 persona 获得主动资格，其他 persona 进入 defer queue。
+- 测试/DoD：多 persona 主动冲突率接近 0；主动消息相关度达标。
+- 依赖：`K/P0-1` `K/P0-2` `J/P0-1`；回滚：关闭多人格主动，仅保留被动响应。
+
+### K/P1-2 CLI 多人格交互命令与视图
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Should`
+- 来源需求：`doc/CLI.md` `README Quickstart（可用性）`
+- 实现方式：新增多人格会话命令（创建会话、加入/移除 persona、指定主讲、查看仲裁状态），并提供 transcript 视图。
+- 测试/DoD：命令可用、文档同步、回归通过。
+- 依赖：`K/P0-0` `K/P0-1`；回滚：隐藏命令并保留实验开关。
+
+### K/P1-3 多人格评测赛道与发布门禁
+- 原编号：`新增`
+- 状态：`todo`，必要性：`Must`
+- 来源需求：`doc/Quality-Evaluation.md L3/L5` `I/P0-3`
+- 实现方式：新增指标：`AddressingHitRate`、`MultiPersonaCollisionRate`、`PersonaLeakageRate`、`TurnFairnessIndex`，接入 PR/Nightly。
+- 测试/DoD：低于阈值阻断发布；报告可回放定位。
+- 依赖：`K/P0-2` `K/P1-0`；回滚：降级为 nightly 观测。
+
 ## 统一执行顺序（工程落地顺序）
-1. `Phase G`：`G/P0-3 -> G/P0-4 -> G/P0-5 -> G/P0-6 -> G/P0-7 -> G/P0-8 -> G/P0-9 -> G/P0-10 -> G/P0-11 -> G/P1-0 -> G/P1-1`
-2. `Phase H`：`H/P0-0 -> H/P0-1 -> H/P0-2 -> H/P0-3 -> H/P0-4 -> H/P1-0 -> H/P1-1 -> H/P1-2 -> H/P1-3 -> H/P1-4 -> H/P1-5 -> H/P1-6 -> H/P1-7 -> H/P1-8 -> H/P1-9 -> H/P1-10 -> H/P1-11 -> H/P1-12 -> H/P1-13 -> H/P1-14 -> H/P1-15 -> H/P1-16 -> H/P1-17 -> H/P1-18 -> H/P1-19`
-3. `Phase I`：`I/P0-0 -> I/P0-2 -> I/P0-3 -> I/P2-0 -> I/P2-1`
+1. `Phase H`：`H/P0-0 -> H/P0-1 -> H/P0-2 -> H/P0-3 -> H/P0-4 -> H/P1-0 -> H/P1-1 -> H/P1-2 -> H/P1-3 -> H/P1-4 -> H/P1-5 -> H/P1-6 -> H/P1-7 -> H/P1-8 -> H/P1-9 -> H/P1-10 -> H/P1-11 -> H/P1-12 -> H/P1-13 -> H/P1-14 -> H/P1-15 -> H/P1-16 -> H/P1-17 -> H/P1-18 -> H/P1-19`
+2. `Phase J`：`J/P0-0 -> J/P0-1 -> J/P0-2 -> J/P1-0 -> J/P1-1 -> J/P1-2`
+3. `Phase K`：`K/P0-0 -> K/P0-1 -> K/P0-2 -> K/P1-0 -> K/P1-1 -> K/P1-2 -> K/P1-3`
+4. `Phase I`：`I/P0-0 -> I/P0-2 -> I/P0-3 -> I/P2-0 -> I/P2-1`
 
 ## 覆盖性与漏项结论
 - `2.24.03` 的 `00/01/02/03/04` 已完成覆盖核对并映射到任务；`A-APP-CHANGELOG` 以 `historical` 审计保留。
-- 本次按你的要求把漏项全部独立任务化，`missing=0`、`partial=0`（对 `2.24.03` 五个文件范围）。
+- 本次重排后保全结论：`H(25) + J(6) + K(7) + I(5)` 全量保留/新增映射完成，`missing=0`、`partial=0`（active 范围）。

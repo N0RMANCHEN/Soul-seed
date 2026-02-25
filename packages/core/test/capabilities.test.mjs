@@ -34,6 +34,13 @@ test("resolveCapabilityIntent recognizes proactive and mode intents", () => {
   assert.equal(exitDirect.request?.input?.confirmed, true);
 });
 
+test("resolveCapabilityIntent supports semantic-first routing tier", () => {
+  const semantic = resolveCapabilityIntent("what can you do");
+  assert.equal(semantic.matched, true);
+  assert.equal(semantic.request?.name, "session.capability_discovery");
+  assert.equal(semantic.routingTier === "L1" || semantic.routingTier === "L4", true);
+});
+
 test("evaluateCapabilityPolicy enforces owner and confirmation gates", () => {
   const rejected = evaluateCapabilityPolicy(
     {

@@ -1,9 +1,13 @@
+import { projectTopicAttention } from "./semantic_projection.js";
+
 export type RecallNavigationStrength = "none" | "soft" | "strong";
 
 export interface RecallNavigationIntent {
   enabled: boolean;
   strength: RecallNavigationStrength;
   matchedSignals: string[];
+  routingTier?: "L1" | "L4";
+  fallbackReason?: string;
 }
 
 const STRONG_PHRASES: readonly string[] = [
@@ -84,12 +88,19 @@ export function detectRecallNavigationIntent(input: string): RecallNavigationInt
     return { enabled: false, strength: "none", matchedSignals: [] };
   }
 
+  const semantic = detectRecallNavigationSemantic(normalized);
+  if (semantic.enabled) {
+    return semantic;
+  }
+
   const strongHits = collectHits(normalized, STRONG_PHRASES);
   if (strongHits.length > 0) {
     return {
       enabled: true,
       strength: "strong",
-      matchedSignals: strongHits
+      matchedSignals: strongHits,
+      routingTier: "L4",
+      fallbackReason: "recall_navigation_regex_dictionary_hit"
     };
   }
 
@@ -104,13 +115,39 @@ export function detectRecallNavigationIntent(input: string): RecallNavigationInt
   const soft = (hasVerb && (hasObject || hasDirection)) || (hasObject && hasDirection && signals.length >= 2);
 
   if (!soft) {
-    return { enabled: false, strength: "none", matchedSignals: [] };
+    return { enabled: false, strength: "none", matchedSignals: [], routingTier: "L4", fallbackReason: "recall_navigation_no_regex_match" };
   }
 
   return {
     enabled: true,
     strength: "soft",
-    matchedSignals: signals
+    matchedSignals: signals,
+    routingTier: "L4",
+    fallbackReason: "recall_navigation_regex_composed_match"
+  };
+}
+
+function detectRecallNavigationSemantic(normalized: string): RecallNavigationIntent {
+  const candidates = [
+    "timeline recall",
+    "chat history rewind",
+    "earlier in chat",
+    "previous message",
+    "回顾刚才对话",
+    "翻看聊天记录",
+    "回到前面那段",
+    "之前说了什么"
+  ];
+  const scored = projectTopicAttention(normalized, candidates);
+  const top = scored[0];
+  if (!top || top.score < 0.69) {
+    return { enabled: false, strength: "none", matchedSignals: [] };
+  }
+  return {
+    enabled: true,
+    strength: top.score >= 0.8 ? "strong" : "soft",
+    matchedSignals: [top.topic],
+    routingTier: "L1"
   };
 }
 

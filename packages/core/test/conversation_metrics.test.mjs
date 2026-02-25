@@ -34,4 +34,6 @@ test("computeConversationMetrics tracks style leakage rates", () => {
   assert.equal(m.servicePhraseRate > 0, true);
   assert.equal(m.fabricatedRecallRate > 0, true);
   assert.equal(m.providerLeakRate > 0, true);
+  assert.equal(typeof m.l1HitRate, "number");
+  assert.equal(typeof m.businessPathRegexRate, "number");
 });

@@ -124,3 +124,28 @@ test("normalizeDecisionTrace keeps group participation control fields", () => {
   assert.equal(normalized.conversationControl?.groupParticipation?.cooldownHit, true);
   assert.equal(normalized.conversationControl?.groupParticipation?.consecutiveAssistantTurns, 3);
 });
+
+test("normalizeDecisionTrace keeps semantic routing fields", () => {
+  const normalized = normalizeDecisionTrace({
+    version: DECISION_TRACE_SCHEMA_VERSION,
+    timestamp: "2026-02-25T00:00:00.000Z",
+    selectedMemories: [],
+    askClarifyingQuestion: false,
+    refuse: false,
+    riskLevel: "low",
+    reason: "routing-check",
+    model: "deepseek-chat",
+    routing: {
+      tier: "L3",
+      reasonCodes: ["meta_cognition_arbitration"],
+      isBusinessPath: true,
+      fallbackReason: "",
+      arbitrationTriggered: true
+    }
+  });
+
+  assert.equal(normalized.routing?.tier, "L3");
+  assert.equal(normalized.routing?.isBusinessPath, true);
+  assert.equal(normalized.routing?.arbitrationTriggered, true);
+  assert.deepEqual(normalized.routing?.reasonCodes, ["meta_cognition_arbitration"]);
+});

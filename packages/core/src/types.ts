@@ -389,6 +389,13 @@ export interface DecisionTrace {
   consistencyTraceId?: string;
   routeDecision?: "instinct" | "deliberative";
   routeReasonCodes?: string[];
+  routing?: {
+    tier: "L1" | "L2" | "L3" | "L4";
+    reasonCodes: string[];
+    isBusinessPath: boolean;
+    fallbackReason?: string;
+    arbitrationTriggered: boolean;
+  };
   routeTag?: "instinct" | "deliberative" | "meta";
   modelUsed?: string;
   /** EB-0: 内容安全语义评估向量 [intent_risk, content_risk, relational_risk] */

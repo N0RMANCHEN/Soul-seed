@@ -1,10 +1,13 @@
 import type { CapabilityCallRequest, CapabilityName } from "../types.js";
+import { projectTopicAttention } from "../semantic_projection.js";
 
 export interface CapabilityIntentResolution {
   matched: boolean;
   request?: CapabilityCallRequest;
   confidence: number;
   reason: string;
+  routingTier?: "L1" | "L4";
+  fallbackReason?: string;
 }
 
 const CAPABILITY_HINTS: RegExp[] = [
@@ -98,6 +101,11 @@ export function resolveCapabilityIntent(inputRaw: string): CapabilityIntentResol
   const input = inputRaw.trim();
   if (!input) {
     return { matched: false, confidence: 0, reason: "empty_input" };
+  }
+
+  const semanticMatch = resolveBySemanticRouting(input);
+  if (semanticMatch) {
+    return semanticMatch;
   }
 
   if (CAPABILITY_HINTS.some((pattern) => pattern.test(input))) {
@@ -266,7 +274,46 @@ export function resolveCapabilityIntent(inputRaw: string): CapabilityIntentResol
     return buildResolution("session.shared_space_write", { path: "", content: "" }, "rule:shared_space_write_hint", 0.85);
   }
 
-  return { matched: false, confidence: 0, reason: "no_rule_match" };
+  return { matched: false, confidence: 0, reason: "no_rule_match", routingTier: "L4", fallbackReason: "capability_regex_no_match" };
+}
+
+function resolveBySemanticRouting(input: string): CapabilityIntentResolution | null {
+  const semanticTargets: Array<{ capability: CapabilityName; anchor: string }> = [
+    { capability: "session.capability_discovery", anchor: "what can you do" },
+    { capability: "session.show_modes", anchor: "show current mode status" },
+    { capability: "session.proactive_status", anchor: "show proactive status" },
+    { capability: "session.list_personas", anchor: "list all personas" },
+    { capability: "session.connect_to", anchor: "switch to persona" },
+    { capability: "session.create_persona", anchor: "create a new persona" },
+    { capability: "session.shared_space_list", anchor: "list our shared folder files" }
+  ];
+  const scored = projectTopicAttention(
+    input,
+    semanticTargets.map((item) => item.anchor)
+  );
+  const top = scored[0];
+  if (!top || top.score < 0.78) {
+    return null;
+  }
+  const matchedTarget = semanticTargets.find((item) => item.anchor === top.topic);
+  if (!matchedTarget) {
+    return null;
+  }
+  if (matchedTarget.capability === "session.connect_to") {
+    const m = /(?:切换到|switch to|connect to)\s+(.+)$/iu.exec(input.trim());
+    if (m?.[1]?.trim()) {
+      return buildResolution("session.connect_to", { targetName: m[1].trim() }, "semantic:connect_to", Math.min(0.98, top.score), "L1");
+    }
+    return null;
+  }
+  if (matchedTarget.capability === "session.create_persona") {
+    const m = /(?:创建人格|新建人格|create persona|new)\s+(.+)$/iu.exec(input.trim());
+    if (m?.[1]?.trim()) {
+      return buildResolution("session.create_persona", { name: m[1].trim() }, "semantic:create_persona", Math.min(0.98, top.score), "L1");
+    }
+    return null;
+  }
+  return buildResolution(matchedTarget.capability, {}, `semantic:${matchedTarget.capability}`, Math.min(0.98, top.score), "L1");
 }
 
 export function extractUrlFromIntent(inputRaw: string): string | null {
@@ -345,12 +392,14 @@ function buildResolution(
   name: CapabilityName,
   input: Record<string, unknown>,
   reason: string,
-  confidence: number
+  confidence: number,
+  routingTier: "L1" | "L4" = "L4"
 ): CapabilityIntentResolution {
   return {
     matched: true,
     confidence,
     reason,
+    routingTier,
     request: {
       name,
       input,

@@ -29,6 +29,8 @@
   - 文件完整性、schema/version、life log hash 链、事件 payload 合法性
 - 验收入口：`scripts/acceptance.sh`
   - 覆盖最小在线链路与连续性 smoke 验证
+- 语义路由分层指标：`scripts/quality_scorecard.mjs` + `packages/core/src/conversation_metrics.ts`
+  - 已产出 `L1HitRate`、`L2HitRate`、`L3ArbitrationRate`、`L4RegexFallbackRate`、`BusinessPathRegexRate`
 
 ### 2.2 主要缺口
 
@@ -36,6 +38,7 @@
 - 多轮连续性评测不足（当前更偏单点功能）
 - 拒答正确性与越权/注入抗性缺体系化赛道
 - 缺线上抽样回放到离线基准的闭环机制
+- Lx 样本集仍偏轻量，需补齐“非安全业务场景 BusinessPathRegexRate==0”的专用回归数据集
 
 ---
 

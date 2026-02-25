@@ -1,4 +1,5 @@
 import type { LifeEvent } from "./types.js";
+import { projectTopicAttention } from "./semantic_projection.js";
 
 export interface PronounRoleGuardResult {
   text: string;
@@ -8,6 +9,8 @@ export interface PronounRoleGuardResult {
   confidence: number;
   mode: "rewrite" | "clarify" | "pass";
   rewrittenSentences: number;
+  routingTier?: "L2" | "L4";
+  fallbackReason?: string;
 }
 
 const SENTENCE_PATTERN = /[^。！？!?]+[。！？!?]?/gu;
@@ -102,7 +105,9 @@ export function enforcePronounRoleGuard(
       flags: [],
       confidence: 0,
       mode: "pass",
-      rewrittenSentences: 0
+      rewrittenSentences: 0,
+      routingTier: "L4",
+      fallbackReason: "empty_reply"
     };
   }
 
@@ -159,7 +164,9 @@ export function enforcePronounRoleGuard(
       flags: [],
       confidence: 0,
       mode: "pass",
-      rewrittenSentences: 0
+      rewrittenSentences: 0,
+      routingTier: "L4",
+      fallbackReason: "no_role_mismatch_detected"
     };
   }
 
@@ -170,7 +177,8 @@ export function enforcePronounRoleGuard(
     flags: ["pronoun_role_mismatch"],
     confidence: Number(highestConfidence.toFixed(3)),
     mode: "rewrite",
-    rewrittenSentences
+    rewrittenSentences,
+    routingTier: "L2"
   };
 }
 
@@ -182,7 +190,8 @@ function detectRoleMismatchDecision(
 ): { rewrite: boolean; target: "user" | "assistant" | "third_to_user" | null; confidence: number } {
   const s = sentence.trim();
   if (!s) return { rewrite: false, target: null, confidence: 0 };
-  if (!ACTION_OR_TIME_CUE_PATTERN.test(s)) return { rewrite: false, target: null, confidence: 0 };
+  const hasActionCue = ACTION_OR_TIME_CUE_PATTERN.test(s) || hasSemanticActionCue(s);
+  if (!hasActionCue) return { rewrite: false, target: null, confidence: 0 };
   if (SAFE_SELF_STATE_PATTERN.test(s)) return { rewrite: false, target: null, confidence: 0 };
   if (userTexts.length === 0 && assistantTexts.length === 0) {
     return { rewrite: false, target: null, confidence: 0 };
@@ -232,6 +241,19 @@ function detectRoleMismatchDecision(
   }
 
   return { rewrite: false, target: null, confidence: 0 };
+}
+
+function hasSemanticActionCue(text: string): boolean {
+  const anchors = [
+    "之前你说过",
+    "刚才提到",
+    "昨天发生了什么",
+    "earlier you said",
+    "you mentioned just now",
+    "what happened yesterday"
+  ];
+  const top = projectTopicAttention(text, anchors)[0];
+  return Boolean(top && top.score >= 0.74);
 }
 
 function maxTokenOverlap(tokens: string[], corpus: string[]): number {

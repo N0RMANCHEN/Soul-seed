@@ -238,6 +238,25 @@ function normalizeRouteTag(value: unknown): DecisionTrace["routeTag"] {
   return value === "instinct" || value === "deliberative" || value === "meta" ? value : undefined;
 }
 
+function normalizeRouting(value: unknown): DecisionTrace["routing"] {
+  if (!isRecord(value)) return undefined;
+  const tier = value.tier;
+  if (tier !== "L1" && tier !== "L2" && tier !== "L3" && tier !== "L4") {
+    return undefined;
+  }
+  const fallbackReason =
+    typeof value.fallbackReason === "string" && value.fallbackReason.trim()
+      ? value.fallbackReason.trim()
+      : undefined;
+  return {
+    tier,
+    reasonCodes: normalizeStringArray(value.reasonCodes, 16),
+    isBusinessPath: value.isBusinessPath !== false,
+    fallbackReason,
+    arbitrationTriggered: value.arbitrationTriggered === true
+  };
+}
+
 function normalizePositiveInteger(value: unknown): number | undefined {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -322,6 +341,7 @@ export function normalizeDecisionTrace(input: unknown): DecisionTrace {
     consistencyTraceId: typeof input.consistencyTraceId === "string" ? input.consistencyTraceId : undefined,
     routeDecision: normalizeRouteDecision(input.routeDecision),
     routeReasonCodes: normalizeStringArray(input.routeReasonCodes, 16),
+    routing: normalizeRouting(input.routing),
     routeTag: normalizeRouteTag(input.routeTag),
     modelUsed: typeof input.modelUsed === "string" && input.modelUsed.trim() ? input.modelUsed.trim() : undefined,
     agentRequest: normalizeAgentRequest(input.agentRequest),

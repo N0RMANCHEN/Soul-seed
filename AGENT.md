@@ -315,7 +315,7 @@ conversation window:
 
 1. **一次只做一个任务**（最小变更集），禁止"顺手重构"
 2. **任何改动必须保持可 build / 可跑**（至少 `./scripts/verify.sh` 通过）
-3. **Doc Sync Gate（强制）**：任何涉及代码、命令、配置、架构、schema、流程的改动，必须排查受影响文档（至少 `README.md`、`doc/*.md`、`AGENT.md`、`contributing_ai.md`）；若无需更新，交付中必须明确写出“已排查且无需更新”的理由。
+3. **Doc Sync Gate（强制）**：任何涉及代码、命令、配置、架构、schema、流程的改动，必须排查受影响文档（至少 `README.md`、`doc/*.md`、`AGENT.md`、`contributing_ai.md`、`CHANGELOG.md`）；若无需更新，交付中必须明确写出“已排查且无需更新”的理由。
 4. **H0 门禁配置属于机器配置资产**：位置固定为 `config/h0/*`；任何修改后必须通过 `npm run h0:check`。
 5. **不删除旧代码**：替换则移动到 `packages/legacy-*` 或归档目录
 6. **改 schema 必须**：`schemaVersion` bump + 迁移策略 + 回归用例
@@ -337,6 +337,7 @@ conversation window:
 15. **禁止新增固定标量/枚举作为状态本体**（Phase E）：新状态表示必须使用 Latent 向量；可解释标量/枚举只作为投影层存在，不得作为更新的输入或内在状态的直接量化
 16. **Agent 不得绕过 soul 路径**（Phase E）：新增 agent 功能必须通过 `agentRequest` + `meta_cognition.arbitrateAgentInvocation()` 进入，禁止在 `runtime_pipeline` 中新增与 soul 路径并行的 agent 分叉
 17. **会话能力扩展必须通过 capabilities 系统**：新增会话级别的操作（文件读取/URL 抓取/模式切换等），必须在 `capabilities/registry.ts` 注册、在 `capabilities/intent_resolver.ts` 添加识别规则，不得直接在 chat 主循环中添加 if 分支处理
+18. **任务完成后必须更新 CHANGELOG（持续记录）**：每次任务达到 DoD 后，必须在当前版本节补充本次新增/变更摘要（可增量追加），禁止把多次改动累积到最后一次统一补记。
 ---
 
 ## 7. 安全边界

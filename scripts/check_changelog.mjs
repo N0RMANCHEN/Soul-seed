@@ -14,7 +14,7 @@ async function main() {
   const content = await readFile(changelogPath, "utf8");
   const versionHeading = new RegExp(`^##\\s+\\[${escapeRegExp(version)}\\]\\s+-\\s+\\d{4}-\\d{2}-\\d{2}\\s*$`, "m");
   if (!versionHeading.test(content)) {
-    throw new Error(`CHANGELOG.md 缺少当前版本条目: [${version}] - YYYY-MM-DD`);
+    throw new Error(`CHANGELOG.md 缺少当前版本条目: [${version}] - YYYY-MM-DD（任务完成后需持续增量记录）`);
   }
 
   console.log(
@@ -22,7 +22,7 @@ async function main() {
       {
         ok: true,
         version,
-        check: "CHANGELOG entry exists"
+        check: "CHANGELOG entry exists (incremental task logging required)"
       },
       null,
       2

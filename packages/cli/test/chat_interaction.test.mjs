@@ -57,6 +57,38 @@ test("chat keeps a single exit prompt when /exit is repeated, then exits on conf
   assert.equal(promptMatches.length, 1);
 });
 
+test("chat persists greeting, exit confirm and farewell autonomy messages into life.log", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-chat-test-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+
+  const initResult = spawnSync(process.execPath, [cliPath, "init", "--name", "Roxy", "--out", personaPath], {
+    encoding: "utf8"
+  });
+  assert.equal(initResult.status, 0);
+
+  const chatResult = await runChatScript(personaPath, ["/exit", "确认退出"], { intervalMs: 220 });
+  assert.equal(chatResult.status, 0);
+
+  const lifeLogRaw = await readFile(path.join(personaPath, "life.log.jsonl"), "utf8");
+  const assistantMessages = lifeLogRaw
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line))
+    .filter((event) => event.type === "assistant_message");
+
+  assert.equal(
+    assistantMessages.some((event) => String(event.payload?.autonomyMode ?? "") === "greeting"),
+    true
+  );
+  const exitConfirmEvent = assistantMessages.find((event) => String(event.payload?.autonomyMode ?? "") === "exit_confirm");
+  assert.equal(Boolean(exitConfirmEvent), true);
+  assert.equal(exitConfirmEvent?.payload?.memoryMeta?.excludedFromRecall, true);
+  assert.equal(
+    assistantMessages.some((event) => String(event.payload?.autonomyMode ?? "") === "farewell"),
+    true
+  );
+});
+
 test("chat read confirmation accepts natural yes and performs file attachment", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-chat-test-"));
   const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");

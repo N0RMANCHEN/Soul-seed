@@ -1,4 +1,5 @@
 import type { RelationshipState } from "./types.js";
+import { runSafetyFallbackGateway } from "./safety_fallback_gateway.js";
 
 type DegradedMode = "greeting" | "proactive" | "farewell" | "exit_confirm" | "reply";
 
@@ -12,13 +13,6 @@ export interface DegradedPersonaComposerInput {
 
 function cleanSeed(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, 36);
-}
-
-function removeSystemLeak(text: string): string {
-  return text
-    .replace(/系统提示|执行状态|我在观察你|adapter|provider|endpoint|model[_ -]?not[_ -]?exist/giu, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
 }
 
 function byRelationship(
@@ -69,5 +63,9 @@ export function composeDegradedPersonaReply(input: DegradedPersonaComposerInput)
     : assistantSeed
       ? `我们就从${temporal}那段继续往下走。`
       : "我们从这接。";
-  return removeSystemLeak(fallback);
+  return runSafetyFallbackGateway({
+    stage: input.mode,
+    text: fallback,
+    reason: "degraded_persona_path"
+  }).text;
 }
