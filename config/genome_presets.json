@@ -1,0 +1,49 @@
+{
+  "version": "genome_presets/v1",
+  "presets": {
+    "balanced": {
+      "description": "Equal trait distribution, suitable as starting point",
+      "traits": {
+        "emotion_sensitivity": { "value": 0.5 },
+        "emotion_recovery": { "value": 0.5 },
+        "memory_retention": { "value": 0.5 },
+        "memory_imprint": { "value": 0.5 },
+        "attention_span": { "value": 0.5 },
+        "social_attunement": { "value": 0.5 }
+      }
+    },
+    "empathetic": {
+      "description": "High emotional sensitivity and social attunement, slower recovery",
+      "traits": {
+        "emotion_sensitivity": { "value": 0.85 },
+        "emotion_recovery": { "value": 0.45 },
+        "memory_retention": { "value": 0.55 },
+        "memory_imprint": { "value": 0.6 },
+        "attention_span": { "value": 0.3 },
+        "social_attunement": { "value": 0.8 }
+      }
+    },
+    "analytical": {
+      "description": "High attention and memory retention, resilient to emotional shifts",
+      "traits": {
+        "emotion_sensitivity": { "value": 0.35 },
+        "emotion_recovery": { "value": 0.75 },
+        "memory_retention": { "value": 0.9 },
+        "memory_imprint": { "value": 0.7 },
+        "attention_span": { "value": 0.85 },
+        "social_attunement": { "value": 0.4 }
+      }
+    },
+    "social": {
+      "description": "High social attunement and emotional sensitivity, conversational personality",
+      "traits": {
+        "emotion_sensitivity": { "value": 0.6 },
+        "emotion_recovery": { "value": 0.5 },
+        "memory_retention": { "value": 0.65 },
+        "memory_imprint": { "value": 0.55 },
+        "attention_span": { "value": 0.55 },
+        "social_attunement": { "value": 0.85 }
+      }
+    }
+  }
+}

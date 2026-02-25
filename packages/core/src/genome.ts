@@ -13,7 +13,7 @@
  *     hardcoded behavior — no hybrid tier needed.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -50,7 +50,7 @@ export interface GenomeConfig {
   schemaVersion: string;
   genomeId: string;
   createdAt: string;
-  source: "preset" | "inferred_legacy" | "inherited" | "custom";
+  source: "preset" | "inferred_legacy" | "inherited" | "custom" | "migrated";
   seed: number;
   locked: boolean;
   traits: GenomeTraits;
@@ -242,4 +242,54 @@ export async function saveEpigenetics(
 ): Promise<void> {
   const filePath = path.join(personaRoot, EPIGENETICS_FILENAME);
   await writeFile(filePath, JSON.stringify(epigenetics, null, 2), "utf-8");
+}
+
+// ─── Presets ────────────────────────────────────────────────────────────────────
+
+export interface GenomePreset {
+  description: string;
+  traits: GenomeTraits;
+}
+
+export interface GenomePresetsConfig {
+  version: string;
+  presets: Record<string, GenomePreset>;
+}
+
+export function loadGenomePresets(configPath?: string): GenomePresetsConfig {
+  const resolvedPath =
+    configPath ?? path.join(process.cwd(), "config", "genome_presets.json");
+  try {
+    const raw = readFileSync(resolvedPath, "utf-8");
+    return JSON.parse(raw) as GenomePresetsConfig;
+  } catch {
+    return { version: "genome_presets/v1", presets: {} };
+  }
+}
+
+export function createGenomeFromPreset(
+  presetName: string,
+  presets: GenomePresetsConfig,
+  seed?: number
+): GenomeConfig {
+  const preset = presets.presets[presetName];
+  if (!preset) {
+    throw new Error(`Unknown genome preset: ${presetName}`);
+  }
+  const actualSeed = seed ?? Math.floor(Math.random() * 2 ** 32);
+  const traits = {} as GenomeTraits;
+  for (const name of GENOME_TRAIT_NAMES) {
+    traits[name] = { value: preset.traits[name]?.value ?? DEFAULT_TRAIT_VALUE };
+  }
+  return {
+    schemaVersion: GENOME_SCHEMA_VERSION,
+    genomeId: `gen_${Date.now().toString(36)}_${actualSeed.toString(36)}`,
+    createdAt: new Date().toISOString(),
+    source: "preset",
+    seed: actualSeed,
+    locked: false,
+    traits,
+    parentGenomeHash: null,
+    mutationLog: [],
+  };
 }
