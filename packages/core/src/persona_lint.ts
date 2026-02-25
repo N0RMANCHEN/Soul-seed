@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PersonaLibraryBlock, PersonaPinned } from "./types.js";
 import { MAX_PINNED_CHARS, MAX_PINNED_COUNT } from "./types.js";
+import type { GenomeConfig, EpigeneticsConfig } from "./genome.js";
+import { validateGenome, GENOME_FILENAME, EPIGENETICS_FILENAME, GENOME_TRAIT_NAMES } from "./genome.js";
 
 export type PersonaLintLevel = "error" | "warn" | "info";
 
@@ -161,6 +163,60 @@ export async function lintPersona(personaPath: string, options?: { strict?: bool
         path: "voice_profile.json:baseStance",
         message: "voice_profile.baseStance is missing",
         suggestion: "Set a baseStance string"
+      });
+    }
+  }
+
+  const genome = await safeReadJson<GenomeConfig>(path.join(personaPath, GENOME_FILENAME));
+  if (genome) {
+    const genomeIssues = validateGenome(genome);
+    if (genomeIssues.length > 0) {
+      issues.push({
+        level: "error",
+        code: "genome_schema_invalid",
+        path: GENOME_FILENAME,
+        message: `genome.json failed validation: ${genomeIssues.map((i) => i.message).join("; ")}`
+      });
+    }
+    if (genome.traits && typeof genome.traits === "object") {
+      for (const name of GENOME_TRAIT_NAMES) {
+        const v = genome.traits[name]?.value;
+        if (typeof v === "number" && (v < 0 || v > 1)) {
+          issues.push({
+            level: "error",
+            code: "genome_trait_out_of_range",
+            path: `${GENOME_FILENAME}:traits.${name}`,
+            message: `trait ${name} value ${v} outside [0, 1]`
+          });
+        }
+      }
+    }
+  }
+
+  const epigenetics = await safeReadJson<EpigeneticsConfig>(path.join(personaPath, EPIGENETICS_FILENAME));
+  if (epigenetics?.adjustments) {
+    for (const [name, adj] of Object.entries(epigenetics.adjustments)) {
+      if (typeof adj.value === "number" && (adj.value < adj.min || adj.value > adj.max)) {
+        issues.push({
+          level: "warn",
+          code: "epigenetics_adjustment_out_of_range",
+          path: `${EPIGENETICS_FILENAME}:adjustments.${name}`,
+          message: `adjustment ${name} value ${adj.value} outside [${adj.min}, ${adj.max}]`
+        });
+      }
+    }
+  }
+
+  // Compat calibration check for full-mode personas
+  if (genome && genome.source !== "inferred_legacy") {
+    const calibPath = path.join(personaPath, "compat_calibration.json");
+    if (!existsSync(calibPath)) {
+      issues.push({
+        level: "warn",
+        code: "missing_compat_calibration",
+        path: "compat_calibration.json",
+        message: "Full-mode persona is missing compat_calibration.json",
+        suggestion: "Run calibration inference or create default calibration config"
       });
     }
   }
