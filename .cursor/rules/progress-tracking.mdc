@@ -30,9 +30,10 @@ Every task output must include all 7 items — missing any = incomplete:
 
 - Check `doc/Roadmap.md` for current phase, task status, and priorities before starting work
 - Tasks use format `{Phase}/P{priority}-{seq}` (e.g. `H/P0-4`)
-- Priority order: `P0` (blocking) > `P1` (core) > `P2` (optimization)
+- Tasks are listed in **logical dependency order** (foundations first), not grouped by P0/P1/P2
 - Only one Phase active at a time; next Phase gates on current Phase exit criteria
 - Phase completion triggers minor version bump
+- Large phases are split into sub-phases (e.g. Ha/Hb/Hc); each sub-phase has its own plan in `doc/plans/` per Roadmap rule 1.3
 
 ## Execution Grouping (Roadmap §5.1)
 
