@@ -142,6 +142,32 @@ Any provider with an **OpenAI-compatible** `/v1/chat/completions` endpoint works
 > ✅ **支持任意 OpenAI 兼容 API。**
 >
 
+### Model Adapter / 模型适配器
+
+Soulseed uses a single **`OpenAICompatAdapter`** that works with any provider speaking the OpenAI `/v1/chat/completions` wire protocol. The adapter resolves configuration at runtime via `runtime_model_config.ts`:
+
+> Soulseed 使用一个统一的 **`OpenAICompatAdapter`**，兼容任何实现 OpenAI `/v1/chat/completions` 协议的提供方。运行时配置通过 `runtime_model_config.ts` 解析：
+
+- **Provider auto-detection** — inferred from `SOULSEED_BASE_URL` (e.g. URLs containing `deepseek` → DeepSeek defaults, `anthropic` → Anthropic defaults, `api.openai.com` → OpenAI defaults). Override with `SOULSEED_PROVIDER`.
+  *提供方自动识别 — 从 URL 推断（可通过 `SOULSEED_PROVIDER` 显式指定）*
+- **Default model per provider** — each known provider has a sensible default (`deepseek-chat`, `gpt-4o-mini`, `claude-3-5-sonnet-latest`). Custom/proxy providers require explicit `SOULSEED_MODEL`.
+  *每个已知提供方有合理的默认模型；自定义代理需显式指定 `SOULSEED_MODEL`*
+- **Model fallback chain** — set `SOULSEED_MODEL_CANDIDATES=model-a,model-b` to auto-fallback when the primary model returns a `model_not_exist` or transient error.
+  *模型候选链 — 设置 `SOULSEED_MODEL_CANDIDATES` 实现自动降级容错*
+- **Provider-model mismatch guard** — `./ss doctor` warns if model name doesn't match the provider (e.g. `claude-*` on a DeepSeek endpoint).
+  *提供方/模型不匹配守卫 — `./ss doctor` 会检测并警告*
+- **Legacy backward compat** — existing `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` still work as fallbacks.
+  *旧版兼容 — `DEEPSEEK_*` 环境变量仍作为回退支持*
+
+Example for a custom OpenAI-compatible proxy:
+
+```bash
+SOULSEED_PROVIDER=openai_compat
+SOULSEED_API_KEY=sk-your-key
+SOULSEED_BASE_URL=https://your-proxy-provider.com/v1
+SOULSEED_MODEL=claude-sonnet-4-6
+```
+
 ### Step 3: Verify Configuration / 验证配置
 
 ```bash
@@ -204,6 +230,8 @@ Beta is for developers debugging persona behavior or system issues.
 
 ## Features / 核心能力
 
+- **Provider-agnostic LLM adapter** — works with any OpenAI-compatible API; auto-detects provider from URL; model fallback chain for resilience
+  *提供方无关的 LLM 适配器 — 兼容任意 OpenAI 接口；从 URL 自动识别提供方；支持模型候选链容错*
 - **Four-type memory** — episodic · semantic · relational · procedural; SQLite + hybrid RAG
   *四类记忆 — 情节、语义、关系、程序；SQLite + 混合 RAG 检索*
 - **Five-stage cognitive pipeline** — perception → idea → deliberation → meta-review → commit
@@ -246,6 +274,11 @@ Beta is for developers debugging persona behavior or system issues.
 │                                                      │
 │  meta_review  (LLM meta-cognition: quality+verdict)  │
 │  self_revision (habits/voice/relationship correction)│
+│                                                      │
+│  Model Adapter (provider-agnostic):                  │
+│    OpenAICompatAdapter → /v1/chat/completions        │
+│    runtime_model_config (auto-detect + fallback)     │
+│    providers: DeepSeek · OpenAI · Anthropic · proxy  │
 │                                                      │
 │  Memory Stack:                                       │
 │    memory_store (SQLite) + memory_embeddings (vector)│
