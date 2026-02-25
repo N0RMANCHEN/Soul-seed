@@ -1,0 +1,65 @@
+---
+description: Enforces progress tracking, session protocol, and verification gates per AGENT.md and contributing_ai.md
+alwaysApply: true
+---
+
+# Progress Tracking & Session Protocol
+
+## Session Start
+
+Read these docs in order before any work (per `contributing_ai.md` §2):
+
+1. `AGENT.md` (authority on principles/boundaries)
+2. `contributing_ai.md` (execution actions/verification)
+3. `doc/Roadmap.md` (current phase, task status, priorities)
+4. `doc/Product-Standards.md`, `doc/Quality-Evaluation.md` as needed
+
+## Task Protocol (contributing_ai.md §1)
+
+Every task output must include all 7 items — missing any = incomplete:
+
+1. **Goal** — what and why
+2. **DoD** — PASS/FAIL acceptance criteria
+3. **Plan** — steps (rollback-capable)
+4. **Files to add/change** — exact paths
+5. **Verification** — commands + expected output
+6. **Final Output** — complete deliverables
+7. **Self-check** — annotate each DoD item: PASS / NOT VERIFIED
+
+## Roadmap Tracking
+
+- Check `doc/Roadmap.md` for current phase, task status, and priorities before starting work
+- Tasks use format `{Phase}/P{priority}-{seq}` (e.g. `H/P0-4`)
+- Priority order: `P0` (blocking) > `P1` (core) > `P2` (optimization)
+- Only one Phase active at a time; next Phase gates on current Phase exit criteria
+- Phase completion triggers minor version bump
+
+## Execution Grouping (Roadmap §5.1)
+
+Before executing, assess tasks: complexity (S/M/L), coupling (low/med/high), risk (soft/hard).
+
+- Low coupling + S/M: parallel OK, 2-3 tasks per batch
+- Medium coupling: serial preferred; parallel only with explicit sync points
+- High coupling or hard risk: strictly serial, one task at a time
+
+## Verification Gates (contributing_ai.md §5)
+
+**Always required:**
+- `./scripts/verify.sh` passes (type-check + tests + build for all 3 packages)
+- Doc sync check per `AGENT.md` Doc Sync Gate
+- `CHANGELOG.md` updated for current version section after each task
+
+**Domain-specific gates** — apply the relevant subsection from `contributing_ai.md` §5.2–5.11 based on what you changed (chat/model, storage/schema, orchestrator, doctor, toolbus, memory, CLI, capabilities, latent).
+
+## Compatibility (AGENT.md §6.8, contributing_ai.md §5.3a)
+
+- Legacy personas must load without behavior change (Behavior Parity by Default)
+- New layers (genome, epigenetics, policy) must seed from existing params, never reset
+- `compatMode` / feature flags for gradual enablement
+- Test with old persona fixtures: doctor passes, migration is idempotent, behavior baseline stable
+
+## After Completion
+
+- Mark task `done` in Roadmap tracking
+- Update `CHANGELOG.md` incrementally (never batch at end)
+- Run doc sync gate: check `README.md`, `AGENT.md`, `contributing_ai.md`, `doc/*.md`

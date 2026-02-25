@@ -8,5 +8,10 @@ personas/_qa/
 personas/*.soulseedpersona/
 *.db
 backlog.md
-*Archive.md
+00-*
+01-*
+02-*
+03-*
+04-*
+05-*
 doc/plans
