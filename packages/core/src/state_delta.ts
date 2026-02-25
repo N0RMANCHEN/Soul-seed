@@ -55,6 +55,12 @@ export interface DeltaGateContext {
   constitutionRules?: string[];
   lifeEventHashes?: Set<string>;
   invariantTable?: InvariantRule[];
+  /** When "legacy", ValuesGate logs violations but does not reject (H/P1-0 compat). */
+  compatMode?: "legacy" | "full";
+  /** H/P1-1: Current goals state for commitment evidence gate */
+  currentGoals?: import("./goals_state.js").GoalsState;
+  /** H/P1-1: Current beliefs state for cooldown gate */
+  currentBeliefs?: import("./beliefs_state.js").BeliefsState;
 }
 
 export type DeltaGateFunction = (

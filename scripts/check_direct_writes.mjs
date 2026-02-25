@@ -14,10 +14,16 @@ const STATE_FILES = [
   "cognition_state.json",
   "voice_profile.json",
   "social_graph.json",
+  "goals.json",
+  "beliefs.json",
+  "values_rules.json",
+  "personality_profile.json",
 ];
 
 const ALLOWED_FILES = new Set([
   "packages/core/src/state_delta_apply.ts",
+  "packages/core/src/goals_state.ts",
+  "packages/core/src/beliefs_state.ts",
   "packages/core/src/mood_state.ts",
   "packages/core/src/relationship_state.ts",
   "packages/core/src/interests.ts",

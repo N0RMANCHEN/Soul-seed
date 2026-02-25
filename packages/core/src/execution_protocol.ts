@@ -9,6 +9,8 @@ import type { DeltaCommitResult } from "./state_delta.js";
 import { runDeltaGates } from "./state_delta_gates.js";
 import { applyDeltas } from "./state_delta_apply.js";
 import { inferCompatMode, useStateDeltaPipeline } from "./compat_mode.js";
+import { loadGoals } from "./goals_state.js";
+import { loadBeliefs } from "./beliefs_state.js";
 
 export interface ExecuteTurnResult {
   mode: "soul" | "agent";
@@ -124,12 +126,19 @@ export async function executeTurnProtocol(params: {
     const proposal = pipeline.trace.stateDeltaProposal ?? createEmptyProposal(turnId);
 
     if (proposal.deltas.length > 0) {
+      const [currentGoals, currentBeliefs] = await Promise.all([
+        loadGoals(params.rootPath),
+        loadBeliefs(params.rootPath),
+      ]);
       const gateContext = {
         personaRoot: params.rootPath,
         currentMood: params.personaPkg.moodState,
         currentRelationship: params.personaPkg.relationshipState,
         genome: params.personaPkg.genome,
         epigenetics: params.personaPkg.epigenetics,
+        currentGoals,
+        currentBeliefs,
+        compatMode,
       };
       const gateResults = runDeltaGates(proposal, gateContext);
       deltaCommitResult = await applyDeltas(proposal, gateResults, params.rootPath);

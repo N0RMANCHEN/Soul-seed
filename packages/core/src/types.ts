@@ -250,6 +250,10 @@ export interface PersonaPackage {
   /** H/P0-4: Genome-derived behavioral params */
   genome?: import("./genome.js").GenomeConfig;
   epigenetics?: import("./genome.js").EpigeneticsConfig;
+  /** H/P1-1: Goals state (goals, commitments, drives) */
+  goalsState?: import("./goals_state.js").GoalsState;
+  /** H/P1-1: Beliefs state (propositions with confidence, evidence, cooldown) */
+  beliefsState?: import("./beliefs_state.js").BeliefsState;
 }
 
 export interface RelationshipDimensions {

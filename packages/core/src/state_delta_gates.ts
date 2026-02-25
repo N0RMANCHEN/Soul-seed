@@ -6,6 +6,7 @@ import type {
   DeltaGateFunction,
   InvariantRule,
 } from "./state_delta.js";
+import { loadValuesRulesSync, ruleMatchesDelta } from "./values_rules.js";
 
 function lookupThreshold(
   rules: InvariantRule[] | undefined,
@@ -78,6 +79,29 @@ export function identityConstitutionGate(
     };
   }
   return { deltaIndex, verdict: "accept", gate: "identityConstitution", reason: "passed" };
+}
+
+export function valuesGate(
+  delta: StateDelta,
+  deltaIndex: number,
+  context: DeltaGateContext
+): DeltaGateResult {
+  if (delta.type !== "value" && delta.type !== "personality") {
+    return { deltaIndex, verdict: "accept", gate: "values", reason: "not applicable" };
+  }
+  const doc = loadValuesRulesSync(context.personaRoot);
+  const rules = [...doc.rules].sort((a, b) => b.priority - a.priority);
+  for (const rule of rules) {
+    if (!ruleMatchesDelta(rule, delta)) continue;
+    if (rule.then === "refuse") {
+      const reason = `values rule ${rule.id} triggered: ${rule.notes || rule.when}`;
+      if (context.compatMode === "legacy") {
+        return { deltaIndex, verdict: "accept", gate: "values", reason: `[legacy] ${reason} (logged only)` };
+      }
+      return { deltaIndex, verdict: "reject", gate: "values", reason };
+    }
+  }
+  return { deltaIndex, verdict: "accept", gate: "values", reason: "passed" };
 }
 
 export function recallGroundingGate(
@@ -173,6 +197,8 @@ export function moodDeltaGate(
   };
 }
 
+const BELIEF_COMMITMENT_EVIDENCE_MIN = 1;
+
 export function beliefGoalGate(
   delta: StateDelta,
   deltaIndex: number,
@@ -190,6 +216,60 @@ export function beliefGoalGate(
       reason: `confidence ${delta.confidence} below threshold ${threshold}`,
     };
   }
+
+  // Belief: cooldown check — reject if target belief has cooldownUntil in future
+  if (delta.type === "belief") {
+    const targetId = delta.targetId;
+    const beliefs = context.currentBeliefs?.beliefs ?? [];
+    const targetBelief = targetId && targetId !== "global" ? beliefs.find((b) => b.beliefId === targetId) : null;
+    if (targetBelief?.cooldownUntil) {
+      const now = new Date().toISOString();
+      if (targetBelief.cooldownUntil > now) {
+        return {
+          deltaIndex,
+          verdict: "reject",
+          gate: "beliefGoal",
+          reason: `belief ${targetId} cooldown until ${targetBelief.cooldownUntil}`,
+        };
+      }
+    }
+    // Patch may add/update belief by beliefId in patch
+    const patchBeliefId = typeof delta.patch.beliefId === "string" ? delta.patch.beliefId : targetId;
+    if (patchBeliefId && patchBeliefId !== "global") {
+      const existing = beliefs.find((b) => b.beliefId === patchBeliefId);
+      if (existing?.cooldownUntil) {
+        const now = new Date().toISOString();
+        if (existing.cooldownUntil > now) {
+          return {
+            deltaIndex,
+            verdict: "reject",
+            gate: "beliefGoal",
+            reason: `belief ${patchBeliefId} cooldown until ${existing.cooldownUntil}`,
+          };
+        }
+      }
+    }
+  }
+
+  // Goal: commitment status change (fulfilled/defaulted) requires evidence
+  if (delta.type === "goal") {
+    const patch = delta.patch as Record<string, unknown>;
+    const commitments = Array.isArray(patch.commitments) ? (patch.commitments as Array<{ commitmentId?: string; status?: string; evidence?: string[] }>) : [];
+    for (const c of commitments) {
+      if (c.status === "fulfilled" || c.status === "defaulted") {
+        const evidence = Array.isArray(c.evidence) ? c.evidence : [];
+        if (evidence.length < BELIEF_COMMITMENT_EVIDENCE_MIN && delta.supportingEventHashes.length < BELIEF_COMMITMENT_EVIDENCE_MIN) {
+          return {
+            deltaIndex,
+            verdict: "reject",
+            gate: "beliefGoal",
+            reason: `commitment ${c.commitmentId ?? "?"} status ${c.status} requires evidence`,
+          };
+        }
+      }
+    }
+  }
+
   return { deltaIndex, verdict: "accept", gate: "beliefGoal", reason: "passed" };
 }
 
@@ -198,7 +278,7 @@ export function epigeneticsGate(
   deltaIndex: number,
   context: DeltaGateContext
 ): DeltaGateResult {
-  if (delta.type !== "epigenetics") {
+  if (delta.type !== "epigenetics" && delta.type !== "personality") {
     return { deltaIndex, verdict: "accept", gate: "epigenetics", reason: "not applicable" };
   }
   if (context.genome?.locked === true) {
@@ -258,6 +338,7 @@ export function budgetGate(
 
 const DEFAULT_GATES: DeltaGateFunction[] = [
   identityConstitutionGate,
+  valuesGate,
   recallGroundingGate,
   relationshipDeltaGate,
   moodDeltaGate,

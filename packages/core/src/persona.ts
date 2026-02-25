@@ -41,6 +41,16 @@ import {
   EPIGENETICS_FILENAME
 } from "./genome.js";
 import {
+  VALUES_RULES_FILENAME,
+  VALUES_RULES_SCHEMA_VERSION
+} from "./values_rules.js";
+import {
+  createDefaultPersonalityProfile,
+  PERSONALITY_PROFILE_FILENAME
+} from "./personality_profile.js";
+import { createDefaultGoalsState, loadGoals } from "./goals_state.js";
+import { createDefaultBeliefsState, loadBeliefs } from "./beliefs_state.js";
+import {
   VOICE_LATENT_DIM,
   BELIEF_LATENT_DIM,
   createVoiceLatentBaseline,
@@ -211,6 +221,13 @@ export async function initPersonaPackage(
   await writeJson(path.join(outPath, TEMPORAL_LANDMARKS_FILENAME), createEmptyTemporalLandmarks());
   await writeJson(path.join(outPath, GENOME_FILENAME), createDefaultGenome({ source: "preset" }));
   await writeJson(path.join(outPath, EPIGENETICS_FILENAME), createDefaultEpigenetics());
+  await writeJson(path.join(outPath, VALUES_RULES_FILENAME), {
+    schemaVersion: VALUES_RULES_SCHEMA_VERSION,
+    rules: [],
+  });
+  await writeJson(path.join(outPath, PERSONALITY_PROFILE_FILENAME), createDefaultPersonalityProfile(createdAt));
+  await writeJson(path.join(outPath, "goals.json"), createDefaultGoalsState(createdAt));
+  await writeJson(path.join(outPath, "beliefs.json"), createDefaultBeliefsState(createdAt));
   await ensureMemoryStore(outPath);
 }
 
@@ -247,6 +264,8 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
 
   const genome = await loadGenome(rootPath);
   const epigenetics = await loadEpigenetics(rootPath);
+  const goalsState = await loadGoals(rootPath);
+  const beliefsState = await loadBeliefs(rootPath);
 
   return {
     rootPath,
@@ -265,7 +284,9 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
     autobiography,
     genome,
     epigenetics,
-    interests
+    interests,
+    goalsState,
+    beliefsState
   };
 }
 
@@ -1432,7 +1453,7 @@ const PERSONA_DEFAULT_PATHS: Required<NonNullable<PersonaMeta["paths"]>> = {
   memoryDb: "memory.db"
 };
 
-function normalizePersonaMeta(raw: PersonaMeta): PersonaMeta {
+export function normalizePersonaMeta(raw: PersonaMeta): PersonaMeta {
   const initProfile = normalizeInitProfile(raw.initProfile, raw.createdAt);
   const isLegacy = raw.schemaVersion !== PERSONA_SCHEMA_VERSION;
   const paths: PersonaMeta["paths"] = isLegacy

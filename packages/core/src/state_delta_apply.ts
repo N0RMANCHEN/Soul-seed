@@ -6,6 +6,10 @@ import type {
 } from "./state_delta.js";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
+import { normalizeGoalsState } from "./goals_state.js";
+import { normalizeBeliefsState } from "./beliefs_state.js";
+import { VALUES_RULES_SCHEMA_VERSION } from "./values_rules.js";
+import { createDefaultPersonalityProfile } from "./personality_profile.js";
 
 export const DOMAIN_FILE_MAP: Record<string, string> = {
   relationship: "relationship_state.json",
@@ -88,7 +92,30 @@ async function applyDeltaToFile(
     const raw = await fs.readFile(filePath, "utf-8");
     current = JSON.parse(raw);
   } catch {
-    // file doesn't exist yet — start fresh
+    // file doesn't exist yet — use defaults for personality/value
+    if (delta.type === "personality") {
+      current = createDefaultPersonalityProfile() as unknown as Record<string, unknown>;
+    } else if (delta.type === "value") {
+      current = { schemaVersion: VALUES_RULES_SCHEMA_VERSION, rules: [] };
+    }
+  }
+
+  if (delta.type === "goal") {
+    const merged = mergeGoalsState(current, delta.patch);
+    merged._lastDeltaAt = new Date().toISOString();
+    const tmpPath = filePath + ".tmp";
+    await fs.writeFile(tmpPath, JSON.stringify(merged, null, 2), "utf-8");
+    await fs.rename(tmpPath, filePath);
+    return;
+  }
+
+  if (delta.type === "belief") {
+    const merged = mergeBeliefsState(current, delta.patch, delta.targetId);
+    merged._lastDeltaAt = new Date().toISOString();
+    const tmpPath = filePath + ".tmp";
+    await fs.writeFile(tmpPath, JSON.stringify(merged, null, 2), "utf-8");
+    await fs.rename(tmpPath, filePath);
+    return;
   }
 
   for (const [key, value] of Object.entries(delta.patch)) {
@@ -110,6 +137,79 @@ async function applyDeltaToFile(
   const tmpPath = filePath + ".tmp";
   await fs.writeFile(tmpPath, JSON.stringify(current, null, 2), "utf-8");
   await fs.rename(tmpPath, filePath);
+}
+
+function mergeGoalsState(
+  current: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const base = normalizeGoalsState(current);
+  const now = new Date().toISOString();
+
+  if (Array.isArray(patch.goals)) {
+    const byId = new Map(base.goals.map((g) => [g.goalId, g]));
+    for (const p of patch.goals as Array<Record<string, unknown>>) {
+      const id = p.goalId;
+      if (typeof id === "string") {
+        byId.set(id, { ...(byId.get(id) ?? {}), ...p } as never);
+      }
+    }
+    base.goals = Array.from(byId.values());
+  }
+  if (Array.isArray(patch.commitments)) {
+    const byId = new Map(base.commitments.map((c) => [c.commitmentId, c]));
+    for (const p of patch.commitments as Array<Record<string, unknown>>) {
+      const id = p.commitmentId;
+      if (typeof id === "string") {
+        byId.set(id, { ...(byId.get(id) ?? {}), ...p } as never);
+      }
+    }
+    base.commitments = Array.from(byId.values());
+  }
+  if (patch.drives && typeof patch.drives === "object") {
+    const d = patch.drives as Record<string, unknown>;
+    const clamp = (v: unknown) => Math.max(0, Math.min(1, Number(v) || 0.5));
+    base.drives = {
+      exploration: clamp(d.exploration ?? base.drives.exploration),
+      safety: clamp(d.safety ?? base.drives.safety),
+      efficiency: clamp(d.efficiency ?? base.drives.efficiency),
+      intimacy: clamp(d.intimacy ?? base.drives.intimacy),
+    };
+  }
+
+  base.updatedAt = now;
+  return base as unknown as Record<string, unknown>;
+}
+
+function mergeBeliefsState(
+  current: Record<string, unknown>,
+  patch: Record<string, unknown>,
+  targetId?: string
+): Record<string, unknown> {
+  const base = normalizeBeliefsState(current);
+  const now = new Date().toISOString();
+
+  if (Array.isArray(patch.beliefs)) {
+    const byId = new Map(base.beliefs.map((b) => [b.beliefId, b]));
+    for (const p of patch.beliefs as Array<Record<string, unknown>>) {
+      const id = p.beliefId;
+      if (typeof id === "string") {
+        byId.set(id, { ...(byId.get(id) ?? {}), ...p } as never);
+      }
+    }
+    base.beliefs = Array.from(byId.values());
+  } else if (typeof patch.beliefId === "string" || (targetId && targetId !== "global")) {
+    const id = (patch.beliefId as string) ?? targetId;
+    const byId = new Map(base.beliefs.map((b) => [b.beliefId, b]));
+    const existing = byId.get(id);
+    const updated = { ...(existing ?? { beliefId: id, domain: "world", proposition: "", confidence: 0.5, lastUpdated: now, supportingEvidence: [], contradictingEvidence: [], cooldownUntil: null }), ...patch };
+    (updated as Record<string, unknown>).lastUpdated = now;
+    byId.set(id, updated as never);
+    base.beliefs = Array.from(byId.values());
+  }
+
+  base.updatedAt = now;
+  return base as unknown as Record<string, unknown>;
 }
 
 async function appendDeltaTrace(
