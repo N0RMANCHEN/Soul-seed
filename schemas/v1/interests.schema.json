@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "interests.v1",
+  "title": "Interests (A2)",
+  "description": "H/P1-18: Long-term interest distribution. Spec Appendix A2.",
+  "type": "object",
+  "required": ["schemaVersion", "updatedAt", "topics"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0" },
+    "updatedAt": { "type": "string" },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["topicId", "label", "weight"],
+        "properties": {
+          "topicId": { "type": "string" },
+          "label": { "type": "string" },
+          "weight": { "type": "number" },
+          "confidence": { "type": "number" },
+          "growth": { "type": "number" },
+          "decayRate": { "type": "number" },
+          "facets": { "type": "object" },
+          "evidence": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

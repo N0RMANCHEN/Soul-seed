@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "proactive_plan.v1",
+  "title": "Proactive Plan (A4)",
+  "description": "H/P1-18: Proactive intent planning. Spec Appendix A4.",
+  "type": "object",
+  "required": ["schemaVersion", "intent", "target", "why"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0" },
+    "intent": { "type": "string", "enum": ["FOLLOW_UP", "SHARE", "CHECK_IN", "NUDGE"] },
+    "target": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "type": "string", "enum": ["topic", "entity", "goal"] },
+        "id": { "type": "string" }
+      }
+    },
+    "why": { "type": "array", "items": { "type": "string" } },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "maxSentences": { "type": "number" },
+        "tone": { "type": "string" }
+      }
+    }
+  }
+}
