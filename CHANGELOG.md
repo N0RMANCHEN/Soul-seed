@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **AG/P2-4** Core export whitelist gate: Wired `config/governance/core_export_whitelist.json` into `arch_governance_check.mjs`; internal-only modules (e.g. `persona_write_lock`) must not be re-exported; new rule `internalModuleReExport` (error).
+- **AG/P2-5** Plan naming unification: Removed H1/H2/H3 plan files; updated all references to Ha/Hb/Hc; `doc/plans/README.md` simplified; `planNamingMix` warning resolved.
+- **Archive** Architecture Governance 12 项：Architecture-Governance-Roadmap 任务状态全部标记 done，风险总览更新为已闭环，归档说明已添加；Roadmap 当前执行总览补充 AG 完成记录。
+
 ### Fixed
 - **CLI test** `chat can resume last goal and report progress without creating a new goal`: increased `intervalMs` to 420 to avoid flakiness when run in full suite.
 

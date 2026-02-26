@@ -70,6 +70,7 @@
 
 ## 当前执行总览（重排后）
 - `done`：Phase H 全部完成 — Ha（H/P0-0..4）、Hb（H/P1-0..7）、Hc（H/P1-8..10, H/P1-12..19）
+- `done`：Architecture Governance 12 项已闭环（2026-02-26 合并，见 `doc/Architecture-Governance-Roadmap.md`）
 - `blocked`：`none`
 - `todo`：Phase J（下一优先级）
 - **Phase Ha 完成说明**：State Delta Pipeline（H/P0-0）+ Invariant Table（H/P0-1）+ Compat Migration（H/P0-2）+ Compat Constants（H/P0-3）+ Genome MVP（H/P0-4）全部落地。
