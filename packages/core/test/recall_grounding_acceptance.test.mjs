@@ -18,7 +18,7 @@ test("acceptance: ungrounded fabricated recall leak rate is zero on 200 template
       lifeEvents: [],
       strictMemoryGrounding: true
     });
-    if (!result.corrected || !/不确定|do not remember|没有可核对/.test(result.text)) {
+    if (!result.corrected || !/拿不准|记得不太稳|go with what you just said/i.test(result.text)) {
       leaked += 1;
     }
   }

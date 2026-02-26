@@ -72,7 +72,7 @@ export function enforceRelationalGuard(
       flags.push("fabricated_recall");
       next = next.replace(
         /(上次我们聊到[^。！？!?]*[。！？!?]?)/u,
-        "我不确定我们之前是否聊过这个细节。"
+        "这段我记得不太稳，我们按你刚刚这句为准。"
       );
     }
   }

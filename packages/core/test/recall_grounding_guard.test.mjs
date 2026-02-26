@@ -13,7 +13,8 @@ test("rewrites ungrounded recall assertions in strict mode", () => {
 
   assert.equal(result.corrected, true);
   assert.equal(result.flags.includes("ungrounded_recall"), true);
-  assert.match(result.text, /我不确定我们之前是否聊过这个细节/);
+  assert.match(result.text, /记得不太稳|拿不准|go with what you just said/i);
+  assert.doesNotMatch(result.text, /可核对|记忆证据/);
 });
 
 test("rewrites ungrounded temporal recall assertions like '你昨天说的'", () => {
@@ -26,7 +27,8 @@ test("rewrites ungrounded temporal recall assertions like '你昨天说的'", ()
 
   assert.equal(result.corrected, true);
   assert.equal(result.flags.includes("ungrounded_recall"), true);
-  assert.match(result.text, /我不确定我们之前是否聊过这个细节/);
+  assert.match(result.text, /记得不太稳|拿不准|go with what you just said/i);
+  assert.doesNotMatch(result.text, /可核对|记忆证据/);
 });
 
 test("keeps recall assertions when grounded by memory evidence", () => {

@@ -51,6 +51,18 @@ const RECALL_STOPWORDS = new Set([
   "we"
 ]);
 
+function buildNaturalRecallUncertaintyLine(sentence: string): string {
+  const hasChinese = /[\u4e00-\u9fff]/u.test(sentence);
+  if (!hasChinese) {
+    return "I might be mixing details, so let's go with what you just said.";
+  }
+  const hasRecallAnchor = /(上次|之前|先前|昨天|刚才|你说|你提到|聊过)/u.test(sentence);
+  if (hasRecallAnchor) {
+    return "这段我记得不太稳，我们按你刚刚这句为准。";
+  }
+  return "这块我有点拿不准，先按你现在说的这个版本继续。";
+}
+
 export function enforceRecallGroundingGuard(
   reply: string,
   options?: {
@@ -116,7 +128,7 @@ export function enforceRecallGroundingGuard(
           : tokenHits >= 2;
     if (!grounded) {
       corrected = true;
-      return "我不确定我们之前是否聊过这个细节，我现在没有可核对的记忆证据。";
+      return buildNaturalRecallUncertaintyLine(sentence);
     }
 
     // Time deictic guard: avoid saying "just now/刚才" for memories that are
