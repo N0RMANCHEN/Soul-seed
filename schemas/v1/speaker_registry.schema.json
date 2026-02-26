@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "speaker_registry.v1",
+  "title": "Multi-Persona Speaker Registry (K/P0-0)",
+  "description": "Phase K: Registered persona list with role/label mapping. actorId aligns with LifeEventSpeaker.actorId.",
+  "type": "object",
+  "required": ["schemaVersion", "entries", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["actorId", "actorLabel", "role", "displayName", "registeredAt"],
+        "properties": {
+          "actorId": { "type": "string", "maxLength": 80 },
+          "actorLabel": { "type": "string", "maxLength": 80 },
+          "role": { "type": "string", "enum": ["assistant", "user", "system"] },
+          "personaId": { "type": "string" },
+          "displayName": { "type": "string", "maxLength": 80 },
+          "registeredAt": { "type": "string" }
+        }
+      }
+    },
+    "updatedAt": { "type": "string" }
+  }
+}

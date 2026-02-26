@@ -67,6 +67,11 @@ import {
   MAX_PINNED_COUNT,
   MAX_PINNED_CHARS
 } from "../types.js";
+import {
+  loadGroupPolicy,
+  loadSessionGraph,
+  loadSpeakerRegistry
+} from "../runtime/multi_persona_registry.js";
 import { withPersonaLock } from "./persona_write_lock.js";
 import type {
   LifeEvent,
@@ -295,6 +300,12 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
   const goalsState = await loadGoals(rootPath);
   const beliefsState = await loadBeliefs(rootPath);
 
+  const [groupPolicy, sessionGraph, speakerRegistry] = await Promise.all([
+    loadGroupPolicy(rootPath),
+    loadSessionGraph(rootPath),
+    loadSpeakerRegistry(rootPath)
+  ]);
+
   return {
     rootPath,
     persona,
@@ -315,7 +326,10 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
     interests,
     topicState,
     goalsState,
-    beliefsState
+    beliefsState,
+    groupPolicy,
+    sessionGraph,
+    speakerRegistry
   };
 }
 
@@ -794,10 +808,11 @@ export async function appendLifeEvent(rootPath: string, event: LifeEventInput): 
     await previous.catch(() => undefined);
     await withPersonaLock(rootPath, async () => {
       const prevHash = (await getLastHash(lifeLogPath)) ?? "GENESIS";
+      const payload = withDefaultMessageSpeaker(event.type, event.payload);
       const eventWithoutHash = {
         ts: isoNow(),
         type: event.type,
-        payload: event.payload,
+        payload,
         prevHash
       };
       const hash = eventHash(prevHash, eventWithoutHash);
@@ -823,6 +838,44 @@ export async function appendLifeEvent(rootPath: string, event: LifeEventInput): 
     throw new Error("failed to append life event");
   }
   return fullEvent;
+}
+
+function withDefaultMessageSpeaker(
+  eventType: LifeEventInput["type"],
+  payload: LifeEventInput["payload"]
+): LifeEventInput["payload"] {
+  if (eventType !== "user_message" && eventType !== "assistant_message") {
+    return payload;
+  }
+
+  const existingSpeaker = payload.speaker;
+  const normalizedRole = eventType === "assistant_message" ? "assistant" : "user";
+
+  const actorId =
+    typeof existingSpeaker?.actorId === "string" && existingSpeaker.actorId.trim().length > 0
+      ? existingSpeaker.actorId.trim().slice(0, 80)
+      : eventType === "assistant_message"
+        ? (typeof payload.personaId === "string" && payload.personaId.trim().length > 0
+          ? payload.personaId.trim().slice(0, 80)
+          : undefined)
+        : "user";
+  const actorLabel =
+    typeof existingSpeaker?.actorLabel === "string" && existingSpeaker.actorLabel.trim().length > 0
+      ? existingSpeaker.actorLabel.trim().slice(0, 80)
+      : eventType === "assistant_message"
+        ? (typeof payload.personaName === "string" && payload.personaName.trim().length > 0
+          ? payload.personaName.trim().slice(0, 80)
+          : undefined)
+        : "user";
+
+  return {
+    ...payload,
+    speaker: {
+      role: normalizedRole,
+      ...(actorId ? { actorId } : {}),
+      ...(actorLabel ? { actorLabel } : {})
+    }
+  };
 }
 
 export async function requestRename(

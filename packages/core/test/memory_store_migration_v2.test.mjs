@@ -5,7 +5,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 
-import { ensureMemoryStore, initPersonaPackage, MEMORY_SCHEMA_VERSION, runMemoryStoreSql } from "../dist/index.js";
+import { appendLifeEvent, ensureMemoryStore, initPersonaPackage, MEMORY_SCHEMA_VERSION, runMemoryStoreSql } from "../dist/index.js";
 
 function sqlite(dbPath, sql) {
   return execFileSync("sqlite3", [dbPath, sql], { encoding: "utf8" }).trim();
@@ -50,7 +50,7 @@ test("ensureMemoryStore migrates schema v1 to current schema with new memory col
 
   const cols = sqlite(
     dbPath,
-    "SELECT GROUP_CONCAT(name, ',') FROM pragma_table_info('memories') WHERE name IN ('activation_count','last_activated_at','emotion_score','narrative_score','credibility_score','excluded_from_recall','reconsolidation_count') ORDER BY name;"
+    "SELECT GROUP_CONCAT(name, ',') FROM pragma_table_info('memories') WHERE name IN ('activation_count','last_activated_at','emotion_score','narrative_score','credibility_score','excluded_from_recall','reconsolidation_count','speaker_role','speaker_id','speaker_label') ORDER BY name;"
   );
   const got = new Set(cols.split(",").filter(Boolean));
   const expected = new Set([
@@ -60,7 +60,10 @@ test("ensureMemoryStore migrates schema v1 to current schema with new memory col
     "narrative_score",
     "credibility_score",
     "excluded_from_recall",
-    "reconsolidation_count"
+    "reconsolidation_count",
+    "speaker_role",
+    "speaker_id",
+    "speaker_label"
   ]);
   assert.deepEqual(got, expected);
 });
@@ -89,4 +92,72 @@ test("ensureMemoryStore maintains FTS table and keeps it in sync", async () => {
   );
   const after = Number(sqlite(dbPath, "SELECT COUNT(*) FROM memories_fts;"));
   assert.equal(after >= before + 1, true);
+});
+
+test("ensureMemoryStore migrates v9 personas to v10 with speaker backfill", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-memory-store-v10-"));
+  const personaPath = path.join(tmpDir, "Aster.soulseedpersona");
+  const dbPath = path.join(personaPath, "memory.db");
+
+  await initPersonaPackage(personaPath, "Aster");
+  await appendLifeEvent(personaPath, {
+    type: "assistant_message",
+    payload: {
+      text: "legacy assistant message before speaker columns"
+    }
+  });
+
+  await runMemoryStoreSql(
+    personaPath,
+    `
+    BEGIN;
+    CREATE TABLE memories_v9_backup AS
+      SELECT id, memory_type, content, salience, state, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, origin_role, evidence_level, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at
+      FROM memories;
+    DROP TABLE memories;
+    CREATE TABLE memories (
+      id TEXT PRIMARY KEY,
+      memory_type TEXT NOT NULL,
+      content TEXT NOT NULL,
+      salience REAL NOT NULL DEFAULT 0,
+      state TEXT NOT NULL DEFAULT 'warm',
+      activation_count INTEGER NOT NULL DEFAULT 1,
+      last_activated_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
+      emotion_score REAL NOT NULL DEFAULT 0.2,
+      narrative_score REAL NOT NULL DEFAULT 0.2,
+      credibility_score REAL NOT NULL DEFAULT 1.0,
+      origin_role TEXT NOT NULL DEFAULT 'system',
+      evidence_level TEXT NOT NULL DEFAULT 'derived',
+      excluded_from_recall INTEGER NOT NULL DEFAULT 0,
+      reconsolidation_count INTEGER NOT NULL DEFAULT 0,
+      source_event_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT
+    );
+    INSERT INTO memories (id, memory_type, content, salience, state, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, origin_role, evidence_level, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at)
+      SELECT id, memory_type, content, salience, state, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, origin_role, evidence_level, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at
+      FROM memories_v9_backup;
+    DROP TABLE memories_v9_backup;
+    PRAGMA user_version = 9;
+    COMMIT;
+    `
+  );
+
+  await ensureMemoryStore(personaPath);
+
+  const version = sqlite(dbPath, "PRAGMA user_version;");
+  assert.equal(version, String(MEMORY_SCHEMA_VERSION));
+
+  const speakerCols = sqlite(
+    dbPath,
+    "SELECT GROUP_CONCAT(name, ',') FROM pragma_table_info('memories') WHERE name IN ('speaker_role','speaker_id','speaker_label') ORDER BY name;"
+  );
+  assert.deepEqual(new Set(speakerCols.split(",").filter(Boolean)), new Set(["speaker_role", "speaker_id", "speaker_label"]));
+
+  const backfilled = sqlite(
+    dbPath,
+    "SELECT origin_role || '|' || COALESCE(speaker_role,'') || '|' || COALESCE(speaker_id,'') || '|' || COALESCE(speaker_label,'') FROM memories ORDER BY created_at DESC LIMIT 1;"
+  );
+  assert.equal(backfilled.startsWith("assistant|assistant|"), true);
 });

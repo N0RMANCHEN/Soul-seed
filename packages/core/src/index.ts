@@ -131,3 +131,10 @@ export {
 export * from "./governance/migration_logger.js";
 export * from "./persona/package_snapshotter.js";
 export * from "./persona/package_loader.js";
+export * from "./runtime/multi_persona_registry.js";
+export * from "./runtime/multi_persona_arbitration.js";
+export * from "./runtime/multi_persona_feature_flag.js";
+export * from "./runtime/multi_persona_turn_scheduler.js";
+export * from "./runtime/multi_persona_context_bus.js";
+export * from "./runtime/multi_persona_commands.js";
+export * from "./runtime/multi_persona_cooperation.js";

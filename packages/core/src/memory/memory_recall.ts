@@ -109,6 +109,9 @@ interface MemoryRow {
   credibilityScore: number;
   reconsolidationCount: number;
   originRole: "user" | "assistant" | "system";
+  speakerRole: "user" | "assistant" | "system";
+  speakerId: string | null;
+  speakerLabel: string | null;
 }
 
 const DEFAULT_BUDGET: RecallBudget = {
@@ -608,7 +611,10 @@ async function fetchCandidateRows(rootPath: string, limit: number): Promise<Memo
       "'narrativeScore', narrative_score,",
       "'credibilityScore', credibility_score,",
       "'reconsolidationCount', reconsolidation_count,",
-      "'originRole', origin_role",
+      "'originRole', origin_role,",
+      "'speakerRole', COALESCE(speaker_role, origin_role),",
+      "'speakerId', speaker_id,",
+      "'speakerLabel', speaker_label",
       ")",
       "FROM memories",
       "WHERE deleted_at IS NULL AND excluded_from_recall = 0",
@@ -643,7 +649,10 @@ async function fetchCandidateRows(rootPath: string, limit: number): Promise<Memo
         narrativeScore: clamp01(Number(parsed.narrativeScore)),
         credibilityScore: clamp01(Number(parsed.credibilityScore)),
         reconsolidationCount: normalizeInt(parsed.reconsolidationCount, 0),
-        originRole: normalizeOriginRole(parsed.originRole)
+        originRole: normalizeOriginRole(parsed.originRole),
+        speakerRole: normalizeSpeakerRole(parsed.speakerRole, normalizeOriginRole(parsed.originRole)),
+        speakerId: normalizeOptionalString(parsed.speakerId),
+        speakerLabel: normalizeOptionalString(parsed.speakerLabel)
       });
     } catch {
       continue;
@@ -681,7 +690,10 @@ async function fetchKeywordCandidateRows(rootPath: string, limit: number, keywor
         "'narrativeScore', m.narrative_score,",
         "'credibilityScore', m.credibility_score,",
         "'reconsolidationCount', m.reconsolidation_count,",
-        "'originRole', m.origin_role",
+        "'originRole', m.origin_role,",
+        "'speakerRole', COALESCE(m.speaker_role, m.origin_role),",
+        "'speakerId', m.speaker_id,",
+        "'speakerLabel', m.speaker_label",
         ")",
         "FROM memories_fts f",
         "JOIN memories m ON m.id = f.memory_id",
@@ -723,7 +735,10 @@ async function fetchKeywordCandidateRows(rootPath: string, limit: number, keywor
         "'narrativeScore', narrative_score,",
         "'credibilityScore', credibility_score,",
         "'reconsolidationCount', reconsolidation_count,",
-        "'originRole', origin_role",
+        "'originRole', origin_role,",
+        "'speakerRole', COALESCE(speaker_role, origin_role),",
+        "'speakerId', speaker_id,",
+        "'speakerLabel', speaker_label",
         ")",
         "FROM memories",
         "WHERE deleted_at IS NULL AND excluded_from_recall = 0",
@@ -837,7 +852,10 @@ async function fetchVectorCandidateRows(
       "'narrativeScore', narrative_score,",
       "'credibilityScore', credibility_score,",
       "'reconsolidationCount', reconsolidation_count,",
-      "'originRole', origin_role",
+      "'originRole', origin_role,",
+      "'speakerRole', COALESCE(speaker_role, origin_role),",
+      "'speakerId', speaker_id,",
+      "'speakerLabel', speaker_label",
       ")",
       "FROM memories",
       `WHERE id IN (${ids.map((id) => sqlText(id)).join(",")})`,
@@ -1179,7 +1197,8 @@ function extractKeywords(input: string): string[] {
 }
 
 function renderInjectedMemory(row: MemoryRow): string {
-  return `[${row.memoryType}/${row.state}] ${row.content}`;
+  const speakerTag = renderSpeakerTag(row);
+  return `${speakerTag ? `${speakerTag} ` : ""}[${row.memoryType}/${row.state}] ${row.content}`;
 }
 
 function recencyScore(updatedAt: string): number {
@@ -1275,7 +1294,10 @@ function parseRows(raw: string): MemoryRow[] {
         narrativeScore: clamp01(Number(parsed.narrativeScore)),
         credibilityScore: clamp01(Number(parsed.credibilityScore)),
         reconsolidationCount: normalizeInt(parsed.reconsolidationCount, 0),
-        originRole: normalizeOriginRole(parsed.originRole)
+        originRole: normalizeOriginRole(parsed.originRole),
+        speakerRole: normalizeSpeakerRole(parsed.speakerRole, normalizeOriginRole(parsed.originRole)),
+        speakerId: normalizeOptionalString(parsed.speakerId),
+        speakerLabel: normalizeOptionalString(parsed.speakerLabel)
       });
     } catch {
       continue;
@@ -1305,7 +1327,10 @@ async function fetchRowsByIds(rootPath: string, ids: string[]): Promise<MemoryRo
       "'narrativeScore', narrative_score,",
       "'credibilityScore', credibility_score,",
       "'reconsolidationCount', reconsolidation_count,",
-      "'originRole', origin_role",
+      "'originRole', origin_role,",
+      "'speakerRole', COALESCE(speaker_role, origin_role),",
+      "'speakerId', speaker_id,",
+      "'speakerLabel', speaker_label",
       ")",
       "FROM memories",
       `WHERE id IN (${unique.map((id) => sqlText(id)).join(",")})`,
@@ -1409,6 +1434,37 @@ function normalizeInt(value: unknown, fallback: number): number {
 
 function normalizeOriginRole(value: unknown): "user" | "assistant" | "system" {
   return value === "user" || value === "assistant" || value === "system" ? value : "system";
+}
+
+function normalizeSpeakerRole(
+  value: unknown,
+  fallback: "user" | "assistant" | "system"
+): "user" | "assistant" | "system" {
+  return value === "user" || value === "assistant" || value === "system" ? value : fallback;
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function renderSpeakerTag(row: MemoryRow): string {
+  if (row.speakerRole === "assistant" && row.speakerLabel) {
+    return `[${row.speakerRole}:${row.speakerLabel}]`;
+  }
+  if (row.speakerRole === "assistant" && row.speakerId) {
+    return `[assistant:${row.speakerId}]`;
+  }
+  if (row.speakerRole === "system" && row.speakerLabel) {
+    return `[system:${row.speakerLabel}]`;
+  }
+  if (row.speakerRole !== row.originRole && row.speakerRole !== "user") {
+    return `[${row.speakerRole}]`;
+  }
+  return "";
 }
 
 function roundScore(value: number): number {

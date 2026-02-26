@@ -30,6 +30,7 @@
     "quality:update-baseline": "node ./scripts/update_baseline.mjs",
     "quality:nightly-diff": "node ./scripts/nightly_diff.mjs",
     "eval:phase-j": "node ./scripts/eval_phase_j.mjs --strict",
+    "eval:phase-k": "node ./scripts/eval_multi_persona.mjs --strict",
     "ux:slo": "node ./scripts/check_chat_ux_slo.mjs"
   },
   "devDependencies": {

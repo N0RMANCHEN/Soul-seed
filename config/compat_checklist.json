@@ -230,6 +230,42 @@
       "verifiedAt": "2026-02-26"
     },
     {
+      "id": "COMPAT-ENTRY-14",
+      "module": "K/P0-0",
+      "category": "entry",
+      "description": "Multi-Persona Registry: group_policy, session_graph, speaker_registry loaders with legacy defaults",
+      "evidencePath": "packages/core/src/runtime/multi_persona_registry.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-15",
+      "module": "K/P0-3",
+      "category": "entry",
+      "description": "Phase K feature flag (SOULSEED_PHASE_K_ENABLE) defaults OFF; doctor hints for missing artifacts",
+      "evidencePath": "packages/core/src/runtime/multi_persona_feature_flag.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-16",
+      "module": "K/P0-3",
+      "category": "entry",
+      "description": "Phase K migration: migratePersonaToPhaseK idempotent creation of 3 artifacts",
+      "evidencePath": "packages/core/src/runtime/multi_persona_registry.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-13",
+      "module": "K/P0-0",
+      "category": "storage",
+      "description": "Multi-Persona: group_policy.json, session_graph.json, speaker_registry.json (optional, created on demand)",
+      "evidencePath": "packages/core/src/runtime/multi_persona_registry.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
       "id": "COMPAT-RECALL-01",
       "module": "H/P0-4",
       "category": "recall",

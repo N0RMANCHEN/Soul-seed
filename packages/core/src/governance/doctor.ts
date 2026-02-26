@@ -15,6 +15,14 @@ import { MAX_USER_FACTS } from "../memory/memory_user_facts.js";
 import { checkCrystallizationFileSizes } from "../persona/constitution_crystallization.js";
 import { PERSONA_SCHEMA_VERSION, MAX_PINNED_COUNT, MAX_PINNED_CHARS } from "../types.js";
 import type { DoctorIssue, DoctorReport, EnvCheckResult } from "../types.js";
+import {
+  GROUP_POLICY_FILENAME,
+  SESSION_GRAPH_FILENAME,
+  SPEAKER_REGISTRY_FILENAME,
+  loadGroupPolicy,
+  loadSessionGraph,
+  loadSpeakerRegistry
+} from "../runtime/multi_persona_registry.js";
 
 const REQUIRED_FILES = [
   "persona.json",
@@ -462,6 +470,9 @@ export async function doctorPersona(rootPath: string): Promise<DoctorReport> {
 
     // P2-6: social graph health
     issues.push(...(await inspectSocialGraphHealth(rootPath)));
+
+    // K/P0-3: Multi-persona artifact health
+    issues.push(...(await inspectMultiPersonaArtifacts(rootPath)));
   }
 
   return {
@@ -552,6 +563,69 @@ async function inspectSocialGraphHealth(rootPath: string): Promise<DoctorIssue[]
   } catch {
     // Non-critical
   }
+  return issues;
+}
+
+async function inspectMultiPersonaArtifacts(rootPath: string): Promise<DoctorIssue[]> {
+  const issues: DoctorIssue[] = [];
+  const artifacts = [
+    { filename: GROUP_POLICY_FILENAME, loader: loadGroupPolicy },
+    { filename: SESSION_GRAPH_FILENAME, loader: loadSessionGraph },
+    { filename: SPEAKER_REGISTRY_FILENAME, loader: loadSpeakerRegistry }
+  ];
+
+  const present: Array<{ filename: string; data: Record<string, unknown> }> = [];
+  for (const { filename, loader } of artifacts) {
+    const full = path.join(rootPath, filename);
+    if (!existsSync(full)) {
+      issues.push({
+        code: "k_artifact_missing",
+        severity: "hint",
+        message: `Phase K artifact missing: ${filename}. Run: ss persona multi-persona --init`,
+        path: filename
+      });
+      continue;
+    }
+    try {
+      const data = await loader(rootPath) as unknown as Record<string, unknown>;
+      present.push({ filename, data });
+    } catch {
+      issues.push({
+        code: "k_artifact_invalid_schema",
+        severity: "warning",
+        message: `Phase K artifact failed to load: ${filename}`,
+        path: filename
+      });
+    }
+  }
+
+  for (const { filename, data } of present) {
+    if (data.schemaVersion !== "1.0") {
+      issues.push({
+        code: "k_artifact_invalid_schema",
+        severity: "warning",
+        message: `${filename} schemaVersion=${String(data.schemaVersion ?? "unknown")}, expected "1.0"`,
+        path: filename
+      });
+    }
+  }
+
+  const registry = present.find((p) => p.filename === SPEAKER_REGISTRY_FILENAME);
+  if (registry) {
+    const entries = Array.isArray(registry.data.entries) ? registry.data.entries : [];
+    for (const entry of entries) {
+      if (!isRecord(entry) || typeof entry.actorId !== "string" || entry.actorId.trim().length === 0) {
+        issues.push({
+          code: "k_registry_invalid_entry",
+          severity: "warning",
+          message: `${SPEAKER_REGISTRY_FILENAME} contains entry with empty or missing actorId`,
+          path: SPEAKER_REGISTRY_FILENAME
+        });
+        break;
+      }
+    }
+  }
+
   return issues;
 }
 

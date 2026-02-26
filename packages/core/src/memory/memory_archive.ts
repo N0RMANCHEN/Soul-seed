@@ -50,6 +50,9 @@ interface MemoryRow {
   narrativeScore: number;
   credibilityScore: number;
   originRole: string;
+  speakerRole: string;
+  speakerId: string | null;
+  speakerLabel: string | null;
   evidenceLevel: string;
   reconsolidationCount: number;
   sourceEventHash: string;
@@ -143,6 +146,9 @@ export async function archiveColdMemories(
       "'narrativeScore', narrative_score,",
       "'credibilityScore', credibility_score,",
       "'originRole', origin_role,",
+      "'speakerRole', COALESCE(speaker_role, origin_role),",
+      "'speakerId', speaker_id,",
+      "'speakerLabel', speaker_label,",
       "'evidenceLevel', evidence_level,",
       "'reconsolidationCount', reconsolidation_count,",
       "'sourceEventHash', source_event_hash,",
@@ -293,6 +299,9 @@ async function queryRows(rootPath: string, sql: string): Promise<MemoryRow[]> {
         narrativeScore: asNumber(parsed.narrativeScore),
         credibilityScore: asNumber(parsed.credibilityScore, 1),
         originRole: asString(parsed.originRole),
+        speakerRole: asString(parsed.speakerRole) || asString(parsed.originRole),
+        speakerId: asNullableString(parsed.speakerId),
+        speakerLabel: asNullableString(parsed.speakerLabel),
         evidenceLevel: asString(parsed.evidenceLevel),
         reconsolidationCount: Math.max(0, Math.floor(asNumber(parsed.reconsolidationCount, 0))),
         sourceEventHash: asString(parsed.sourceEventHash),
@@ -335,6 +344,14 @@ function round4(value: number): number {
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function asNullableString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function asNumber(value: unknown, fallback = 0): number {

@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 
 export const MEMORY_DB_FILENAME = "memory.db";
-export const MEMORY_SCHEMA_VERSION = 9;
+export const MEMORY_SCHEMA_VERSION = 10;
 
 const REQUIRED_MEMORY_TABLES = [
   "memories",
@@ -54,6 +54,9 @@ export async function ensureMemoryStore(rootPath: string): Promise<void> {
         narrative_score REAL NOT NULL DEFAULT 0.2,
         credibility_score REAL NOT NULL DEFAULT 1.0,
         origin_role TEXT NOT NULL DEFAULT 'system',
+        speaker_role TEXT,
+        speaker_id TEXT,
+        speaker_label TEXT,
         evidence_level TEXT NOT NULL DEFAULT 'derived',
         excluded_from_recall INTEGER NOT NULL DEFAULT 0,
         reconsolidation_count INTEGER NOT NULL DEFAULT 0,
@@ -241,7 +244,7 @@ export async function ensureMemoryStore(rootPath: string): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS idx_behavior_snapshots_persona_at ON behavior_snapshots(persona_id, snapshot_at);
 
-      PRAGMA user_version = 9;
+      PRAGMA user_version = 10;
       COMMIT;
       `
     );
@@ -271,6 +274,9 @@ export async function ensureMemoryStore(rootPath: string): Promise<void> {
   }
   if (currentVersion < 9) {
     await migrateMemoryStoreToV9(dbPath);
+  }
+  if (currentVersion < 10) {
+    await migrateMemoryStoreToV10(dbPath);
   }
 }
 
@@ -583,6 +589,31 @@ async function migrateMemoryStoreToV9(dbPath: string): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_behavior_snapshots_persona_at ON behavior_snapshots(persona_id, snapshot_at);
     PRAGMA user_version = 9;
+    COMMIT;
+    `
+  );
+}
+
+async function migrateMemoryStoreToV10(dbPath: string): Promise<void> {
+  const columns = await getTableColumns(dbPath, "memories");
+  const alterSql: string[] = [];
+  if (!columns.has("speaker_role")) {
+    alterSql.push("ALTER TABLE memories ADD COLUMN speaker_role TEXT;");
+  }
+  if (!columns.has("speaker_id")) {
+    alterSql.push("ALTER TABLE memories ADD COLUMN speaker_id TEXT;");
+  }
+  if (!columns.has("speaker_label")) {
+    alterSql.push("ALTER TABLE memories ADD COLUMN speaker_label TEXT;");
+  }
+
+  await runSqlite(
+    dbPath,
+    `
+    BEGIN;
+    ${alterSql.join("\n")}
+    UPDATE memories SET speaker_role = COALESCE(NULLIF(speaker_role, ''), origin_role, 'system');
+    PRAGMA user_version = 10;
     COMMIT;
     `
   );

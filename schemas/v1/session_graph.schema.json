@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "session_graph.v1",
+  "title": "Multi-Persona Session Graph (K/P0-0)",
+  "description": "Phase K: Active multi-persona session topology snapshot.",
+  "type": "object",
+  "required": ["schemaVersion", "sessions", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0" },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sessionId", "participants", "edges", "state", "createdAt", "updatedAt"],
+        "properties": {
+          "sessionId": { "type": "string" },
+          "participants": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["from", "to", "channel"],
+              "properties": {
+                "from": { "type": "string" },
+                "to": { "type": "string" },
+                "channel": { "type": "string", "enum": ["shared", "private"] }
+              }
+            }
+          },
+          "state": { "type": "string", "enum": ["active", "paused", "closed"] },
+          "createdAt": { "type": "string" },
+          "updatedAt": { "type": "string" }
+        }
+      }
+    },
+    "updatedAt": { "type": "string" }
+  }
+}

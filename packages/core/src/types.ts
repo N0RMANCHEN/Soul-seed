@@ -286,6 +286,12 @@ export interface PersonaPackage {
   goalsState?: import("./state/goals_state.js").GoalsState;
   /** H/P1-1: Beliefs state (propositions with confidence, evidence, cooldown) */
   beliefsState?: import("./state/beliefs_state.js").BeliefsState;
+  /** K/P0-0: Multi-persona group policy (implicit default when absent) */
+  groupPolicy?: import("./runtime/multi_persona_registry.js").MultiPersonaGroupPolicy;
+  /** K/P0-0: Multi-persona session graph (implicit default when absent) */
+  sessionGraph?: import("./runtime/multi_persona_registry.js").MultiPersonaSessionGraph;
+  /** K/P0-0: Multi-persona speaker registry (implicit default when absent) */
+  speakerRegistry?: import("./runtime/multi_persona_registry.js").MultiPersonaSpeakerRegistry;
 }
 
 export interface RelationshipDimensions {
@@ -886,6 +892,7 @@ export interface LifeEvent {
   ts: string;
   type: LifeEventType;
   payload: Record<string, unknown> & {
+    speaker?: LifeEventSpeaker;
     memoryMeta?: MemoryMeta;
   };
   prevHash: string;
@@ -895,8 +902,15 @@ export interface LifeEvent {
 export interface LifeEventInput {
   type: LifeEventType;
   payload: Record<string, unknown> & {
+    speaker?: LifeEventSpeaker;
     memoryMeta?: MemoryMeta;
   };
+}
+
+export interface LifeEventSpeaker {
+  role: "user" | "assistant" | "system";
+  actorId?: string;
+  actorLabel?: string;
 }
 
 export interface ModelStreamCallbacks {

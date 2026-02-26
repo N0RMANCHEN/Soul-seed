@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "group_policy.v1",
+  "title": "Multi-Persona Group Policy (K/P0-0)",
+  "description": "Phase K: Multi-persona session arbitration, isolation, and turn scheduling policy.",
+  "type": "object",
+  "required": ["schemaVersion", "arbitrationMode", "isolationLevel", "cooperationEnabled", "maxRegisteredPersonas", "turnScheduling", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0" },
+    "arbitrationMode": {
+      "type": "string",
+      "enum": ["addressing_priority", "round_robin", "priority_weighted"]
+    },
+    "isolationLevel": {
+      "type": "string",
+      "enum": ["strict", "shared", "hybrid"]
+    },
+    "cooperationEnabled": { "type": "boolean" },
+    "maxRegisteredPersonas": { "type": "integer", "minimum": 1, "maximum": 32 },
+    "turnScheduling": {
+      "type": "object",
+      "required": ["mode", "maxConsecutiveTurns", "timeoutMs"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["round_robin_priority", "free_form", "strict_round_robin"]
+        },
+        "maxConsecutiveTurns": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 300000 }
+      }
+    },
+    "updatedAt": { "type": "string" }
+  }
+}

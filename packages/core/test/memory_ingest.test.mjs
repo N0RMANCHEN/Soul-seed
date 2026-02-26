@@ -31,6 +31,31 @@ test("appendLifeEvent ingests conversation event into memory.db with source_even
   assert.equal(row, `procedural|${event.hash}`);
 });
 
+test("ingest persists speaker attribution for multi-agent-safe recall", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-memory-ingest-speaker-"));
+  const personaPath = path.join(tmpDir, "Aster.soulseedpersona");
+  const dbPath = path.join(personaPath, "memory.db");
+
+  await initPersonaPackage(personaPath, "Aster");
+  await appendLifeEvent(personaPath, {
+    type: "assistant_message",
+    payload: {
+      text: "我接下来会按双人格仲裁来回答。",
+      speaker: {
+        role: "assistant",
+        actorId: "persona:aster",
+        actorLabel: "Aster"
+      }
+    }
+  });
+
+  const row = sqlite(
+    dbPath,
+    "SELECT origin_role || '|' || COALESCE(speaker_role,'') || '|' || COALESCE(speaker_id,'') || '|' || COALESCE(speaker_label,'') FROM memories ORDER BY created_at DESC LIMIT 1;"
+  );
+  assert.equal(row, "assistant|assistant|persona:aster|Aster");
+});
+
 test("ingest classifier can write all four memory classes", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-memory-ingest-classes-"));
   const personaPath = path.join(tmpDir, "Aster.soulseedpersona");

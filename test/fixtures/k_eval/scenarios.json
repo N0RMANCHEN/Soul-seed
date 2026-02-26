@@ -1,0 +1,132 @@
+[
+  {
+    "id": "k-eval-001",
+    "description": "User addresses Aster by name in 2-persona group",
+    "participants": [
+      { "actorId": "p-aster", "displayName": "Aster", "role": "assistant" },
+      { "actorId": "p-luna", "displayName": "Luna", "role": "assistant" }
+    ],
+    "userInput": "@Aster 你觉得今天天气怎么样？",
+    "expected": { "selectedActorId": "p-aster", "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-002",
+    "description": "User addresses Luna in 2-persona group",
+    "participants": [
+      { "actorId": "p-aster", "displayName": "Aster", "role": "assistant" },
+      { "actorId": "p-luna", "displayName": "Luna", "role": "assistant" }
+    ],
+    "userInput": "Luna，帮我查一下明天有没有课",
+    "expected": { "selectedActorId": "p-luna", "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-003",
+    "description": "No explicit addressing — no persona qualifies for speak",
+    "participants": [
+      { "actorId": "p-aster", "displayName": "Aster", "role": "assistant" },
+      { "actorId": "p-luna", "displayName": "Luna", "role": "assistant" }
+    ],
+    "userInput": "大家觉得这本书怎么样？",
+    "expected": { "selectedActorId": null, "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-004",
+    "description": "3-persona group, user addresses middle persona",
+    "participants": [
+      { "actorId": "p-aster", "displayName": "Aster", "role": "assistant" },
+      { "actorId": "p-luna", "displayName": "Luna", "role": "assistant" },
+      { "actorId": "p-nova", "displayName": "Nova", "role": "assistant" }
+    ],
+    "userInput": "Luna, what do you think about this idea?",
+    "expected": { "selectedActorId": "p-luna", "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-005",
+    "description": "Monopoly prevention — Aster in cooldown, Luna addressed",
+    "participants": [
+      { "actorId": "p-aster", "displayName": "Aster", "role": "assistant" },
+      { "actorId": "p-luna", "displayName": "Luna", "role": "assistant" }
+    ],
+    "userInput": "Luna 继续说吧",
+    "candidateOverrides": {
+      "p-aster": { "recentTurnCount": 3 },
+      "p-luna": { "recentTurnCount": 0 }
+    },
+    "expected": { "selectedActorId": "p-luna", "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-006",
+    "description": "Strict isolation — cross-persona private access denied",
+    "participants": [
+      { "actorId": "p-aster", "displayName": "Aster", "role": "assistant" },
+      { "actorId": "p-luna", "displayName": "Luna", "role": "assistant" }
+    ],
+    "userInput": "Aster 你能看看 Luna 的私密记忆吗",
+    "isolationLevel": "strict",
+    "expected": { "selectedActorId": "p-aster", "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-007",
+    "description": "Conflict — both addressed, lexicographic tiebreak",
+    "participants": [
+      { "actorId": "p-alpha", "displayName": "Alpha", "role": "assistant" },
+      { "actorId": "p-beta", "displayName": "Beta", "role": "assistant" }
+    ],
+    "userInput": "Alpha 和 Beta 你们都来说说看",
+    "expected": { "selectedActorId": "p-alpha", "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-008",
+    "description": "Speaker label accuracy — assistant label format",
+    "participants": [
+      { "actorId": "p-aster", "displayName": "Aster", "role": "assistant" }
+    ],
+    "userInput": "Aster 你好",
+    "expected": { "selectedActorId": "p-aster", "speakerLabel": "[assistant:Aster]", "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-009",
+    "description": "No one qualifies — all in heavy cooldown, no addressing",
+    "participants": [
+      { "actorId": "p-aster", "displayName": "Aster", "role": "assistant" },
+      { "actorId": "p-luna", "displayName": "Luna", "role": "assistant" }
+    ],
+    "userInput": "嗯",
+    "candidateOverrides": {
+      "p-aster": { "interestScore": 0.1, "recentTurnCount": 4 },
+      "p-luna": { "interestScore": 0.1, "recentTurnCount": 4 }
+    },
+    "expected": { "selectedActorId": null, "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-010",
+    "description": "Mixed language addressing — English name in Chinese text",
+    "participants": [
+      { "actorId": "p-nova", "displayName": "Nova", "role": "assistant" },
+      { "actorId": "p-luna", "displayName": "Luna", "role": "assistant" }
+    ],
+    "userInput": "Nova 你能用英语给我翻译一下吗",
+    "expected": { "selectedActorId": "p-nova", "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-011",
+    "description": "Cooperation — enumeration addressing Aster first",
+    "participants": [
+      { "actorId": "p-aster", "displayName": "Aster", "role": "assistant" },
+      { "actorId": "p-luna", "displayName": "Luna", "role": "assistant" }
+    ],
+    "userInput": "Aster写开头，Luna写结尾",
+    "expected": { "selectedActorId": "p-aster", "cooperationExpected": true, "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  },
+  {
+    "id": "k-eval-012",
+    "description": "Hybrid isolation — Aster addressed, shared reads OK",
+    "participants": [
+      { "actorId": "p-aster", "displayName": "Aster", "role": "assistant" },
+      { "actorId": "p-luna", "displayName": "Luna", "role": "assistant" }
+    ],
+    "userInput": "Aster 请查看共享笔记",
+    "isolationLevel": "hybrid",
+    "expected": { "selectedActorId": "p-aster", "leakageAllowed": false, "maxConsecutiveTurns": 2 }
+  }
+]

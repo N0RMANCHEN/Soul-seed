@@ -2177,6 +2177,21 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   }
 
   const assistantLabel = (): string => `${personaPkg.persona.displayName}>`;
+  const buildAssistantSpeaker = (): { role: "assistant"; actorId: string; actorLabel: string } => ({
+    role: "assistant",
+    actorId: personaPkg.persona.id,
+    actorLabel: personaPkg.persona.displayName
+  });
+  const buildUserSpeaker = (): { role: "user"; actorId: string; actorLabel: string } => {
+    const preferredName = typeof personaPkg.userProfile.preferredName === "string"
+      ? personaPkg.userProfile.preferredName.trim()
+      : "";
+    return {
+      role: "user",
+      actorId: "user",
+      actorLabel: preferredName.length > 0 ? preferredName.slice(0, 80) : "user"
+    };
+  };
   const stripAssistantLabelPrefix = (text: string): string => {
     const ownLabel = assistantLabel().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const genericLabelPattern = /^[\p{L}\p{N}_-]{1,24}>\s*/u;
@@ -3049,6 +3064,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       type: "assistant_message",
       payload: {
         text: params.text,
+        speaker: buildAssistantSpeaker(),
         proactive: params.proactive === true,
         trigger: params.trigger ?? null,
         autonomyMode: params.mode,
@@ -3152,6 +3168,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       type: "assistant_message",
       payload: {
         text: proactiveText,
+        speaker: buildAssistantSpeaker(),
         proactive: true,
         trigger: "autonomy_probabilistic",
         proactiveSnapshot: buildProactiveSnapshot(),
@@ -5089,6 +5106,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       type: "user_message",
       payload: {
         text: input,
+        speaker: buildUserSpeaker(),
         trace: compactDecisionTrace(trace),
         safetyContext: adultSafetyContext,
         profilePatch: profilePatch ?? null,
@@ -5141,6 +5159,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         type: "assistant_message",
         payload: {
           text: refusalSafe,
+          speaker: buildAssistantSpeaker(),
           trace: compactDecisionTrace(trace),
           promptLeakGuard: lastOutputGuardTrace,
           memoryMeta: buildMemoryMeta({
@@ -5698,6 +5717,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         type: "assistant_message",
         payload: {
           text: assistantContent,
+          speaker: buildAssistantSpeaker(),
           trace: compactDecisionTrace(trace),
           metaTraceId: metaTraceId ?? null,
           promptLeakGuard: lastOutputGuardTrace,

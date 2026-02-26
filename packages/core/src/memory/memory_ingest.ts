@@ -11,6 +11,9 @@ interface MemoryCandidate {
   salience: number;
   state: "hot" | "warm" | "cold" | "archive" | "scar";
   originRole: "user" | "assistant" | "system";
+  speakerRole: "user" | "assistant" | "system";
+  speakerId: string | null;
+  speakerLabel: string | null;
   evidenceLevel: "verified" | "derived" | "uncertain";
   activationCount: number;
   lastActivatedAt: string;
@@ -78,8 +81,8 @@ export async function ingestLifeEventMemory(rootPath: string, event: LifeEvent):
     const adjustedSalience = Math.min(1, Math.max(0.05, candidate.salience * salienceGain));
     const memoryId = randomUUID();
     const sql = [
-      "INSERT INTO memories (id, memory_type, content, salience, state, origin_role, evidence_level, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at)",
-      `VALUES (${sqlText(memoryId)}, ${sqlText(candidate.memoryType)}, ${sqlText(candidate.content)}, ${adjustedSalience}, ${sqlText(candidate.state)}, ${sqlText(candidate.originRole)}, ${sqlText(candidate.evidenceLevel)}, ${candidate.activationCount}, ${sqlText(candidate.lastActivatedAt)}, ${candidate.emotionScore}, ${candidate.narrativeScore}, ${candidate.credibilityScore}, ${candidate.excludedFromRecall ? 1 : 0}, 0, ${sqlText(event.hash)}, ${sqlText(createdAt)}, ${sqlText(createdAt)}, NULL);`
+      "INSERT INTO memories (id, memory_type, content, salience, state, origin_role, speaker_role, speaker_id, speaker_label, evidence_level, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at)",
+      `VALUES (${sqlText(memoryId)}, ${sqlText(candidate.memoryType)}, ${sqlText(candidate.content)}, ${adjustedSalience}, ${sqlText(candidate.state)}, ${sqlText(candidate.originRole)}, ${sqlText(candidate.speakerRole)}, ${sqlNullableText(candidate.speakerId)}, ${sqlNullableText(candidate.speakerLabel)}, ${sqlText(candidate.evidenceLevel)}, ${candidate.activationCount}, ${sqlText(candidate.lastActivatedAt)}, ${candidate.emotionScore}, ${candidate.narrativeScore}, ${candidate.credibilityScore}, ${candidate.excludedFromRecall ? 1 : 0}, 0, ${sqlText(event.hash)}, ${sqlText(createdAt)}, ${sqlText(createdAt)}, NULL);`
     ].join(" ");
     return { memoryId, sql };
   });
@@ -104,6 +107,7 @@ function extractMemoryCandidates(event: LifeEvent): MemoryCandidate[] {
   const meta = event.payload.memoryMeta;
   const memoryType = classifyMemoryType(event, text);
   const originRole = classifyOriginRole(event.type);
+  const speaker = normalizeSpeaker(event, originRole);
   const emphasisDetected = detectUserEmphasis({
     eventType: event.type,
     text,
@@ -129,6 +133,9 @@ function extractMemoryCandidates(event: LifeEvent): MemoryCandidate[] {
       salience,
       state,
       originRole,
+      speakerRole: speaker.role,
+      speakerId: speaker.actorId,
+      speakerLabel: speaker.actorLabel,
       evidenceLevel,
       activationCount,
       lastActivatedAt: normalizeIso(meta?.lastActivatedAt, event.ts),
@@ -164,6 +171,29 @@ function classifyOriginRole(eventType: LifeEvent["type"]): "user" | "assistant" 
     return "assistant";
   }
   return "system";
+}
+
+function normalizeSpeaker(
+  event: LifeEvent,
+  fallbackRole: "user" | "assistant" | "system"
+): { role: "user" | "assistant" | "system"; actorId: string | null; actorLabel: string | null } {
+  const speaker = event.payload.speaker;
+  if (!speaker) {
+    return { role: fallbackRole, actorId: null, actorLabel: null };
+  }
+  const role =
+    speaker.role === "user" || speaker.role === "assistant" || speaker.role === "system"
+      ? speaker.role
+      : fallbackRole;
+  const actorId =
+    typeof speaker.actorId === "string" && speaker.actorId.trim().length > 0
+      ? speaker.actorId.trim().slice(0, 80)
+      : null;
+  const actorLabel =
+    typeof speaker.actorLabel === "string" && speaker.actorLabel.trim().length > 0
+      ? speaker.actorLabel.trim().slice(0, 80)
+      : null;
+  return { role, actorId, actorLabel };
 }
 
 function classifyMemoryType(event: LifeEvent, text: string): MemoryType {
@@ -248,4 +278,8 @@ function matchesAny(text: string, patterns: RegExp[]): boolean {
 
 function sqlText(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
+}
+
+function sqlNullableText(value: string | null): string {
+  return value == null ? "NULL" : sqlText(value);
 }

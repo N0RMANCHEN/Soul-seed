@@ -7,3 +7,4 @@ fi
 
 node ./scripts/quality_scorecard.mjs
 node ./scripts/eval_phase_j.mjs --strict
+node ./scripts/eval_multi_persona.mjs --strict

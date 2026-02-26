@@ -17,7 +17,10 @@
     "personality_profile.json",
     "people_registry.json",
     "genome.json",
-    "epigenetics.json"
+    "epigenetics.json",
+    "group_policy.json",
+    "session_graph.json",
+    "speaker_registry.json"
   ],
   "domainFileMap": {
     "mood": "mood_state.json",
@@ -35,7 +38,10 @@
     "personality_profile": "personality_profile.json",
     "people_registry": "people_registry.json",
     "genome": "genome.json",
-    "epigenetics": "epigenetics.json"
+    "epigenetics": "epigenetics.json",
+    "group_policy": "group_policy.json",
+    "session_graph": "session_graph.json",
+    "speaker_registry": "speaker_registry.json"
   },
   "allowedWriters": [
     "packages/core/src/state/state_delta_apply.ts",
@@ -55,6 +61,7 @@
     "packages/core/src/persona/persona_compile.ts",
     "packages/core/src/persona/package_snapshotter.ts",
     "packages/core/src/persona/people_registry.ts",
-    "packages/core/src/state/genome.ts"
+    "packages/core/src/state/genome.ts",
+    "packages/core/src/runtime/multi_persona_registry.ts"
   ]
 }
