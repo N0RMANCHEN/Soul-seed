@@ -6,6 +6,8 @@
 
 - `AG-2026-02-Completion.md` - Architecture Governance 12 项闭环归档（完成日期：2026-02-26）
 - `J-2026-02-Interaction-Loop-Plan.md` - Phase J P0 交互闭环计划归档（J/P0-0~J/P0-2）
+- `J-2026-02-Engagement-P1-Plan.md` - Phase J P1 交互闭环计划归档（J/P1-0~J/P1-2）
+- `K-2026-02-Multi-Persona-Chat-Plan.md` - Phase K 多人格聊天计划归档（K/P0-0~K/P1-3）
 - `H-State-Closure-Plan.md` - Phase H 总览计划
 - `Ha-State-Infra-Plan.md` - Phase Ha 总览计划
 - `Ha-1-State-Delta-Invariant.md` - Ha 子计划 1
