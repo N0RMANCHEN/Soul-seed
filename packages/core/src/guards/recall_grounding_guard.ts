@@ -1,5 +1,4 @@
-import type { LifeEvent } from "./types.js";
-import type { MemoryEvidenceBlock } from "./types.js";
+import type { LifeEvent, MemoryEvidenceBlock } from "../types.js";
 
 export interface RecallGroundingGuardResult {
   text: string;

@@ -2,7 +2,8 @@
 
 > High-Level Execution Plan  
 > Date: 2026-02-26  
-> Status: `todo`  
+> Status: `todo`（Phase 级，进度以 Roadmap 为准）  
+> Progress: 以 `doc/Roadmap.md` 为准（本计划仅描述 scope，不做逐任务快照）  
 > Source: `doc/Roadmap.md` (Phase Hc) + `04-Archive.md` §18, §20, Appendix A/B  
 > Scope: 11 tasks (H/P1-8..10, H/P1-12..19), W7–W8  
 > Subplans: `Hc-1-Regression-Suites.md`, `Hc-2-Risk-Guards.md`, `Hc-3-Schema-Access.md`  

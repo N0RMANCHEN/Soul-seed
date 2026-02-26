@@ -1,6 +1,6 @@
 # Persona Package Layout Specification (v0.4)
 
-> **Source**: `doc/plans/Hb-2-1-Persona-Package.md`, `AGENT.md` §3  
+> **单一真相源（Single Source of Truth）**：本文档为 Persona Package 目录结构的唯一规范定义。其他文档（README、AGENT、plans）仅引用本文档并简述，不得复制完整结构清单。  
 > **Task**: H/P1-4 — Persona Package v0.4 Layout & Rollback
 
 ---

@@ -306,35 +306,10 @@ Beta is for developers debugging persona behavior or system issues.
 
 Each persona is a self-contained, portable directory you fully own.
 
-> 每个人格都是一个完全自主、可移植的目录 — 你完全拥有它。
+> 每个人格都是一个完全自主、可移植的目录 — 你完全拥有它。  
+> **Single source of truth**: Full layout spec → `doc/Persona-Package-Layout.md`
 
-```
-<Name>.soulseedpersona/
-  persona.json              # id, displayName, schemaVersion
-  identity.json             # identity anchor (personaId never changes)
-  constitution.json         # mission / values / boundaries / commitments
-  worldview.json            # worldview seed (evolvable)
-  habits.json               # style, quirks, topics of interest
-  user_profile.json         # user name / language preference
-  voice_profile.json        # tone preference, phrasePool
-  relationship_state.json   # relationshipLatent[64]
-  cognition_state.json      # voiceLatent[16] / beliefLatent[32] / routingWeights
-  mood_state.json           # moodLatent[32] (valence/arousal projection)
-  genome.json               # 6 genome traits (near-immutable persona DNA)
-  epigenetics.json          # slow-drift adjustments (evidence-gated)
-  soul_lineage.json         # parent/children lineage, consentMode
-  life.log.jsonl            # append-only event stream (prevHash/hash chain)
-  memory.db                 # SQLite 4-state memory store
-  autobiography.json        # life narrative chapters
-  interests.json            # memory-emergent interest weights
-  self_reflection.json      # periodic self-reflection journal
-  golden_examples.jsonl     # few-shot example library (≤50 entries)
-  social_graph.json         # social relationship graph (≤20 people)
-  summaries/
-    life_archive.jsonl      # rotated life.log archive
-  latent/                   # latent vector checkpoints (rollback-capable)
-  goals/                    # agent goal and planning context
-```
+Core files: `persona.json`, `identity.json`, `constitution.json`, `worldview.json`, `habits.json`, `user_profile.json`, `voice_profile.json`, `relationship_state.json`, `cognition_state.json`, `mood_state.json`, `genome.json`, `epigenetics.json`, `life.log.jsonl`, `memory.db`, `summaries/`, `latent/`, `goals/`, `golden_examples.jsonl`, `social_graph.json`. See spec for complete structure.
 
 Model selection is runtime-managed via environment/config (`SOULSEED_PROVIDER`, `SOULSEED_MODEL`, optional `SOULSEED_MODEL_CANDIDATES`), not stored in persona assets.
 
@@ -487,6 +462,7 @@ npm run eval:all       # Full quality evaluation / 完整质量评估
 | [`doc/Roadmap.md`](doc/Roadmap.md) | Product phases and milestones / 产品阶段与里程碑 |
 | [`doc/Architecture-Governance-Roadmap.md`](doc/Architecture-Governance-Roadmap.md) | Architecture/file governance execution roadmap / 架构与文件治理执行路线图 |
 | [`doc/Architecture-Folder-Governance.md`](doc/Architecture-Folder-Governance.md) | Architecture/folder governance standard / 架构与文件夹治理标准 |
+| [`doc/Runtime-Report-Asset-Governance.md`](doc/Runtime-Report-Asset-Governance.md) | personas/ & reports/ retention/archive policy / 运行态与报告资产治理 |
 | [`doc/Product-Standards.md`](doc/Product-Standards.md) | Product-wide implementation standards / 全产品通用实施规范 |
 | [`doc/Quality-Evaluation.md`](doc/Quality-Evaluation.md) | Layered evaluation system (L0–L5) / 分层评估体系 |
 | [`doc/Windows.md`](doc/Windows.md) | Windows installation guide / Windows 安装指南 |

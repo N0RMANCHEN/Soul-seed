@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **CLI test** `chat can resume last goal and report progress without creating a new goal`: increased `intervalMs` to 420 to avoid flakiness when run in full suite.
+
+### Changed
+- **AG/P0-0** Plan doc update rules: Added `doc/plans/README.md` with fixed declaration (progress 以 Roadmap 为准); replaced granular status in `H-State-Closure-Plan.md`, `H2-State-Modules.md` with scope-level; added Progress declaration to Ha/Hb/Hc/H1/H3 plans; updated `doc/Architecture-Folder-Governance.md` §3.3 cross-ref.
+- **AG/P1-2** Persona Package single truth source: Designated `doc/Persona-Package-Layout.md` as canonical; README and AGENT now reference it with brief summary; Hb-2-1 plan references canonical layout.
+- **AG/P1-3** Plan naming unification: Added H1/H2/H3 ↔ Ha/Hb/Hc mapping to `doc/plans/README.md`; added mapping header to H1/H2/H3 plan files; H-State-Closure-Plan batch naming clarified.
+- **AG/P2-2** Runtime/report asset governance: Added `doc/Runtime-Report-Asset-Governance.md`; README reference; personas/ and reports/ retention/archive policy documented.
+- **AG/P2-1** Core export surface: Removed internal-only `persona_write_lock` from barrel; added export policy comment; `config/governance/core_export_whitelist.json`.
+- **AG/P2-0** Core directory layering (batch 1): Migrated 6 guards to `guards/` (identity_guard, recall_grounding_guard, factual_grounding_guard, relational_guard, pronoun_role_guard, narrative_guard).
+
 ### Added
 - Added `doc/Architecture-Governance-Roadmap.md` as an execution-oriented governance roadmap for architecture boundaries, folder/file management, A/B collaboration split, sync points, and acceptance gates.
 - Added `doc/Architecture-Folder-Governance.md` as the repository-level architecture/folder governance standard (boundaries, naming, write-path rules, gates, and exception workflow).

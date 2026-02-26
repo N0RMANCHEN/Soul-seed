@@ -4,8 +4,9 @@
 > **Subplan**: Hb-2-1 (Persona Package)  
 > **Parent**: `doc/plans/Hb-2-Package-Compat.md`  
 > **Tasks**: 1 (H/P1-4)  
-> **Execution Strategy**: First in Hb-2 track  
-> **Status**: `todo`  
+> **Status**: `done`（Phase 级，进度以 Roadmap 为准）  
+> **Progress**: 以 `doc/Roadmap.md` 为准（本计划仅描述 scope，不做逐任务快照）  
+> **Canonical layout**: 完整结构定义见 `doc/Persona-Package-Layout.md`（单一真相源）  
 > **Source**: `doc/Roadmap.md`, `04-Archive.md` §15, spec/22, extra/45, extra/52
 
 ---
@@ -24,22 +25,7 @@ Standardize Persona Package file layout, metadata conventions, migration snapsho
 
 #### Package Layout Specification
 
-```
-persona_package/
-├── manifest.json          # package metadata + schemaVersion
-├── genome.json
-├── epigenetics.json
-├── mood_state.json
-├── people_registry.json
-├── relationship_state.json
-├── goals.json
-├── beliefs.json
-├── values_rules.json
-├── personality_profile.json
-├── snapshots/             # migration checkpoints
-│   └── snap_<timestamp>.json
-└── migration_log.jsonl    # upgrade/rollback history
-```
+> **单一真相源**：完整目录结构见 `doc/Persona-Package-Layout.md`。以下为任务执行时的简化示意。
 
 #### Manifest Schema
 

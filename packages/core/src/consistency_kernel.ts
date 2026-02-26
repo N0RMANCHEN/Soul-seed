@@ -1,7 +1,7 @@
-import { enforceFactualGroundingGuard } from "./factual_grounding_guard.js";
-import { enforceIdentityGuard } from "./identity_guard.js";
-import { enforceRecallGroundingGuard } from "./recall_grounding_guard.js";
-import { enforceRelationalGuard } from "./relational_guard.js";
+import { enforceFactualGroundingGuard } from "./guards/factual_grounding_guard.js";
+import { enforceIdentityGuard } from "./guards/identity_guard.js";
+import { enforceRecallGroundingGuard } from "./guards/recall_grounding_guard.js";
+import { enforceRelationalGuard } from "./guards/relational_guard.js";
 import { detectBoundaryRuleHits, explainBoundaryRuleHit } from "./constitution_rules.js";
 import type { ConsistencyCheckInput, ConsistencyCheckResult, ConsistencyRuleHit } from "./types.js";
 import { randomUUID } from "node:crypto";

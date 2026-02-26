@@ -1,11 +1,13 @@
 # Batch H1 — Foundation: State Delta Pipeline, Invariants, Compat & Genome MVP
 
+> **命名映射**：本文件对应 `Ha`（Phase Ha = State Infrastructure）。主命名：Ha；旧名：H1。详见 `doc/plans/README.md`。  
 > **Phase**: H — State Closure & Compatibility Fulfillment  
 > **Batch**: H0 (file-named H1) — Foundation  
 > **Schedule**: W1–W3 (3 weeks)  
 > **Tasks**: 5 (H/P0-0 through H/P0-4)  
 > **Execution Strategy**: Strictly serial (per Roadmap rule 5.1: high coupling + hard risk)  
-> **Status**: `todo`  
+> **Status**: `todo`（Phase 级，进度以 Roadmap 为准）  
+> **Progress**: 以 `doc/Roadmap.md` 为准（本计划仅描述 scope，不做逐任务快照）  
 > **Date**: 2026-02-25  
 > **Source**: `doc/plans/H-State-Closure-Plan.md`, `04-Archive.md` §2/§10–§16, `doc/Roadmap.md`
 

@@ -141,44 +141,9 @@ CLI 入口: ./ss
 
 ## 3. Persona Package 结构
 
-```
-<Name>.soulseedpersona/
-  persona.json              # id, displayName, schemaVersion, paths, initProfile, sharedSpace（不再持有模型选型）
-  identity.json             # 身份锚点（personaId 永不变）
-  constitution.json         # 使命/价值/边界/承诺（可修宪，有门槛）
-  worldview.json            # 世界观种子（可演化）
-  habits.json               # 习惯与表达风格（可塑形）
-  user_profile.json         # 用户称呼/语言偏好（Profile Memory）
-  pinned.json               # Pinned Memory（少而硬，始终注入）
-  voice_profile.json        # 语气偏好 tone/stance
-  relationship_state.json   # 关系状态（6维投影 + relationshipLatent[64]）
-  cognition_state.json      # 认知状态（模型路由配置 + routingWeights + relationshipDynamics）
-  mood_state.json           # 情绪状态（valence/arousal 投影 + moodLatent[32]）
-  genome.json               # 基因/天赋（slow-changing；决定学习率/预算/敏感度等派生参数；默认缺省可推断，Phase F）
-  epigenetics.json          # 表观学习（very-slow；长期可塑但门槛高；缺省为空，Phase F）
-  topic_state.json          # 话题/线程状态（active topic + unresolved threads，Phase F）
-  conversation_policy.json  # 会话外显策略（emoji/情绪外显/插话倾向/quiet hours 等，Phase F）
-  group_policy.json         # 群聊策略（默认沉默/参与门槛/cooldown/仲裁权重，Phase F）
-  soul_lineage.json         # 繁衍血脉（parent/children/reproductionCount）
-  life.log.jsonl            # append-only 事件流（带 prevHash/hash 链，不可篡改）
-  memory.db                 # SQLite 四状态记忆库
-  summaries/
-    working_set.json        # 近期工作集摘要
-    consolidated.json       # 阶段性内化总结
-    archive/                # 冷归档段文件 segment-YYYYMM.jsonl
-  autobiography.json        # 自传体叙事（章节 + selfUnderstanding，Phase D P2-2）
-  interests.json            # 兴趣分布（topic/weight/lastActivatedAt，Phase D P3-0）
-  self_reflection.json      # 周期自我反思日志（Phase D P3-1）
-  latent/                   # Latent 向量 checkpoint（Phase E 新增）
-    mood_latent_history.jsonl       # moodLatent 快照（可回滚）
-    relationship_latent_history.jsonl
-    agent_memory_proposals.jsonl    # 待裁决的记忆提案池
-  goals/                    # Agent 目标 JSON + 规划上下文 + execution trace
-  golden_examples.jsonl     # Few-shot 示例库（≤50条）
-  social_graph.json         # 社交关系图谱（≤20人）
-  summaries/
-    life_archive.jsonl      # life.log 轮换归档（由 memory_rotation 自动写入）
-```
+> **单一真相源**：完整目录结构定义见 `doc/Persona-Package-Layout.md`。以下为简述与硬规则。
+
+Persona Package 为 `<Name>.soulseedpersona/` 目录，包含：`persona.json`、`identity.json`、`constitution.json`、`worldview.json`、`habits.json`、`user_profile.json`、`pinned.json`、`voice_profile.json`、`relationship_state.json`、`cognition_state.json`、`mood_state.json`、`genome.json`、`epigenetics.json`、`life.log.jsonl`、`memory.db`、`summaries/`、`latent/`、`goals/`、`golden_examples.jsonl`、`social_graph.json` 等。Phase F 扩展含 `topic_state.json`、`conversation_policy.json`、`group_policy.json`。详见规范文档。
 
 **硬规则**：
 - `life.log.jsonl` **append-only**；历史不可篡改；断链/回写必须写入 scar event

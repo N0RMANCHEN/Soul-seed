@@ -1,3 +1,8 @@
+/**
+ * Core public API. Shells (cli, mcp-server) must import only from this barrel.
+ * Internal-only modules (e.g. persona_write_lock) are not re-exported.
+ * See doc/Architecture-Folder-Governance.md §2.4.
+ */
 export * from "./types.js";
 export * from "./hash.js";
 export * from "./persona.js";
@@ -7,7 +12,7 @@ export * from "./replay.js";
 export * from "./doctor.js";
 export * from "./profile.js";
 export * from "./rename_policy.js";
-export * from "./identity_guard.js";
+export * from "./guards/identity_guard.js";
 export * from "./memory_economics.js";
 export * from "./memory_budget.js";
 export * from "./memory_lifecycle.js";
@@ -24,7 +29,7 @@ export * from "./meta_review.js";
 export * from "./persona_judgment_store.js";
 export * from "./memory_eval.js";
 export * from "./memory_migration.js";
-export * from "./narrative_guard.js";
+export * from "./guards/narrative_guard.js";
 export * from "./relationship_state.js";
 export * from "./mood_state.js";
 export * from "./emotion_episode_manager.js";
@@ -32,11 +37,11 @@ export * from "./affect_context_injector.js";
 export * from "./autobiography.js";
 export * from "./interests.js";
 export * from "./self_reflection.js";
-export * from "./relational_guard.js";
-export * from "./recall_grounding_guard.js";
+export * from "./guards/relational_guard.js";
+export * from "./guards/recall_grounding_guard.js";
 export * from "./recall_navigation_intent.js";
-export * from "./pronoun_role_guard.js";
-export * from "./factual_grounding_guard.js";
+export * from "./guards/pronoun_role_guard.js";
+export * from "./guards/factual_grounding_guard.js";
 export * from "./conversation_metrics.js";
 export * from "./conversation_control.js";
 export * from "./semantic_projection.js";
@@ -84,8 +89,6 @@ export * from "./expression_belief_state.js";
 export * from "./latent_cross_influence.js";
 export * from "./routing_adaptation.js";
 export * from "./memory_rotation.js";
-export * from "./memory_forgetting.js";
-export * from "./persona_write_lock.js";
 export * from "./memory_store_driver.js";
 export * from "./persona_lint.js";
 export * from "./persona_compile.js";

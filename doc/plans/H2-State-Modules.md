@@ -1,27 +1,13 @@
 # Batch H2 — State Modules
 
+> **命名映射**：本文件对应 `Hb`（Phase Hb = Mind Model State Modules）。主命名：Hb；旧名：H2。详见 `doc/plans/README.md`。  
 > Phase H, Batch 2 of 3  
 > Schedule: W4–W6 (3 weeks)  
 > Tasks: 8 (H/P1-0 through H/P1-7)  
 > Execution Strategy: Two parallel tracks + independent imperfection DoD  
 > Coupling: Medium overall  
-> Risk: Soft (individual modules are rollback-capable)
-> Status: `in_progress` (2026-02-26: H/P1-0..H/P1-3 scaffolding landed, tests added)
-
----
-
-## 0. Progress Snapshot (2026-02-26)
-
-- H/P1-0 scaffold landed: `values_rules.ts`, `personality_profile.ts`, and tests.
-- H/P1-1 scaffold landed: `goals_state.ts`, `beliefs_state.ts`, and tests.
-- H/P1-2 scaffold landed: `memory_forgetting.ts` and tests.
-- H/P1-3 scaffold landed: `people_registry.ts` + CLI person-card context injection and tests.
-- Persona init/lint sync landed for the above state files.
-- Full `./scripts/verify.sh` run is green after this batch increment.
-
-Remaining for H/P1-0..H/P1-3 closure:
-- Deep pipeline integration and thresholds calibration against long-run regression suites.
-- Coverage expansion for cross-session behavior drift and compatibility fixtures.
+> Risk: Soft (individual modules are rollback-capable)  
+> Progress: 以 `doc/Roadmap.md` 为准（本计划仅描述 scope，不做逐任务快照）
 
 ---
 
