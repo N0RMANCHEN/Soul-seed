@@ -13,6 +13,7 @@ Read these docs in order before any work (per `contributing_ai.md` §2):
 2. `contributing_ai.md` (execution actions/verification)
 3. `doc/Roadmap.md` (current phase, task status, priorities)
 4. `doc/Product-Standards.md`, `doc/Quality-Evaluation.md` as needed
+5. `doc/Architecture-Folder-Governance.md` when touching structure, placement, or new state domains
 
 ## Task Protocol (contributing_ai.md §1)
 
@@ -47,7 +48,7 @@ Before executing, assess tasks: complexity (S/M/L), coupling (low/med/high), ris
 ## Verification Gates (contributing_ai.md §5)
 
 **Always required:**
-- `./scripts/verify.sh` passes (type-check + tests + build for all 3 packages)
+- `./scripts/verify.sh` passes (includes `governance:check` architecture gate)
 - Doc sync check per `AGENT.md` Doc Sync Gate
 - `CHANGELOG.md` updated for current version section after each task
 
@@ -65,3 +66,7 @@ Before executing, assess tasks: complexity (S/M/L), coupling (low/med/high), ris
 - Mark task `done` in Roadmap tracking
 - Update `CHANGELOG.md` incrementally (never batch at end)
 - Run doc sync gate: check `README.md`, `AGENT.md`, `contributing_ai.md`, `doc/*.md`
+
+## Archive Rule (Roadmap §4)
+
+When a Phase is fully done (all tasks done), **archive it**: remove the phase section and its task details from `doc/Roadmap.md`. Keep only a brief completion note in 当前执行总览. Do not maintain a separate "completed tasks archive" section — completion record lives in Git history.

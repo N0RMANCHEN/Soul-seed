@@ -1,0 +1,44 @@
+---
+description: Architecture boundaries, folder placement, naming, and governance gates per doc/Architecture-Folder-Governance.md
+alwaysApply: true
+---
+
+# Architecture & Folder Governance
+
+Authority: `doc/Architecture-Folder-Governance.md`. Rule priority: AGENT > this doc > Product-Standards > Quality-Evaluation > Roadmap.
+
+## Core Constraints
+
+- **Core-first**: All persona/memory/decision/storage logic lives in `packages/core`. CLI and MCP are shells only.
+- **Dependency direction**: `cli -> core`, `mcp-server -> core` only. No `core -> cli/mcp-server` or cross-shell deps.
+- **Export surface**: `packages/core/src/index.ts` exports stable API only. New modules require explicit review before export. Shells must not import internal-only paths.
+
+## Placement & Naming
+
+- **Top-level dirs**: `packages/` (prod), `scripts/` (gates/tools), `config/` (JSON), `schemas/`, `doc/`, `test/`, `reports/`, `personas/`.
+- **core/src subdirs** (target layout): `runtime/`, `memory/`, `persona/`, `state/`, `guards/`, `governance/`, `capabilities/`. New files prefer these; existing code migrates incrementally.
+- **Naming**: TS files `snake_case.ts`; docs `Pascal-Case-Kebab.md`; configs `snake_case.json`.
+- **File size**: ≤800 lines preferred; >1200 lines = high risk, must have split plan in Roadmap.
+
+## State & Direct-Write Gate
+
+- All state updates: `proposal -> gates -> deterministic apply -> audit trace`. No bypassing gates.
+- New state files: update domain mapping, allowed-writers list, tests, and docs. `scripts/check_direct_writes.mjs` is mandatory.
+
+## Change Gates
+
+- Every change: `npm run verify`, doc sync, `CHANGELOG.md` update.
+- Schema changes: fixture + validation script. State-domain changes: direct-write gate + regression.
+- **Architecture gate**: `npm run governance:check` (via `verify.sh`). Review any warnings.
+
+## Anti-Patterns (Forbidden)
+
+- Core logic in CLI without extracting to core
+- Scripts that directly mutate persona state files
+- Duplicated "structure truth" across docs
+- Large new files without split plan
+- Indiscriminate `export *` expansion in core
+
+## Architecture Tasks
+
+When working on architecture/refactor tasks, check `doc/Architecture-Governance-Roadmap.md` for AG/P0–P2 task status, dependencies, and sync points.
