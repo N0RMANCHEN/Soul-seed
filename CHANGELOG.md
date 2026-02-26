@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Added `doc/Architecture-Governance-Roadmap.md` as an execution-oriented governance roadmap for architecture boundaries, folder/file management, A/B collaboration split, sync points, and acceptance gates.
+- Added `doc/Architecture-Folder-Governance.md` as the repository-level architecture/folder governance standard (boundaries, naming, write-path rules, gates, and exception workflow).
+- Added architecture governance gate: `scripts/arch_governance_check.mjs` + `config/governance/architecture_rules.json` + `npm run governance:check`; wired into `scripts/verify.sh` as a standard gate.
 
 ## [0.5.0] - 2026-02-26
 

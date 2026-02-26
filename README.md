@@ -470,6 +470,7 @@ personas/
 npm run build          # Build all packages / 构建所有包
 npm run test           # Run all tests / 运行测试
 npm run lint           # TypeScript type-check / 类型检查
+npm run governance:check # Architecture/folder governance gate / 架构与目录治理门禁
 npm run verify         # Full verification / 完整验证
 npm run acceptance     # Online acceptance test / 在线验收测试
 npm run eval:all       # Full quality evaluation / 完整质量评估
@@ -485,6 +486,7 @@ npm run eval:all       # Full quality evaluation / 完整质量评估
 | [`doc/CLI.md`](doc/CLI.md) | Complete command reference / 完整命令参考 |
 | [`doc/Roadmap.md`](doc/Roadmap.md) | Product phases and milestones / 产品阶段与里程碑 |
 | [`doc/Architecture-Governance-Roadmap.md`](doc/Architecture-Governance-Roadmap.md) | Architecture/file governance execution roadmap / 架构与文件治理执行路线图 |
+| [`doc/Architecture-Folder-Governance.md`](doc/Architecture-Folder-Governance.md) | Architecture/folder governance standard / 架构与文件夹治理标准 |
 | [`doc/Product-Standards.md`](doc/Product-Standards.md) | Product-wide implementation standards / 全产品通用实施规范 |
 | [`doc/Quality-Evaluation.md`](doc/Quality-Evaluation.md) | Layered evaluation system (L0–L5) / 分层评估体系 |
 | [`doc/Windows.md`](doc/Windows.md) | Windows installation guide / Windows 安装指南 |

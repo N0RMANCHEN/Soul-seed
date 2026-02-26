@@ -13,6 +13,9 @@ node scripts/check_direct_writes.mjs
 echo "[verify] compat checklist gate"
 node scripts/compat_lint.mjs
 
+echo "[verify] architecture governance gate"
+npm run governance:check
+
 echo "[verify] changelog gate"
 npm run changelog:check
 

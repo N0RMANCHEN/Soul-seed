@@ -15,6 +15,7 @@
     "acceptance": "./scripts/acceptance.sh",
     "verify": "./scripts/verify.sh",
     "h0:check": "node ./scripts/check_h0_gate.mjs",
+    "governance:check": "node ./scripts/arch_governance_check.mjs",
     "changelog:check": "node ./scripts/check_changelog.mjs",
     "regression:governance": "node ./scripts/regression/governance.mjs",
     "regression:relationship": "node ./scripts/regression/relationship_continuity.mjs",

@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-02-26",
+  "requiredDocs": [
+    "AGENT.md",
+    "doc/Product-Standards.md",
+    "doc/Quality-Evaluation.md",
+    "doc/Roadmap.md",
+    "doc/Architecture-Governance-Roadmap.md",
+    "doc/Architecture-Folder-Governance.md"
+  ],
+  "maxFileLines": {
+    "default": 800,
+    "hard": 1200
+  },
+  "lineLimitAllowlist": [
+    "packages/cli/src/index.ts"
+  ],
+  "checks": {
+    "requiredDocs": "error",
+    "lineLimits": "warn",
+    "coreExportSurface": "warn",
+    "workspaceVersionConsistency": "warn",
+    "planNamingMix": "warn"
+  }
+}
