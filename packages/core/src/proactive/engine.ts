@@ -1,5 +1,5 @@
 import type { ProactiveDecisionTrace, ProactiveStateSnapshot, RelationshipState } from "../types.js";
-import { createInitialRelationshipState, deriveCognitiveBalanceFromLibido, isExtremeProactiveWindowActive } from "../relationship_state.js";
+import { createInitialRelationshipState, deriveCognitiveBalanceFromLibido, isExtremeProactiveWindowActive } from "../state/relationship_state.js";
 
 export interface ProactiveEngineInput {
   relationshipState?: RelationshipState;

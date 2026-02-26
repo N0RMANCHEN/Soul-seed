@@ -34,21 +34,21 @@
     "epigenetics": "epigenetics.json"
   },
   "allowedWriters": [
-    "packages/core/src/state_delta_apply.ts",
-    "packages/core/src/goals_state.ts",
-    "packages/core/src/goal_store.ts",
-    "packages/core/src/beliefs_state.ts",
-    "packages/core/src/personality_profile.ts",
-    "packages/core/src/mood_state.ts",
-    "packages/core/src/emotion_episode_manager.ts",
-    "packages/core/src/relationship_state.ts",
-    "packages/core/src/interests.ts",
-    "packages/core/src/social_graph.ts",
-    "packages/core/src/persona.ts",
-    "packages/core/src/compat_migration.ts",
-    "packages/core/src/persona_compile.ts",
-    "packages/core/src/package_snapshotter.ts",
-    "packages/core/src/people_registry.ts",
-    "packages/core/src/genome.ts"
+    "packages/core/src/state/state_delta_apply.ts",
+    "packages/core/src/state/goals_state.ts",
+    "packages/core/src/memory/goal_store.ts",
+    "packages/core/src/state/beliefs_state.ts",
+    "packages/core/src/persona/personality_profile.ts",
+    "packages/core/src/state/mood_state.ts",
+    "packages/core/src/state/emotion_episode_manager.ts",
+    "packages/core/src/state/relationship_state.ts",
+    "packages/core/src/persona/interests.ts",
+    "packages/core/src/persona/social_graph.ts",
+    "packages/core/src/persona/persona.ts",
+    "packages/core/src/state/compat_migration.ts",
+    "packages/core/src/persona/persona_compile.ts",
+    "packages/core/src/persona/package_snapshotter.ts",
+    "packages/core/src/persona/people_registry.ts",
+    "packages/core/src/state/genome.ts"
   ]
 }

@@ -6,7 +6,6 @@
     "doc/Product-Standards.md",
     "doc/Quality-Evaluation.md",
     "doc/Roadmap.md",
-    "doc/Architecture-Governance-Roadmap.md",
     "doc/Architecture-Folder-Governance.md"
   ],
   "maxFileLines": {
@@ -16,12 +15,29 @@
   "lineLimitAllowlist": [
     "packages/cli/src/index.ts"
   ],
+  "coreLayout": {
+    "rootFileAllowlist": [
+      "index.ts",
+      "types.ts"
+    ],
+    "requiredDirs": [
+      "runtime",
+      "memory",
+      "persona",
+      "state",
+      "guards",
+      "governance",
+      "capabilities",
+      "proactive"
+    ]
+  },
   "checks": {
     "requiredDocs": "error",
     "lineLimits": "warn",
     "coreExportSurface": "warn",
     "workspaceVersionConsistency": "error",
     "planNamingMix": "warn",
-    "internalModuleReExport": "error"
+    "internalModuleReExport": "error",
+    "coreLayeringCompliance": "error"
   }
 }

@@ -9,7 +9,7 @@ import {
   generateRelationshipCardsForInput,
   MAX_CARDS_PER_TURN,
   MAX_CARD_CHARS,
-} from "../people_registry.js";
+} from "../persona/people_registry.js";
 import type { RelationshipState } from "../types.js";
 
 export interface RelationshipNoiseConfig {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile, access } from "node:fs/promises";
+import { readFile, access, readdir } from "node:fs/promises";
 import path from "node:path";
 
 async function exists(relPath) {
@@ -15,6 +15,14 @@ async function countLines(relPath) {
   const abs = path.resolve(process.cwd(), relPath);
   const raw = await readFile(abs, "utf8");
   return raw.split("\n").length;
+}
+
+async function listDir(relPath) {
+  try {
+    return await readdir(path.resolve(process.cwd(), relPath), { withFileTypes: true });
+  } catch {
+    return [];
+  }
 }
 
 function severityFor(rule, checks) {
@@ -152,6 +160,39 @@ async function main() {
       failures,
       warnings,
     });
+  }
+
+  // 6) Core layering compliance (error by default).
+  const coreRoot = "packages/core/src";
+  if (await exists(coreRoot)) {
+    const entries = await listDir(coreRoot);
+    const rootFileAllowlist = new Set((rules.coreLayout?.rootFileAllowlist ?? ["index.ts", "types.ts"]).map(String));
+    const requiredDirs = new Set((rules.coreLayout?.requiredDirs ?? []).map(String));
+
+    for (const ent of entries) {
+      if (ent.isFile() && ent.name.endsWith(".ts") && !rootFileAllowlist.has(ent.name)) {
+        recordIssue({
+          rule: "coreLayeringCompliance",
+          message: `core layering violation: root file not allowlisted: ${coreRoot}/${ent.name}`,
+          checks,
+          failures,
+          warnings,
+        });
+      }
+    }
+
+    for (const dir of requiredDirs) {
+      const full = `${coreRoot}/${dir}`;
+      if (!(await exists(full))) {
+        recordIssue({
+          rule: "coreLayeringCompliance",
+          message: `core layering violation: required dir missing: ${full}`,
+          checks,
+          failures,
+          warnings,
+        });
+      }
+    }
   }
 
   const ok = failures.length === 0;

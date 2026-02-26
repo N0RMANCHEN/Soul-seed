@@ -1,5 +1,5 @@
 import type { CapabilityCallRequest, CapabilityName } from "../types.js";
-import { projectTopicAttention } from "../semantic_projection.js";
+import { projectTopicAttention } from "../runtime/semantic_projection.js";
 
 export interface CapabilityIntentResolution {
   matched: boolean;

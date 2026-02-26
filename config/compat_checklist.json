@@ -9,7 +9,7 @@
       "module": "H/P0-0",
       "category": "entry",
       "description": "State Delta Pipeline: proposal→gates→apply hooks in execution_protocol after meta_review, before commit",
-      "evidencePath": "packages/core/src/execution_protocol.ts",
+      "evidencePath": "packages/core/src/runtime/execution_protocol.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -18,7 +18,7 @@
       "module": "H/P0-0",
       "category": "entry",
       "description": "applyDeltas deterministic engine: clamp, rate-limit, evidence-check, compat-check",
-      "evidencePath": "packages/core/src/state_delta_apply.ts",
+      "evidencePath": "packages/core/src/state/state_delta_apply.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -27,7 +27,7 @@
       "module": "H/P0-1",
       "category": "entry",
       "description": "Invariant Table: config-driven gates for 6 state domains",
-      "evidencePath": "packages/core/src/invariant_table.ts",
+      "evidencePath": "packages/core/src/state/invariant_table.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -36,7 +36,7 @@
       "module": "H/P0-2",
       "category": "entry",
       "description": "Compat Migration: legacy→full path with pre-migration snapshot and rollback",
-      "evidencePath": "packages/core/src/compat_migration.ts",
+      "evidencePath": "packages/core/src/state/compat_migration.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -45,7 +45,7 @@
       "module": "H/P0-3",
       "category": "entry",
       "description": "Compat Constants: calibration from life.log, lock mechanism",
-      "evidencePath": "packages/core/src/compat_calibration.ts",
+      "evidencePath": "packages/core/src/state/compat_calibration.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -54,7 +54,7 @@
       "module": "H/P0-4",
       "category": "entry",
       "description": "Genome: 6 traits, derived params, orchestrator/recall/mood wiring",
-      "evidencePath": "packages/core/src/genome_derived.ts",
+      "evidencePath": "packages/core/src/state/genome_derived.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -63,7 +63,7 @@
       "module": "H/P1-0",
       "category": "entry",
       "description": "Values/Personality: values_rules gate, personality_profile slow drift",
-      "evidencePath": "packages/core/src/state_delta_gates.ts",
+      "evidencePath": "packages/core/src/state/state_delta_gates.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -72,7 +72,7 @@
       "module": "H/P1-1",
       "category": "entry",
       "description": "Goals/Beliefs: goals_state, beliefs_state load and state delta domains",
-      "evidencePath": "packages/core/src/goals_state.ts",
+      "evidencePath": "packages/core/src/state/goals_state.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -81,7 +81,7 @@
       "module": "H/P1-2",
       "category": "entry",
       "description": "Memory: decay, interference, consolidation; life.log not modified",
-      "evidencePath": "packages/core/src/memory_rotation.ts",
+      "evidencePath": "packages/core/src/memory/memory_rotation.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -90,7 +90,7 @@
       "module": "H/P1-3",
       "category": "entry",
       "description": "Relationship: relationship_state first-class, entity linking, relationship card injection",
-      "evidencePath": "packages/core/src/relationship_state.ts",
+      "evidencePath": "packages/core/src/state/relationship_state.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -99,7 +99,7 @@
       "module": "H/P1-4",
       "category": "entry",
       "description": "Persona Package v0.4: manifest.json, PackageLoader, PackageSnapshotter",
-      "evidencePath": "packages/core/src/package_manifest.ts",
+      "evidencePath": "packages/core/src/persona/package_manifest.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -108,7 +108,7 @@
       "module": "H/P1-5",
       "category": "entry",
       "description": "Affect: mood_state decay/evolve with genome-derived params",
-      "evidencePath": "packages/core/src/mood_state.ts",
+      "evidencePath": "packages/core/src/state/mood_state.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -117,7 +117,7 @@
       "module": "H/P1-6",
       "category": "entry",
       "description": "Imperfection DoD: imperfection signals, perfect_reply_detector, compileContext wiring",
-      "evidencePath": "packages/core/src/imperfection_signal_extractor.ts",
+      "evidencePath": "packages/core/src/persona/imperfection_signal_extractor.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -126,7 +126,7 @@
       "module": "H/P0-0",
       "category": "storage",
       "description": "State delta trace: append-only, no new Persona Package files",
-      "evidencePath": "packages/core/src/state_delta_apply.ts",
+      "evidencePath": "packages/core/src/state/state_delta_apply.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -144,7 +144,7 @@
       "module": "H/P0-2",
       "category": "storage",
       "description": "Compat migration: pre-migration snapshot, backup dir",
-      "evidencePath": "packages/core/src/compat_migration.ts",
+      "evidencePath": "packages/core/src/state/compat_migration.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -153,7 +153,7 @@
       "module": "H/P0-3",
       "category": "storage",
       "description": "Compat calibration: compat_calibration.json schema",
-      "evidencePath": "packages/core/src/compat_calibration.ts",
+      "evidencePath": "packages/core/src/state/compat_calibration.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -162,7 +162,7 @@
       "module": "H/P0-4",
       "category": "storage",
       "description": "Genome: genome.json, epigenetics.json; schema, defaults, migration",
-      "evidencePath": "packages/core/src/genome.ts",
+      "evidencePath": "packages/core/src/state/genome.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -171,7 +171,7 @@
       "module": "H/P1-0",
       "category": "storage",
       "description": "Values: values_rules.json; Personality: personality_profile.json",
-      "evidencePath": "packages/core/src/values_rules.ts",
+      "evidencePath": "packages/core/src/persona/values_rules.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -180,7 +180,7 @@
       "module": "H/P1-1",
       "category": "storage",
       "description": "Goals: goals.json; Beliefs: beliefs.json",
-      "evidencePath": "packages/core/src/beliefs_state.ts",
+      "evidencePath": "packages/core/src/state/beliefs_state.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -189,7 +189,7 @@
       "module": "H/P1-2",
       "category": "storage",
       "description": "Memory: summaries/archive; life.log append-only preserved",
-      "evidencePath": "packages/core/src/memory_rotation.ts",
+      "evidencePath": "packages/core/src/memory/memory_rotation.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -198,7 +198,7 @@
       "module": "H/P1-3",
       "category": "storage",
       "description": "Relationship: relationship_state.json",
-      "evidencePath": "packages/core/src/relationship_state.ts",
+      "evidencePath": "packages/core/src/state/relationship_state.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -207,7 +207,7 @@
       "module": "H/P1-4",
       "category": "storage",
       "description": "Persona Package v0.4: manifest.json, layout",
-      "evidencePath": "packages/core/src/package_manifest.ts",
+      "evidencePath": "packages/core/src/persona/package_manifest.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -216,7 +216,7 @@
       "module": "H/P1-5",
       "category": "storage",
       "description": "Affect: mood_state.json",
-      "evidencePath": "packages/core/src/mood_state.ts",
+      "evidencePath": "packages/core/src/state/mood_state.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -225,7 +225,7 @@
       "module": "H/P1-6",
       "category": "storage",
       "description": "Imperfection: imperfection_rules.json (optional config)",
-      "evidencePath": "packages/core/src/imperfection_rules.ts",
+      "evidencePath": "packages/core/src/persona/imperfection_rules.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -234,7 +234,7 @@
       "module": "H/P0-4",
       "category": "recall",
       "description": "Recall: recallTopK from genome-derived; legacy parity at trait=0.5",
-      "evidencePath": "packages/core/src/recall_budget_policy.ts",
+      "evidencePath": "packages/core/src/memory/recall_budget_policy.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -243,7 +243,7 @@
       "module": "H/P1-6",
       "category": "recall",
       "description": "Imperfection: hasCompressedMemory signal for recall context",
-      "evidencePath": "packages/core/src/imperfection_signal_extractor.ts",
+      "evidencePath": "packages/core/src/persona/imperfection_signal_extractor.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },
@@ -252,7 +252,7 @@
       "module": "H/P0-0",
       "category": "rollback",
       "description": "State Delta: gate reject = no write; trace records rejection",
-      "evidencePath": "packages/core/src/state_delta_apply.ts",
+      "evidencePath": "packages/core/src/state/state_delta_apply.ts",
       "status": "pass",
       "verifiedAt": "2026-02-26"
     },

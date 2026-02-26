@@ -278,12 +278,12 @@ export interface PersonaPackage {
     updatedAt: string;
   };
   /** H/P0-4: Genome-derived behavioral params */
-  genome?: import("./genome.js").GenomeConfig;
-  epigenetics?: import("./genome.js").EpigeneticsConfig;
+  genome?: import("./state/genome.js").GenomeConfig;
+  epigenetics?: import("./state/genome.js").EpigeneticsConfig;
   /** H/P1-1: Goals state (goals, commitments, drives) */
-  goalsState?: import("./goals_state.js").GoalsState;
+  goalsState?: import("./state/goals_state.js").GoalsState;
   /** H/P1-1: Beliefs state (propositions with confidence, evidence, cooldown) */
-  beliefsState?: import("./beliefs_state.js").BeliefsState;
+  beliefsState?: import("./state/beliefs_state.js").BeliefsState;
 }
 
 export interface RelationshipDimensions {
@@ -456,9 +456,9 @@ export interface DecisionTrace {
   latencyBreakdown?: Partial<Record<"routing" | "recall" | "planning" | "llm_primary" | "llm_meta" | "guard" | "rewrite" | "emit", number>>;
   latencyTotalMs?: number;
   /** Ha: State Delta Pipeline proposal (future LLM integration) */
-  stateDeltaProposal?: import("./state_delta.js").StateDeltaProposal;
+  stateDeltaProposal?: import("./state/state_delta.js").StateDeltaProposal;
   /** Ha: Result of running gates + apply on state deltas */
-  deltaCommitResult?: import("./state_delta.js").DeltaCommitResult;
+  deltaCommitResult?: import("./state/state_delta.js").DeltaCommitResult;
 }
 
 export type PersonaJudgmentLabel = "fiction" | "non_fiction" | "mixed" | "uncertain";
