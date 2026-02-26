@@ -1,0 +1,63 @@
+import type { ParsedArgs } from "../parser/args.js";
+
+export type CliOptions = Record<string, string | boolean>;
+
+export interface RouterDeps {
+  runPersonaNew: (name: string | undefined, options: CliOptions) => Promise<unknown>;
+  runPersonaInit: (options: CliOptions) => Promise<void>;
+  runRename: (options: CliOptions) => Promise<void>;
+  runPersonaReproduce: (options: CliOptions) => Promise<void>;
+  runPersonaInspect: (options: CliOptions) => Promise<void>;
+  runPersonaLint: (options: CliOptions) => Promise<void>;
+  runPersonaCompile: (options: CliOptions) => Promise<void>;
+  runPersonaExport: (options: CliOptions) => Promise<void>;
+  runPersonaImport: (options: CliOptions) => Promise<void>;
+  runPersonaModelRouting: (options: CliOptions) => Promise<void>;
+  runPersonaVoicePhrases: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runPersonaMood: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runPersonaAutobiography: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runPersonaInterests: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runPersonaDates: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runPersonaReflect: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runPersonaArc: (options: CliOptions) => Promise<void>;
+  runPersonaConsentMode: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runPersonaIdentity: (options: CliOptions) => Promise<void>;
+  runCognitionAdaptRouting: (options: CliOptions) => Promise<void>;
+  runFinetuneExportDataset: (options: CliOptions) => Promise<void>;
+  runExamples: (action: string, options: CliOptions) => Promise<void>;
+  runMcp: (options: CliOptions) => Promise<void>;
+  runRefine: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runSocial: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runChat: (options: CliOptions) => Promise<void>;
+  runDoctor: (options: CliOptions) => Promise<void>;
+  runGoal: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runAgentCommand: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runTrace: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runExplain: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runMemoryCompact: (options: CliOptions) => Promise<void>;
+  runMemoryArchive: (options: CliOptions) => Promise<void>;
+  runMemoryIndex: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runMemorySearch: (options: CliOptions) => Promise<void>;
+  runMemoryEvalRecall: (options: CliOptions) => Promise<void>;
+  runMemoryEvalBudget: (options: CliOptions) => Promise<void>;
+  runMemoryRecallTrace: (options: CliOptions) => Promise<void>;
+  runMemoryConsolidate: (options: CliOptions) => Promise<void>;
+  runMemoryLearn: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runMemoryStatus: (options: CliOptions) => Promise<void>;
+  runMemoryList: (options: CliOptions) => Promise<void>;
+  runMemoryBudget: (options: CliOptions) => Promise<void>;
+  runMemoryInspect: (options: CliOptions) => Promise<void>;
+  runMemoryForget: (options: CliOptions) => Promise<void>;
+  runMemoryRecover: (options: CliOptions) => Promise<void>;
+  runMemoryFictionRepair: (options: CliOptions) => Promise<void>;
+  runMemoryUnstick: (options: CliOptions) => Promise<void>;
+  runMemoryExport: (options: CliOptions) => Promise<void>;
+  runMemoryImport: (options: CliOptions) => Promise<void>;
+  runMemoryPin: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runPinnedLibrary: (action: string | undefined, options: CliOptions) => Promise<void>;
+  runMemoryReconcile: (options: CliOptions) => Promise<void>;
+  runMemoryFacts: (action: string, options: CliOptions) => Promise<void>;
+  runSharedSpaceCommand: (action: string | undefined, options: CliOptions) => Promise<void>;
+}
+
+export type CommandHandler = (args: ParsedArgs, deps: RouterDeps) => Promise<boolean>;
