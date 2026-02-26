@@ -114,6 +114,7 @@ import {
   runMetaReviewLlm,
   computeProactiveStateSnapshot,
   decideProactiveEmission,
+  deriveNonPollingWakePlan,
   buildProactivePlan,
   isProactivePlanValid,
   applyProactivePlanConstraints,
@@ -2585,20 +2586,6 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     return 0;
   };
 
-  const getArousalDelayMultiplier = (relationship: RelationshipState): number => {
-    const balance = deriveCognitiveBalanceFromLibido(relationship);
-    if (balance.arousalState === "overridden") {
-      return 0.52;
-    }
-    if (balance.arousalState === "aroused") {
-      return 0.64;
-    }
-    if (balance.arousalState === "rising") {
-      return 0.8;
-    }
-    return 1;
-  };
-
   const computeTopicAffinity = (left: string, right: string): number => {
     const l = (left.toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) ?? []).slice(0, 24);
     const r = new Set((right.toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) ?? []).slice(0, 24));
@@ -3023,95 +3010,90 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
 
   const getProactiveProbability = (): number => buildProactiveSnapshot().probability;
 
-  const scheduleProactiveTick = (): void => {
-    stopProactive();
-    const silenceMin = Math.max(0, (Date.now() - Math.max(lastUserAt, lastAssistantAt)) / 60_000);
-    const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
-    const talkativeBias = Math.max(0, Math.min(0.35, curiosity * 0.25 + relationship.dimensions.intimacy * 0.1));
-    const arousalDelayMultiplier = getArousalDelayMultiplier(relationship);
-    let minDelayMs = 18_000;
-    let maxDelayMs = 90_000;
-    if (silenceMin >= 2 && silenceMin < 8) {
-      minDelayMs = 35_000;
-      maxDelayMs = 130_000;
-    } else if (silenceMin >= 8 && silenceMin < 25) {
-      minDelayMs = 70_000;
-      maxDelayMs = 260_000;
-    } else if (silenceMin >= 25) {
-      minDelayMs = 120_000;
-      maxDelayMs = 520_000;
+  type NonPollingSignal =
+    | "session_start"
+    | "user_turn_committed"
+    | "assistant_turn_committed"
+    | "proactive_decision_miss"
+    | "proactive_message_emitted";
+
+  const runProactiveDecisionOnce = async (): Promise<NonPollingSignal> => {
+    if (currentAbort || currentToolAbort) {
+      return "proactive_decision_miss";
     }
-    minDelayMs = Math.max(8_000, Math.floor(minDelayMs * (1 - talkativeBias)));
-    maxDelayMs = Math.max(minDelayMs + 5_000, Math.floor(maxDelayMs * (1 - talkativeBias * 0.7)));
-    minDelayMs = Math.max(5_000, Math.floor(minDelayMs * arousalDelayMultiplier));
-    maxDelayMs = Math.max(minDelayMs + 4_000, Math.floor(maxDelayMs * arousalDelayMultiplier));
-    const delay = Math.floor(minDelayMs + Math.random() * (maxDelayMs - minDelayMs));
+    const snapshot = buildProactiveSnapshot();
+    const relationshipNow = personaPkg.relationshipState ?? createInitialRelationshipState();
+    const arousalBoost =
+      getArousalProactiveBoost(relationshipNow) + (isExtremeProactiveWindowActive(relationshipNow) ? 0.08 : 0);
+    const missBoost = Math.min(0.24, proactiveMissStreak * 0.05);
+    const boostedProbability = clampNumber(snapshot.probability + arousalBoost + missBoost, 0.01, 0.97);
+    let decision = decideProactiveEmission(
+      {
+        ...snapshot,
+        probability: boostedProbability
+      },
+      Math.random()
+    );
+    const arousalState = deriveCognitiveBalanceFromLibido(relationshipNow).arousalState;
+    if (!decision.emitted && arousalState !== "low" && proactiveMissStreak >= 6) {
+      decision = {
+        ...decision,
+        emitted: true,
+        reason: "arousal_streak_override"
+      };
+    }
+    const proactivePlan = await buildProactivePlanForTick(snapshot);
+    await appendLifeEvent(personaPath, {
+      type: "proactive_decision_made",
+      payload: {
+        ...decision,
+        proactivePlan,
+        suppressReason: decision.suppressReason ?? null,
+        baseProbability: snapshot.probability,
+        arousalBoost,
+        missBoost,
+        proactiveMissStreak
+      }
+    });
+    if (decision.emitted) {
+      await sendProactiveMessage(proactivePlan);
+      proactiveMissStreak = 0;
+      return "proactive_message_emitted";
+    }
+    proactiveMissStreak += 1;
+    proactiveRecentEmitCount = Math.max(0, proactiveRecentEmitCount - 1);
+    return "proactive_decision_miss";
+  };
+
+  const dispatchNonPollingSignal = (signal: NonPollingSignal): void => {
+    stopProactive();
+    const wakePlan = deriveNonPollingWakePlan({
+      signal,
+      nowMs: Date.now(),
+      lastUserAtMs: lastUserAt,
+      lastAssistantAtMs: lastAssistantAt,
+      hasUserSpokenThisSession,
+      proactiveCooldownUntilMs,
+      lastUserInput,
+      curiosity,
+      relationshipState: personaPkg.relationshipState
+    });
+    if (!wakePlan.shouldArm) {
+      return;
+    }
     proactiveTimer = setTimeout(() => {
       lineQueue = lineQueue
         .then(async () => {
-          if (currentAbort || currentToolAbort) {
-            return;
-          }
-          if (Date.now() < proactiveCooldownUntilMs) {
-            return;
-          }
-          if (isLikelyUnfinishedThought(lastUserInput) && Date.now() - lastUserAt < 90_000) {
-            return;
-          }
-          if (!hasUserSpokenThisSession) {
-            return;
-          }
-          const snapshot = buildProactiveSnapshot();
-          const relationshipNow = personaPkg.relationshipState ?? createInitialRelationshipState();
-          const arousalBoost =
-            getArousalProactiveBoost(relationshipNow) + (isExtremeProactiveWindowActive(relationshipNow) ? 0.08 : 0);
-          const missBoost = Math.min(0.24, proactiveMissStreak * 0.05);
-          const boostedProbability = clampNumber(snapshot.probability + arousalBoost + missBoost, 0.01, 0.97);
-          let decision = decideProactiveEmission(
-            {
-              ...snapshot,
-              probability: boostedProbability
-            },
-            Math.random()
-          );
-          const arousalState = deriveCognitiveBalanceFromLibido(relationshipNow).arousalState;
-          if (!decision.emitted && arousalState !== "low" && proactiveMissStreak >= 6) {
-            decision = {
-              ...decision,
-              emitted: true,
-              reason: "arousal_streak_override"
-            };
-          }
-          const proactivePlan = await buildProactivePlanForTick(snapshot);
-          await appendLifeEvent(personaPath, {
-            type: "proactive_decision_made",
-            payload: {
-              ...decision,
-              proactivePlan,
-              suppressReason: decision.suppressReason ?? null,
-              baseProbability: snapshot.probability,
-              arousalBoost,
-              missBoost,
-              proactiveMissStreak
-            }
-          });
-          if (decision.emitted) {
-            await sendProactiveMessage(proactivePlan);
-            proactiveMissStreak = 0;
-          } else {
-            proactiveMissStreak += 1;
-            proactiveRecentEmitCount = Math.max(0, proactiveRecentEmitCount - 1);
-          }
+          const nextSignal = await runProactiveDecisionOnce();
+          dispatchNonPollingSignal(nextSignal);
         })
         .catch((error: unknown) => {
           const msg = error instanceof Error ? error.message : String(error);
           sayAsAssistant(`我这次主动消息发送失败了：${msg}`);
           rl.prompt();
-        })
-        .finally(() => {
-          scheduleProactiveTick();
+          dispatchNonPollingSignal("proactive_decision_miss");
         });
-    }, delay);
+    }, wakePlan.delayMs);
   };
 
   const showCapabilitySummary = (): void => {
@@ -3868,7 +3850,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   });
   lastAssistantOutput = greetingText;
   lastAssistantAt = Date.now();
-  scheduleProactiveTick();
+  dispatchNonPollingSignal("session_start");
 
   rl.on("SIGINT", () => {
     if (currentAbort || currentToolAbort) {
@@ -3983,6 +3965,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         hasUserSpokenThisSession = true;
         lastUserAt = Date.now();
         lastUserInput = input;
+        dispatchNonPollingSignal("user_turn_committed");
         if (isUserSteppingAway(input)) {
           awayLikelyUntilMs = Date.now() + 20 * 60_000;
         } else if (isUserBack(input)) {
@@ -4915,6 +4898,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
       });
       lastAssistantAt = Date.now();
+      dispatchNonPollingSignal("assistant_turn_committed");
       const relationshipAfterRefusal = evolveRelationshipStateFromAssistant(
         personaPkg.relationshipState ?? createInitialRelationshipState(),
         refusalSafe,
@@ -5444,6 +5428,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
       });
       lastAssistantOutput = assistantContent;
+      lastAssistantAt = Date.now();
+      dispatchNonPollingSignal("assistant_turn_committed");
       // Parse soulseed-fix proposal from Beta's response (Plan B fix proposal flow)
       if (!pendingProposedFix) {
         const fixRe = /```soulseed-fix\r?\npath:\s*(.+?)\r?\ndescription:\s*(.+?)\r?\n---\r?\n([\s\S]*?)```/;
@@ -5830,23 +5816,6 @@ function isUserBack(input: string): boolean {
     return false;
   }
   return /我回来啦|我回来了|我又来了|回来啦|我在了|back now|i'?m back/.test(text);
-}
-
-function isLikelyUnfinishedThought(input: string): boolean {
-  const text = input.trim();
-  if (!text) {
-    return false;
-  }
-  if (text.length > 10) {
-    return false;
-  }
-  if (/[。！？!?；;]$/.test(text)) {
-    return false;
-  }
-  if (/^(关于|然后|就是|还有|那个|所以|嗯|呃|well|so|and|about)$/i.test(text)) {
-    return true;
-  }
-  return text.length <= 3;
 }
 
 function buildGroupParticipationReply(

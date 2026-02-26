@@ -68,6 +68,7 @@ export * from "./capabilities/registry.js";
 export * from "./capabilities/intent_resolver.js";
 export * from "./capabilities/policy_guard.js";
 export * from "./proactive/engine.js";
+export * from "./proactive/non_polling_loop.js";
 export * from "./proactive/planner_contract.js";
 export * from "./governance/pipeline_replay.js";
 export * from "./persona/constitution_crystallization.js";
