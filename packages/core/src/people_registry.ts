@@ -157,6 +157,20 @@ export async function generateRelationshipCardsForInput(
 }
 
 /**
+ * Compile people-registry relationship context for session injection.
+ * Wraps generateRelationshipCardsForInput with relationship state loading.
+ */
+export async function compilePeopleRelationshipContext(
+  rootPath: string,
+  userInput: string,
+  options?: { maxCards?: number; maxCharsPerCard?: number }
+): Promise<string> {
+  const { relationshipState } = await ensureRelationshipArtifacts(rootPath);
+  const cards = await generateRelationshipCardsForInput(rootPath, userInput, relationshipState, options);
+  return cards.filter(Boolean).join("\n");
+}
+
+/**
  * RelationshipDecayJob: Periodic baseline regression for relationship state.
  * Applies idle decay when no interaction; uses genome for decay parameters.
  */
@@ -279,7 +293,7 @@ export async function addPersonToRegistry(
   return { ok: true, entity };
 }
 
-function createEmptyPeopleRegistry(): PeopleRegistry {
+export function createEmptyPeopleRegistry(): PeopleRegistry {
   return {
     schemaVersion: PEOPLE_REGISTRY_SCHEMA_VERSION,
     entities: [],

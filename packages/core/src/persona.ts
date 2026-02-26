@@ -33,11 +33,6 @@ import {
   createInitialSelfReflection,
   SELF_REFLECTION_FILENAME
 } from "./self_reflection.js";
-import { createDefaultValuesRules, VALUES_RULES_FILENAME } from "./values_rules.js";
-import { createDefaultPersonalityProfile, PERSONALITY_PROFILE_FILENAME } from "./personality_profile.js";
-import { createEmptyGoalsState, GOALS_STATE_FILENAME } from "./goals_state.js";
-import { createEmptyBeliefsState, BELIEFS_STATE_FILENAME } from "./beliefs_state.js";
-import { createEmptyPeopleRegistry, PEOPLE_REGISTRY_FILENAME } from "./people_registry.js";
 import {
   createDefaultGenome,
   createDefaultEpigenetics,
@@ -56,6 +51,7 @@ import {
 } from "./personality_profile.js";
 import { createDefaultGoalsState, loadGoals } from "./goals_state.js";
 import { createDefaultBeliefsState, loadBeliefs } from "./beliefs_state.js";
+import { createEmptyPeopleRegistry, PEOPLE_REGISTRY_FILENAME } from "./people_registry.js";
 import {
   VOICE_LATENT_DIM,
   BELIEF_LATENT_DIM,
@@ -209,11 +205,6 @@ export async function initPersonaPackage(
   await writeJson(path.join(outPath, "soul_lineage.json"), createInitialSoulLineage(personaId));
   await writeJson(path.join(outPath, "relationship_state.json"), createInitialRelationshipState(createdAt));
   await writeJson(path.join(outPath, "voice_profile.json"), voiceProfile);
-  await writeJson(path.join(outPath, VALUES_RULES_FILENAME), createDefaultValuesRules(constitution));
-  await writeJson(path.join(outPath, PERSONALITY_PROFILE_FILENAME), createDefaultPersonalityProfile());
-  await writeJson(path.join(outPath, GOALS_STATE_FILENAME), createEmptyGoalsState());
-  await writeJson(path.join(outPath, BELIEFS_STATE_FILENAME), createEmptyBeliefsState());
-  await writeJson(path.join(outPath, PEOPLE_REGISTRY_FILENAME), createEmptyPeopleRegistry());
   await writeJson(path.join(outPath, MOOD_STATE_FILENAME), createInitialMoodState(createdAt));
   await writeJson(path.join(outPath, AUTOBIOGRAPHY_FILENAME), createInitialAutobiography());
   await writeJson(path.join(outPath, INTERESTS_FILENAME), createInitialInterests());
@@ -239,6 +230,7 @@ export async function initPersonaPackage(
   await writeJson(path.join(outPath, PERSONALITY_PROFILE_FILENAME), createDefaultPersonalityProfile(createdAt));
   await writeJson(path.join(outPath, "goals.json"), createDefaultGoalsState(createdAt));
   await writeJson(path.join(outPath, "beliefs.json"), createDefaultBeliefsState(createdAt));
+  await writeJson(path.join(outPath, PEOPLE_REGISTRY_FILENAME), createEmptyPeopleRegistry());
   await ensureMemoryStore(outPath);
 
   // H/P1-4: Create manifest.json for v0.4 package layout (new packages are full from birth)

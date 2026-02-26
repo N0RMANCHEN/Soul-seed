@@ -7,6 +7,7 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 
 export const BELIEFS_SCHEMA_VERSION = "1.0";
+export const BELIEFS_STATE_FILENAME = "beliefs.json";
 
 export interface BeliefEntry {
   beliefId: string;

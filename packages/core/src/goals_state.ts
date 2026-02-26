@@ -7,6 +7,7 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 
 export const GOALS_SCHEMA_VERSION = "1.0";
+export const GOALS_STATE_FILENAME = "goals.json";
 
 export interface GoalEntry {
   goalId: string;
