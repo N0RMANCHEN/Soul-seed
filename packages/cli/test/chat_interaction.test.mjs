@@ -351,6 +351,30 @@ test("chat emits thinking preview before slow reply when enabled", async () => {
   assert.equal(events.some((event) => event.type === "thinking_preview_emitted"), true);
 });
 
+test("chat stream mode does not replay a second near-duplicate assistant line", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-cli-chat-stream-no-replay-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+  const initResult = spawnSync(process.execPath, [cliPath, "init", "--name", "Roxy", "--out", personaPath], {
+    encoding: "utf8"
+  });
+  assert.equal(initResult.status, 0);
+
+  const chatResult = await runChatScript(
+    personaPath,
+    ["（轻轻戳你脸颊）\n消气了吗。", "/exit", "确认退出"],
+    { intervalMs: 260, env: { SOULSEED_STREAM_REPLY: "1" } }
+  );
+  assert.equal(chatResult.status, 0);
+
+  const lines = chatResult.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && line.includes("Roxy>"));
+  const normalized = lines.map((line) => line.replace(/^Roxy>\s*/, "").trim());
+  const target = normalized.filter((line) => line.includes("消气了吗"));
+  assert.equal(target.length <= 1, true);
+});
+
 function runChatScript(personaPath, lines, options = {}) {
   const intervalMs = Number.isFinite(options.intervalMs) ? Math.max(20, Math.floor(options.intervalMs)) : 80;
   const timeoutMs = Number.isFinite(options.timeoutMs) ? Math.max(3000, Math.floor(options.timeoutMs)) : 15000;

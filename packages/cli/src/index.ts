@@ -230,7 +230,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { dispatchKnownCommand } from "./commands/router.js";
 import { inferEmotionFromText, parseEmotionTag, renderEmotionPrefix } from "./emotion.js";
 import { parseArgs } from "./parser/args.js";
-import { resolveReplyDisplayMode, resolveStreamReplyEnabled } from "./runtime_flags.js";
+import { resolveStreamReplyEnabled } from "./runtime_flags.js";
 
 type ReadingContentMode = "fiction" | "non_fiction" | "unknown";
 type PersonaTemplateKey = "friend" | "peer" | "intimate" | "neutral";
@@ -2216,13 +2216,6 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     const safeContent = stripAssistantLabelPrefix(guardAssistantOutput(content, "reply"));
     console.log(`${assistantLabel()} ${emotionPrefix}${safeContent}`);
   };
-  const isCosmeticStreamRewrite = (rawText: string, finalText: string): boolean => {
-    const normalize = (text: string): string =>
-      stripAssistantLabelPrefix(stripPromptArtifactTags(stripStageDirections(text)))
-        .replace(/[ \t]{2,}/g, " ")
-        .trim();
-    return normalize(rawText) === normalize(finalText);
-  };
   const applyHumanPacedDelay = async (startedAtMs: number, replyText: string): Promise<void> => {
     if (!humanPacedMode) {
       return;
@@ -2253,7 +2246,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     }
     const apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
     if (!apiKey || apiKey === "test-key") {
-      return null;
+      return compactFacts;
     }
     const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
     const messages = [
@@ -2285,7 +2278,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       });
       raw = raw.trim() ? raw : generated.content;
     } catch {
-      return null;
+      return compactFacts;
     }
     let normalized = sanitizeAutonomyText(raw);
     normalized = stripStageDirections(normalized);
@@ -2294,7 +2287,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     normalized = guardAssistantOutput(normalized, stage);
     normalized = normalized.replace(/[ \t]{2,}/g, " ").trim();
     if (!normalized || isDramaticRoleplayOpener(normalized)) {
-      return null;
+      return compactFacts;
     }
     return normalized;
   };
@@ -2341,6 +2334,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     output: process.stdout,
     prompt: "> "
   });
+  // Prevent early user input from being dropped before line handlers are bound.
+  rl.pause();
 
   let currentAbort: AbortController | null = null;
   let currentToolAbort: AbortController | null = null;
@@ -5598,35 +5593,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       addLatency("rewrite", rewriteStartedAtMs);
       const resolvedEmotion = compactedEmotion.emotion ?? emotion.emotion ?? inferEmotionFromText(assistantContent);
       const shouldDisplayAssistant = assistantContent.trim().length > 0 && !loopBreak.triggered;
-      const replyDisplayMode = resolveReplyDisplayMode({
-        streamed: streamReplyEnabled && streamPrintStarted,
-        shouldDisplayAssistant,
-        adjustedByGuard:
-          identityGuard.corrected ||
-          relationalGuard.corrected ||
-          recallGroundingGuard.corrected ||
-          pronounRoleGuard.corrected ||
-          temporalPhraseGuard.corrected ||
-          loopBreak.triggered,
-        rawText: rawAssistantContent || assistantContent,
-        finalText: assistantContent
-      });
-      const cosmeticStreamRewrite =
-        streamReplyEnabled &&
-        streamPrintStarted &&
-        replyDisplayMode === "adjusted" &&
-        isCosmeticStreamRewrite(rawAssistantContent || assistantContent, assistantContent);
       if (shouldDisplayAssistant) {
         const emitStartedAtMs = Date.now();
         if (!streamReplyEnabled) {
           await applyHumanPacedDelay(turnStartedAtMs, assistantContent);
           sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
-        } else if ((replyDisplayMode === "adjusted" || replyDisplayMode === "full") && !cosmeticStreamRewrite) {
-          if (streamPrintStarted && !streamPrintEnded) {
-            process.stdout.write("\n");
-            streamPrintEnded = true;
-          }
-          sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
+        } else if (streamReplyEnabled && streamPrintStarted && !streamPrintEnded) {
+          process.stdout.write("\n");
+          streamPrintEnded = true;
         }
         addLatency("emit", emitStartedAtMs);
       }
@@ -5958,6 +5932,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     })();
   });
 
+  rl.resume();
   rl.prompt();
 }
 
