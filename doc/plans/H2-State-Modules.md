@@ -6,6 +6,22 @@
 > Execution Strategy: Two parallel tracks + independent imperfection DoD  
 > Coupling: Medium overall  
 > Risk: Soft (individual modules are rollback-capable)
+> Status: `in_progress` (2026-02-26: H/P1-0..H/P1-3 scaffolding landed, tests added)
+
+---
+
+## 0. Progress Snapshot (2026-02-26)
+
+- H/P1-0 scaffold landed: `values_rules.ts`, `personality_profile.ts`, and tests.
+- H/P1-1 scaffold landed: `goals_state.ts`, `beliefs_state.ts`, and tests.
+- H/P1-2 scaffold landed: `memory_forgetting.ts` and tests.
+- H/P1-3 scaffold landed: `people_registry.ts` + CLI person-card context injection and tests.
+- Persona init/lint sync landed for the above state files.
+- Full `./scripts/verify.sh` run is green after this batch increment.
+
+Remaining for H/P1-0..H/P1-3 closure:
+- Deep pipeline integration and thresholds calibration against long-run regression suites.
+- Coverage expansion for cross-session behavior drift and compatibility fixtures.
 
 ---
 

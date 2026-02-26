@@ -70,8 +70,9 @@
 
 ## 当前执行总览（重排后）
 - `done`：Phase Ha — `H/P0-0`、`H/P0-1`、`H/P0-2`、`H/P0-3`、`H/P0-4` 全部完成
+- `in_progress`：Phase Hb — `H/P1-0`、`H/P1-1`、`H/P1-2`、`H/P1-3` 已进入实现与验证（见各任务“进展注记”）
 - `blocked`：`none`
-- `todo`：Phase Hb 全部 8 项；Phase Hc 全部 11 项
+- `todo`：Phase Hb 其余 4 项（`H/P1-4..7`）；Phase Hc 全部 11 项
 - **Phase Ha 完成说明**：State Delta Pipeline（H/P0-0）+ Invariant Table（H/P0-1）+ Compat Migration（H/P0-2）+ Compat Constants（H/P0-3）+ Genome MVP（H/P0-4）全部落地，662 core tests 全部通过。
 
 ## 现状评估（兴趣/注意力/主动交互）
@@ -300,35 +301,39 @@
 
 ### H/P1-0 Values / Personality 可运行约束系统
 - 原编号：`G/P2-8`
-- 状态：`todo`，必要性：`Should`
+- 状态：`in_progress`，必要性：`Should`
 - 来源需求：`extra/37`
 - 实现方式：将 values 条款化接 gate，personality 慢漂移。
 - 测试/DoD：越界回复可拦截并给出原因。
 - 依赖：`H/P0-0`；回滚：先告警后拦截。
+- 进展注记（2026-02-26）：已新增 `values_rules.ts`、`personality_profile.ts`，并补充状态模块单测；后续待补：与主 gate 路径更深集成与回归阈值校准。
 
 ### H/P1-1 Goals / Beliefs 状态模块
 - 原编号：`G/P2-9`
-- 状态：`todo`，必要性：`Should`
+- 状态：`in_progress`，必要性：`Should`
 - 来源需求：`extra/38` `spec/15`
 - 实现方式：新增 goals/beliefs 状态与慢变量更新规则。
 - 测试/DoD：跨会话连续性达标。
 - 依赖：`H/P0-0`；回滚：只读展示。
+- 进展注记（2026-02-26）：已新增 `goals_state.ts`、`beliefs_state.ts` 与对应单测；后续待补：与更完整会话演化路径的集成回归。
 
 ### H/P1-2 记忆遗忘与压缩整合管线
 - 原编号：`G/P2-10`
-- 状态：`todo`，必要性：`Should`
+- 状态：`in_progress`，必要性：`Should`
 - 来源需求：`extra/39` `spec/3`
 - 实现方式：衰减+干扰+压缩并行，不修改原始 `life.log`。
 - 测试/DoD：容量受控且关键召回达标。
 - 依赖：`H/P0-0`；回滚：关闭压缩。
+- 进展注记（2026-02-26）：已新增 `memory_forgetting.ts` 与遗忘/干扰/压缩启发式单测；后续待补：与全链路 memory lifecycle 策略的深度接线与长期回归。
 
 ### H/P1-3 Relationship first-class state
 - 原编号：`G/P2-11`
-- 状态：`todo`，必要性：`Should`
+- 状态：`in_progress`，必要性：`Should`
 - 来源需求：`extra/35`
 - 实现方式：关系状态外置，支持冷却/遗忘曲线与事件绑定。
 - 测试/DoD：关系变化可追溯、可解释。
 - 依赖：`H/P0-0` `H/P1-2`；回滚：回退 memory-only。
+- 进展注记（2026-02-26）：已新增 `people_registry.ts` 与 person-card 注入块，并补充单测；后续待补：关系回归指标与噪声抑制门禁联动。
 
 ### H/P1-4 Persona Package v0.4 布局与回滚
 - 原编号：`G/P2-12`

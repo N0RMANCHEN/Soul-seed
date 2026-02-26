@@ -22,6 +22,12 @@ All notable changes to this project will be documented in this file.
 - **Compat Calibration** (`packages/core/src/compat_calibration.ts`): Versioned calibration config with inference from life.log events, lock mechanism, and validation. 8 tests.
 - **Genome Presets** (`config/genome_presets.json`): 4 personality presets (balanced, empathetic, analytical, social) with `loadGenomePresets()` and `createGenomeFromPreset()`.
 - **Persona Lint genome rules** (`packages/core/src/persona_lint.ts`): `genome_schema_invalid`, `genome_trait_out_of_range`, `epigenetics_adjustment_out_of_range`.
+- **Values rules module** (`packages/core/src/values_rules.ts`): value-rule config load/save/evaluate path with priority-based matching.
+- **Personality profile module** (`packages/core/src/personality_profile.ts`): bounded slow-drift helper with cooldown gate.
+- **Goals/Beliefs state modules** (`packages/core/src/goals_state.ts`, `beliefs_state.ts`): goal lifecycle transition checks and belief confidence/cooldown/evidence update checks.
+- **Memory forgetting helpers** (`packages/core/src/memory_forgetting.ts`): decay/interference/compression heuristics aligned to genome-derived policy inputs.
+- **People registry module** (`packages/core/src/people_registry.ts`): people registry storage and person-card context compilation.
+- New core tests: `values_personality_state.test.mjs`, `goals_beliefs_state.test.mjs`, `memory_forgetting.test.mjs`, `people_registry.test.mjs`, `persona_state_files_init.test.mjs`.
 
 ### Changed
 - Core conflict policy now uses **explicit-only refusal**: explicit core override still refuses; implicit semantic tension degrades to cautious clarify/brief response instead of hard refusal.
@@ -38,6 +44,10 @@ All notable changes to this project will be documented in this file.
 - **CLI wiring** (`packages/cli/src/index.ts`): Computes `genomeDerived` per turn and passes to recall budget, mood evolution, and social graph.
 - **2-tier compat model**: Legacy personas auto-load default genome (all traits=0.5) with no behavior change; no hybrid tier.
 - `DerivedParams` pruned: removed `cardsCap`, `recentWindowTurns`, `entityLinkingThreshold` (no clear consumer or miscalibrated).
+- **Persona initialization** (`packages/core/src/persona.ts`): new persona package now seeds `values_rules.json`, `personality_profile.json`, `goals.json`, `beliefs.json`, `people_registry.json`.
+- **Persona lint** (`packages/core/src/persona_lint.ts`): warns on missing optional H/P1 state files and errors on invalid JSON for those files.
+- **CLI context injection** (`packages/cli/src/index.ts`): appends people-registry person-card context block alongside social graph block.
+- **Roadmap/plan sync**: updated `doc/Roadmap.md`, `doc/plans/H2-State-Modules.md`, and `doc/plans/H-State-Closure-Plan.md` to reflect H/P1-0..H/P1-3 in-progress implementation status and progress notes.
 - **Epigenetics gate**: Enhanced with cooldown enforcement — rejects adjustments when `cooldownUntil` is in the future.
 - **E2: Zero direct-write paths**: All state writes (mood, relationship, interests, cognition, voice, social_graph) route through the State Delta Pipeline when persona is in full compat mode. Legacy personas retain direct writes. System-generated writes bypass gates via `systemGenerated` flag. New domains added to `StateDeltaDomain` and `DOMAIN_FILE_MAP`. `state_delta_writer.ts` provides `shouldUseStateDeltaPipelineFromRoot` and `writeStateDelta`. CI gate `scripts/check_direct_writes.mjs` enforces no unauthorized state file writes.
 
