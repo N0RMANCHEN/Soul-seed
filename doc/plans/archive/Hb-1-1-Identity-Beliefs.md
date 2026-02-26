@@ -2,7 +2,7 @@
 
 > **Phase**: Hb — Mind Model State Modules  
 > **Subplan**: Hb-1-1 (Identity & Beliefs)  
-> **Parent**: `doc/plans/Hb-1-State-Core.md`  
+> **Parent**: `doc/plans/Hb-Mind-Model-State-Modules.md`  
 > **Tasks**: 2 (H/P1-0, H/P1-1)  
 > **Execution Strategy**: Serial  
 > **Status**: `todo`  

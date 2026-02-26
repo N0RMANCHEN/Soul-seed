@@ -2,7 +2,7 @@
 
 > **Phase**: Hb — Mind Model State Modules  
 > **Subplan**: Hb-2-1 (Persona Package)  
-> **Parent**: `doc/plans/Hb-2-Package-Compat.md`  
+> **Parent**: `doc/plans/Hb-Mind-Model-State-Modules.md`  
 > **Tasks**: 1 (H/P1-4)  
 > **Status**: `done`（Phase 级，进度以 Roadmap 为准）  
 > **Progress**: 以 `doc/Roadmap.md` 为准（本计划仅描述 scope，不做逐任务快照）  

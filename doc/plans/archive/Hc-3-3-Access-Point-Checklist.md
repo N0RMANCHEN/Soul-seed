@@ -4,7 +4,7 @@
 > **Nested Subplan**: Hc-3-3  
 > **Task**: H/P1-19  
 > **Status**: `todo`  
-> **Parent**: `doc/plans/Hc-3-Schema-Access.md`  
+> **Parent**: `doc/plans/Hc-Verification-Governance.md`  
 > **Source**: `doc/Roadmap.md`, `01-Spec.md` §29, `04-Archive.md` Appendix B, `doc/plans/Hc-Verification-Governance.md` §7
 
 ---

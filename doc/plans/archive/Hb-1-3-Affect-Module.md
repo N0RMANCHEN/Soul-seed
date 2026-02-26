@@ -2,7 +2,7 @@
 
 > **Phase**: Hb — Mind Model State Modules  
 > **Subplan**: Hb-1-3 (Affect Module)  
-> **Parent**: `doc/plans/Hb-1-State-Core.md`  
+> **Parent**: `doc/plans/Hb-Mind-Model-State-Modules.md`  
 > **Tasks**: 1 (H/P1-5)  
 > **Execution Strategy**: After sync-1 (H/P0-4 complete)  
 > **Status**: `done`  

@@ -2,7 +2,7 @@
 
 > **Phase**: Hb — Mind Model State Modules  
 > **Subplan**: Hb-2-2 (Compat Checklist)  
-> **Parent**: `doc/plans/Hb-2-Package-Compat.md`  
+> **Parent**: `doc/plans/Hb-Mind-Model-State-Modules.md`  
 > **Tasks**: 1 (H/P1-7)  
 > **Execution Strategy**: After H/P1-4  
 > **Status**: `done`  

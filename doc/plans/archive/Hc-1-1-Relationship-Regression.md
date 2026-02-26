@@ -4,7 +4,7 @@
 > **Nested Subplan**: Hc-1-1  
 > **Task**: H/P1-8  
 > **Status**: `todo`  
-> **Parent**: `doc/plans/Hc-1-Regression-Suites.md`  
+> **Parent**: `doc/plans/Hc-Verification-Governance.md`  
 > **Source**: `doc/Roadmap.md`, `04-Archive.md` §18.1, `doc/plans/Hc-Verification-Governance.md` §4.1
 
 ---

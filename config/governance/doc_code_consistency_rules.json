@@ -1,9 +1,9 @@
 {
   "version": "1.0.0",
   "naming": {
-    "roadmapFile": "doc/Architecture-Governance-Roadmap.md",
-    "taskIdPattern": "AG\\/P[0-2]-\\d+",
-    "requiredGroups": ["AG/P0", "AG/P1", "AG/P2"]
+    "roadmapFile": "doc/Roadmap.md",
+    "taskIdPattern": "[A-Z]+\\/P[0-2]-\\d+",
+    "requiredGroups": ["I/P0", "J/P0", "K/P0"]
   },
   "pathReferences": [
     {
@@ -19,15 +19,15 @@
       "path": "config/governance/architecture_rules.json"
     },
     {
-      "doc": "doc/Architecture-Governance-Roadmap.md",
+      "doc": "doc/Roadmap.md",
       "path": "scripts/check_direct_writes.mjs"
     },
     {
-      "doc": "doc/Architecture-Governance-Roadmap.md",
+      "doc": "doc/Roadmap.md",
       "path": "scripts/arch_governance_check.mjs"
     },
     {
-      "doc": "doc/Architecture-Governance-Roadmap.md",
+      "doc": "doc/Roadmap.md",
       "path": "packages/cli/src/index.ts"
     }
   ],

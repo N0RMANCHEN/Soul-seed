@@ -176,7 +176,7 @@ Full command reference: [`CLI.md`](CLI.md)
 ```bash
 npm install
 cp .env.example .env
-# 编辑 .env，填写 DEEPSEEK_API_KEY
+# 编辑 .env，填写 SOULSEED_API_KEY / SOULSEED_BASE_URL / SOULSEED_MODEL
 npm run build
 ./ss doctor
 ```
@@ -249,16 +249,18 @@ npm run build
 
 处理：
 1. 确认 `sqlite3` 可执行：`sqlite3 --version`
-2. 检查 `.env` 是否已填写 `DEEPSEEK_API_KEY`
-3. 重新执行：`./ss doctor`
+2. 检查 `.env` 是否已填写 `SOULSEED_API_KEY`
+3. 若使用 legacy 兼容变量，确认 `DEEPSEEK_API_KEY` 已设置
+4. 重新执行：`./ss doctor`
 
 ### 2) 启动聊天时报模型连接失败
 现象：会话中出现“模型连接波动/回复失败”。
 
 处理：
-1. 检查网络与 API 配置（`DEEPSEEK_BASE_URL` / `DEEPSEEK_API_KEY`）
-2. 使用 `./ss doctor` 复检
-3. 重启会话并重试
+1. 检查网络与 API 配置（`SOULSEED_BASE_URL` / `SOULSEED_API_KEY` / `SOULSEED_MODEL`）
+2. 若走 legacy 兼容变量，检查 `DEEPSEEK_BASE_URL` / `DEEPSEEK_API_KEY`
+3. 使用 `./ss doctor` 复检
+4. 重启会话并重试
 
 ### 3) 人格文件异常或版本不一致
 现象：`persona lint` 失败或 `persona compile` 失败。

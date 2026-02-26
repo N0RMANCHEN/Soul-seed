@@ -64,23 +64,25 @@
 - `reports/`：评测/验收产物（报告）
 - `personas/`：人格资产（运行态）
 
-### 3.2 `packages/core/src` 分层建议（持续收敛）
+### 3.2 `packages/core/src` 分层规则（强制）
 
-- `runtime/`：执行协议与流水线
-- `memory/`：记忆检索、生命周期、存储
-- `persona/`：人格包读写、迁移、lint、compile
-- `state/`：state delta、状态域、演化逻辑
+- `runtime/`：执行协议、路由、编排与模型适配
+- `memory/`：记忆检索、生命周期、存储与预算
+- `persona/`：人格包读写、迁移、lint、compile、身份资产
+- `state/`：state delta、状态域、genome/epigenetics、不变量
 - `guards/`：一致性与风险守卫
-- `governance/`：doctor、metrics、replay、evaluation
+- `governance/`：doctor、metrics、replay、trace、评估
 - `capabilities/`：能力注册与意图解析
+- `proactive/`：主动消息引擎
 
-说明：现状可渐进迁移，不要求一次性搬迁；但新增文件优先按目标分层放置。
+根目录白名单仅允许：`index.ts`、`types.ts`。新增根层业务文件一律视为违规并被门禁阻断。
 
 ### 3.3 文档目录规则
 
 - 规范类：放 `doc/` 根目录（长期标准）
 - 路线类：`doc/Roadmap.md`
-- 计划类：`doc/plans/*`（仅写 scope/依赖/入口出口，不做逐任务快照；进度以 `doc/Roadmap.md` 为准，详见 `doc/plans/README.md`）
+- 计划类（active）：`doc/plans/*`（仅写 scope/依赖/入口出口，不做逐任务快照；进度以 `doc/Roadmap.md` 为准，详见 `doc/plans/README.md`）
+- 计划归档（historical）：`doc/plans/archive/*`（已完成计划统一归档；Roadmap 仅保留索引链接）
 - 检查表：`doc/checklists/*`
 
 ---
@@ -157,8 +159,9 @@
 3. `core` 导出面宽度（`export *` 数量告警）
 4. workspace 版本声明一致性（阻塞）
 5. 计划命名体系混用（告警）
+6. `core` 分层合规（阻塞）：根目录白名单 + 必需分层目录存在性
 
-说明：首版采用“核心项阻塞 + 风险项告警”的渐进策略，后续可按 Roadmap 任务提升为阻塞。
+说明：当前采用“核心项阻塞 + 风险项告警”策略；`core` 分层合规已启用阻塞。
 
 ### 6.2 文档-代码一致性巡检（新增，非阻塞阶段）
 

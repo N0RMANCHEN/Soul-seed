@@ -1,18 +1,27 @@
 # Plan Documents (`doc/plans/`)
 
-> **更新规则（强制）**：实现进度以 `doc/Roadmap.md` 为准；本目录下的计划文件仅描述 scope、依赖链、入口/出口条件，**不做逐任务快照式状态更新**。计划文件只在 scope 变更时更新。
->
-> 来源：`doc/Roadmap.md` 规则 1.3；`doc/Architecture-Folder-Governance.md` §3.3
+> **强制规则**：实现进度以 `doc/Roadmap.md` 为准；本目录计划文件仅描述 scope/依赖/入口出口，不做逐任务快照。
 
-## 命名体系（Ha/Hb/Hc）
+## 目录职责
 
-主命名体系为 **Ha/Hb/Hc**（与 Roadmap 一致）。旧 H1/H2/H3 文件已移除（2026-02-26），统一使用 Ha/Hb/Hc 计划文件。
+- `doc/plans/`：active 计划（正在执行或即将执行）。
+- `doc/plans/archive/`：historical 计划（已完成、已归档）。
 
-## 文档命名约定
+## 生命周期规则（强制）
 
-- 高层汇总：`{Phase}-{ShortTitle}.md`（如 `H-State-Closure-Plan.md`）
-- Sub-phase：`{SubPhase}-{ShortTitle}.md`（如 `Ha-State-Infra-Plan.md`、`Hb-Mind-Model-State-Modules.md`）
-- 嵌套子计划：`{SubPhase}-{N}-{Title}.md`（如 `Hb-1-1-Identity-Beliefs.md`）
+1. 新建计划：放在 `doc/plans/`，并更新本文件 Active Index。
+2. 执行过程中：状态只在 `doc/Roadmap.md` 更新。
+3. 计划完成：移动或归档到 `doc/plans/archive/`。
+4. 归档完成后：
+   - 在 `doc/plans/archive/README.md` 登记归档条目
+   - 在 `doc/Roadmap.md` 仅保留历史索引（不保留执行细节）
+
+## 命名约定
+
+- 高层汇总：`{Phase}-{ShortTitle}.md`
+- Sub-phase：`{SubPhase}-{ShortTitle}.md`
+- 嵌套子计划：`{SubPhase}-{N}-{Title}.md`
+- 归档文件：`{PhaseOrTrack}-{YYYY-MM}-{ShortTitle}.md`
 
 ## 计划文件必备字段
 
@@ -22,10 +31,13 @@
 - A/B 分工（若适用）
 - 风险与回滚策略
 
-## 新建计划时
+## 模板头
 
-在文件头部加入：
-
-```
+```md
 > Progress: 以 doc/Roadmap.md 为准（本计划仅描述 scope，不做逐任务快照）
 ```
+
+## Active Index
+
+- 当前无 active 计划文件。
+- 下一次启动 Phase J/K/I 计划时，在 `doc/plans/` 新建计划并在此登记。

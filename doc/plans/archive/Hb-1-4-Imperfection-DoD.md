@@ -2,7 +2,7 @@
 
 > **Phase**: Hb — Mind Model State Modules  
 > **Subplan**: Hb-1-4 (Imperfection DoD)  
-> **Parent**: `doc/plans/Hb-1-State-Core.md`  
+> **Parent**: `doc/plans/Hb-Mind-Model-State-Modules.md`  
 > **Tasks**: 1 (H/P1-6)  
 > **Execution Strategy**: Independent (after H/P0-1); parallel with other Hb-1 tasks  
 > **Status**: `done`  

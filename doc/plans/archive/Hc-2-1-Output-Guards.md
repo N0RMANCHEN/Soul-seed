@@ -4,7 +4,7 @@
 > **Nested Subplan**: Hc-2-1  
 > **Tasks**: H/P1-12, H/P1-13  
 > **Status**: `todo`  
-> **Parent**: `doc/plans/Hc-2-Risk-Guards.md`  
+> **Parent**: `doc/plans/Hc-Verification-Governance.md`  
 > **Source**: `doc/Roadmap.md`, `04-Archive.md` §20.1–§20.2, `doc/plans/Hc-Verification-Governance.md` §5.1–§5.2
 
 ---
