@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": "1.0",
+  "description": "Phase H compatibility checklist — entry/storage/recall/rollback per Hb-2-2",
+  "verifiedAt": "2026-02-26",
+  "items": [
+    {
+      "id": "COMPAT-ENTRY-01",
+      "module": "H/P0-0",
+      "category": "entry",
+      "description": "State Delta Pipeline: proposal→gates→apply hooks in execution_protocol after meta_review, before commit",
+      "evidencePath": "packages/core/src/execution_protocol.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-02",
+      "module": "H/P0-0",
+      "category": "entry",
+      "description": "applyDeltas deterministic engine: clamp, rate-limit, evidence-check, compat-check",
+      "evidencePath": "packages/core/src/state_delta_apply.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-03",
+      "module": "H/P0-1",
+      "category": "entry",
+      "description": "Invariant Table: config-driven gates for 6 state domains",
+      "evidencePath": "packages/core/src/invariant_table.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-04",
+      "module": "H/P0-2",
+      "category": "entry",
+      "description": "Compat Migration: legacy→full path with pre-migration snapshot and rollback",
+      "evidencePath": "packages/core/src/compat_migration.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-05",
+      "module": "H/P0-3",
+      "category": "entry",
+      "description": "Compat Constants: calibration from life.log, lock mechanism",
+      "evidencePath": "packages/core/src/compat_calibration.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-06",
+      "module": "H/P0-4",
+      "category": "entry",
+      "description": "Genome: 6 traits, derived params, orchestrator/recall/mood wiring",
+      "evidencePath": "packages/core/src/genome_derived.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-07",
+      "module": "H/P1-0",
+      "category": "entry",
+      "description": "Values/Personality: values_rules gate, personality_profile slow drift",
+      "evidencePath": "packages/core/src/state_delta_gates.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-08",
+      "module": "H/P1-1",
+      "category": "entry",
+      "description": "Goals/Beliefs: goals_state, beliefs_state load and state delta domains",
+      "evidencePath": "packages/core/src/goals_state.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-09",
+      "module": "H/P1-2",
+      "category": "entry",
+      "description": "Memory: decay, interference, consolidation; life.log not modified",
+      "evidencePath": "packages/core/src/memory_rotation.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-10",
+      "module": "H/P1-3",
+      "category": "entry",
+      "description": "Relationship: relationship_state first-class, entity linking, relationship card injection",
+      "evidencePath": "packages/core/src/relationship_state.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-11",
+      "module": "H/P1-4",
+      "category": "entry",
+      "description": "Persona Package v0.4: manifest.json, PackageLoader, PackageSnapshotter",
+      "evidencePath": "packages/core/src/package_manifest.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-12",
+      "module": "H/P1-5",
+      "category": "entry",
+      "description": "Affect: mood_state decay/evolve with genome-derived params",
+      "evidencePath": "packages/core/src/mood_state.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ENTRY-13",
+      "module": "H/P1-6",
+      "category": "entry",
+      "description": "Imperfection DoD: imperfection signals, perfect_reply_detector, compileContext wiring",
+      "evidencePath": "packages/core/src/imperfection_signal_extractor.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-01",
+      "module": "H/P0-0",
+      "category": "storage",
+      "description": "State delta trace: append-only, no new Persona Package files",
+      "evidencePath": "packages/core/src/state_delta_apply.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-02",
+      "module": "H/P0-1",
+      "category": "storage",
+      "description": "Invariant config: config/h0/invariant_table.json",
+      "evidencePath": "config/h0/invariant_table.json",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-03",
+      "module": "H/P0-2",
+      "category": "storage",
+      "description": "Compat migration: pre-migration snapshot, backup dir",
+      "evidencePath": "packages/core/src/compat_migration.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-04",
+      "module": "H/P0-3",
+      "category": "storage",
+      "description": "Compat calibration: compat_calibration.json schema",
+      "evidencePath": "packages/core/src/compat_calibration.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-05",
+      "module": "H/P0-4",
+      "category": "storage",
+      "description": "Genome: genome.json, epigenetics.json; schema, defaults, migration",
+      "evidencePath": "packages/core/src/genome.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-06",
+      "module": "H/P1-0",
+      "category": "storage",
+      "description": "Values: values_rules.json; Personality: personality_profile.json",
+      "evidencePath": "packages/core/src/values_rules.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-07",
+      "module": "H/P1-1",
+      "category": "storage",
+      "description": "Goals: goals.json; Beliefs: beliefs.json",
+      "evidencePath": "packages/core/src/beliefs_state.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-08",
+      "module": "H/P1-2",
+      "category": "storage",
+      "description": "Memory: summaries/archive; life.log append-only preserved",
+      "evidencePath": "packages/core/src/memory_rotation.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-09",
+      "module": "H/P1-3",
+      "category": "storage",
+      "description": "Relationship: relationship_state.json",
+      "evidencePath": "packages/core/src/relationship_state.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-10",
+      "module": "H/P1-4",
+      "category": "storage",
+      "description": "Persona Package v0.4: manifest.json, layout",
+      "evidencePath": "packages/core/src/package_manifest.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-11",
+      "module": "H/P1-5",
+      "category": "storage",
+      "description": "Affect: mood_state.json",
+      "evidencePath": "packages/core/src/mood_state.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-STORAGE-12",
+      "module": "H/P1-6",
+      "category": "storage",
+      "description": "Imperfection: imperfection_rules.json (optional config)",
+      "evidencePath": "packages/core/src/imperfection_rules.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-RECALL-01",
+      "module": "H/P0-4",
+      "category": "recall",
+      "description": "Recall: recallTopK from genome-derived; legacy parity at trait=0.5",
+      "evidencePath": "packages/core/src/recall_budget_policy.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-RECALL-02",
+      "module": "H/P1-6",
+      "category": "recall",
+      "description": "Imperfection: hasCompressedMemory signal for recall context",
+      "evidencePath": "packages/core/src/imperfection_signal_extractor.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ROLLBACK-01",
+      "module": "H/P0-0",
+      "category": "rollback",
+      "description": "State Delta: gate reject = no write; trace records rejection",
+      "evidencePath": "packages/core/src/state_delta_apply.ts",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ROLLBACK-02",
+      "module": "H/P0-2",
+      "category": "rollback",
+      "description": "Compat Migration: rollback from pre-migration snapshot",
+      "evidencePath": "packages/core/test/compat_migration.test.mjs",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ROLLBACK-03",
+      "module": "H/P0-4",
+      "category": "rollback",
+      "description": "Genome: delete genome.json → legacy defaults (trait=0.5)",
+      "evidencePath": "packages/core/test/genome.test.mjs",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ROLLBACK-04",
+      "module": "H/P1-4",
+      "category": "rollback",
+      "description": "Persona Package: PackageSnapshotter restore from snapshot",
+      "evidencePath": "packages/core/test/package_loader_snapshotter.test.mjs",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    },
+    {
+      "id": "COMPAT-ROLLBACK-05",
+      "module": "H/P1-6",
+      "category": "rollback",
+      "description": "Imperfection: rules fallback when config missing; monitor-only mode",
+      "evidencePath": "packages/core/test/imperfection_signal_extractor.test.mjs",
+      "status": "pass",
+      "verifiedAt": "2026-02-26"
+    }
+  ]
+}
