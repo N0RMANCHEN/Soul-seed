@@ -5,7 +5,7 @@
 > **Parent**: `doc/plans/Hb-2-Package-Compat.md`  
 > **Tasks**: 1 (H/P1-7)  
 > **Execution Strategy**: After H/P1-4  
-> **Status**: `todo`  
+> **Status**: `done`  
 > **Source**: `doc/Roadmap.md`, `04-Archive.md` §17
 
 ---

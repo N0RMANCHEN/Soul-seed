@@ -2,7 +2,7 @@
 
 > High-Level Execution Plan  
 > Date: 2026-02-26  
-> Status: `todo`  
+> Status: `done`  
 > Source: `doc/Roadmap.md` (Phase Hb) + `04-Archive.md` §5–§12, §17  
 > Scope: 8 tasks (H/P1-0..7), W4–W6  
 > Subplans: `Hb-1-State-Core.md`, `Hb-2-Package-Compat.md`  

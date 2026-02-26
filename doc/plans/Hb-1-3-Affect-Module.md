@@ -5,7 +5,7 @@
 > **Parent**: `doc/plans/Hb-1-State-Core.md`  
 > **Tasks**: 1 (H/P1-5)  
 > **Execution Strategy**: After sync-1 (H/P0-4 complete)  
-> **Status**: `todo`  
+> **Status**: `done`  
 > **Source**: `doc/Roadmap.md`, `04-Archive.md` §6, `03-Engineering` §3.3
 
 ---

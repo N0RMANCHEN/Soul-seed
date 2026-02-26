@@ -69,10 +69,12 @@
 - 未完成分工规划时，Phase 任务状态不得从 `todo` 切换到 `in_progress`。
 
 ## 当前执行总览（重排后）
-- `done`：Phase Ha — `H/P0-0`、`H/P0-1`、`H/P0-2`、`H/P0-3`、`H/P0-4` 全部完成
+- `done`：Phase H 全部完成 — Ha（H/P0-0..4）、Hb（H/P1-0..7）、Hc（H/P1-8..10, H/P1-12..19）
 - `blocked`：`none`
-- `todo`：Phase Hb 全部 8 项；Phase Hc 全部 11 项
-- **Phase Ha 完成说明**：State Delta Pipeline（H/P0-0）+ Invariant Table（H/P0-1）+ Compat Migration（H/P0-2）+ Compat Constants（H/P0-3）+ Genome MVP（H/P0-4）全部落地，662 core tests 全部通过。
+- `todo`：Phase J（下一优先级）
+- **Phase Ha 完成说明**：State Delta Pipeline（H/P0-0）+ Invariant Table（H/P0-1）+ Compat Migration（H/P0-2）+ Compat Constants（H/P0-3）+ Genome MVP（H/P0-4）全部落地。
+- **Phase Hb 完成说明**：Values/Personality（H/P1-0）+ Goals/Beliefs（H/P1-1）+ Memory Forgetting（H/P1-2）+ Relationship State（H/P1-3）+ Persona Package v0.4（H/P1-4）+ Affect 3-Layer（H/P1-5）+ Imperfection DoD（H/P1-6）+ Compat Checklist（H/P1-7）全部落地；触发 minor bump 至 0.4.0。
+- **Phase Hc 完成说明**：3 项回归套件 green（relationship, emotional depth, governance）；5 项风险护栏 CI active；schema contracts binding；access-point checklist mapped。H/P1-8..10, H/P1-12..19 全部落地；Phase H 完整闭环，触发 minor bump 至 0.5.0。
 
 ## 现状评估（兴趣/注意力/主动交互）
 - 结论：`部分搭成，尚未形成完整闭环`。
@@ -290,7 +292,7 @@
   - [ ] `.6` [B] 创建 genome presets（balanced / empathetic / analytical / social）→ `config/genome_presets.json`
   - [ ] `.7` [A] 添加 persona lint 规则：genome schema 校验 + trait 范围检查
 
-## Phase Hb（Mind Model State Modules）
+## Phase Hb（Mind Model State Modules）— done
 
 > **目标**：将 7 块心智模型域（Values / Personality / Goals / Beliefs / Memory / Relationships / Affect）升级为 first-class 状态机，加上人类化不完美 DoD 与兼容检查单。
 > **入口条件**：Phase Ha 出口条件满足（State Delta Pipeline + Invariant Table + Compat + Genome 可用）。
@@ -301,7 +303,7 @@
 
 ### H/P1-0 Values / Personality 可运行约束系统
 - 原编号：`G/P2-8`
-- 状态：`todo`，必要性：`Should`
+- 状态：`done`，必要性：`Should`
 - 来源需求：`extra/37`
 - 实现方式：将 values 条款化接 gate，personality 慢漂移。
 - 测试/DoD：越界回复可拦截并给出原因。
@@ -309,7 +311,7 @@
 
 ### H/P1-1 Goals / Beliefs 状态模块
 - 原编号：`G/P2-9`
-- 状态：`todo`，必要性：`Should`
+- 状态：`done`，必要性：`Should`
 - 来源需求：`extra/38` `spec/15`
 - 实现方式：新增 goals/beliefs 状态与慢变量更新规则。
 - 测试/DoD：跨会话连续性达标。
@@ -317,7 +319,7 @@
 
 ### H/P1-2 记忆遗忘与压缩整合管线
 - 原编号：`G/P2-10`
-- 状态：`todo`，必要性：`Should`
+- 状态：`done`，必要性：`Should`
 - 来源需求：`extra/39` `spec/3`
 - 实现方式：衰减+干扰+压缩并行，不修改原始 `life.log`。
 - 测试/DoD：容量受控且关键召回达标。
@@ -325,7 +327,7 @@
 
 ### H/P1-3 Relationship first-class state
 - 原编号：`G/P2-11`
-- 状态：`todo`，必要性：`Should`
+- 状态：`done`，必要性：`Should`
 - 来源需求：`extra/35`
 - 实现方式：关系状态外置，支持冷却/遗忘曲线与事件绑定。
 - 测试/DoD：关系变化可追溯、可解释。
@@ -333,7 +335,7 @@
 
 ### H/P1-4 Persona Package v0.4 布局与回滚
 - 原编号：`G/P2-12`
-- 状态：`todo`，必要性：`Should`
+- 状态：`done`，必要性：`Should`
 - 来源需求：`spec/22` `extra/45` `extra/52`
 - 实现方式：规范包布局、元数据、迁移快照、回滚入口与签名。
 - 测试/DoD：跨版本加载稳定，可迁移可回滚。
@@ -341,7 +343,7 @@
 
 ### H/P1-5 Affect 情绪层分离与三层状态机
 - 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`spec/15(Affect)` `engineering/3.3` `archive/6.情绪层(Affect)`
 - 实现方式：将情绪系统拆分为 `mood baseline（慢）/emotion episodes（快）/temperament influence（特质）` 三层；与响应渲染层解耦，禁止“仅靠语气模板伪装情绪”。
 - 测试/DoD：情绪更新有证据链；快慢变量更新速率分离；情绪层可回放可审计。
@@ -349,7 +351,7 @@
 
 ### H/P1-6 人类化不完美 DoD 套件
 - 原编号：`新增（A12）`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/12.人类化不完美`
 - 实现方式：把“非全知、非稳定满分、允许不完美”转换成可测规则，加入输出策略与回归断言。
 - 测试/DoD：禁止持续“完美答复”模式，允许合理不确定表达，且不降低安全合规。
@@ -357,15 +359,16 @@
 
 ### H/P1-7 与现有架构兼容说明落地校核
 - 原编号：`新增（A17）`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/17.兼容性说明`
 - 实现方式：把 High-Level 兼容说明拆成工程检查单（入口、存储、召回、回滚）并纳入 CI 文档校核。
 - 测试/DoD：兼容检查单全通过，且每项有证据路径。
 - 依赖：`F/P0-3` `H/P0-2`；回滚：退回人工审查流程。
 
-## Phase Hc（Verification, Risk Guards & Schema Contracts）
+## Phase Hc（Verification, Risk Guards & Schema Contracts）— done
 
 > **目标**：回归验收套件、5 项风险护栏、schema 契约化、接入点核查 — 确保 Ha/Hb 产出经得起治理与回归检验。
+> **计划文件**：`doc/plans/Hc-Verification-Governance.md`（高层）；`Hc-1-Regression-Suites.md`、`Hc-2-Risk-Guards.md`、`Hc-3-Schema-Access.md`（子计划）；`Hc-1-1-Relationship-Regression.md`、`Hc-1-2-Emotional-Depth-Regression.md`、`Hc-1-3-Governance-Regression.md`、`Hc-2-1-Output-Guards.md`、`Hc-2-2-State-Guards.md`、`Hc-3-1-Schema-Contracts.md`、`Hc-3-2-Appendix-A-Schemas.md`、`Hc-3-3-Access-Point-Checklist.md`（嵌套子计划）。
 > **入口条件**：Phase Ha 出口条件满足（部分任务仅依赖 Ha，可与 Hb 并行）。完整入口需 Phase Hb 对应状态模块完成（H/P1-8 依赖 H/P1-3，H/P1-9 依赖 H/P1-5）。
 > **出口条件**：3 项回归套件 green；5 项风险护栏 CI active；schema contracts binding；access-point checklist mapped。
 > **版本影响**：完成后触发 minor bump。
@@ -373,7 +376,7 @@
 
 ### H/P1-8 关系连续性验收回归集
 - 原编号：`新增（A18.1）`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/18.1`
 - 实现方式：建设关系连续性回归场景与评分脚本，验证长期互动不“失忆换人”。
 - 测试/DoD：关系连续性指标达标并稳定。
@@ -381,7 +384,7 @@
 
 ### H/P1-9 情绪厚度验收回归集
 - 原编号：`新增（A18.2）`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/18.2`
 - 实现方式：建立情绪厚度回归维度（层次、触发、恢复、可解释性）与评分基线。
 - 测试/DoD：情绪厚度指标达标，无单层扁平情绪。
@@ -389,7 +392,7 @@
 
 ### H/P1-10 一致性与治理验收回归集
 - 原编号：`新增（A18.3）`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/18.3`
 - 实现方式：统一治理项（门禁、预算、兼容、回滚）验收套件。
 - 测试/DoD：治理项全部可自动检查且无阻塞缺口。
@@ -399,7 +402,7 @@
 
 ### H/P1-12 风险护栏：过度数值化（A20.1）
 - 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/20.1`
 - 实现方式：限制面板化参数外显，要求回复保持自然语言主导。
 - 测试/DoD：数值化过载率低于阈值。
@@ -407,7 +410,7 @@
 
 ### H/P1-13 风险护栏：Relationship 注入噪音（A20.2）
 - 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/20.2`
 - 实现方式：控制关系卡注入频次与权重，加入噪音抑制门禁。
 - 测试/DoD：噪音注入率和无关注入率达标。
@@ -415,7 +418,7 @@
 
 ### H/P1-14 风险护栏：Epigenetics 暗门防护（A20.3）
 - 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/20.3`
 - 实现方式：所有 Epigenetics 更新必须带证据与审计记录，禁止静默改人格。
 - 测试/DoD：无证据更新为 0。
@@ -423,7 +426,7 @@
 
 ### H/P1-15 风险护栏：Genome trait 扩张闸门（A20.4）
 - 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/20.4`
 - 实现方式：MVP 固守 6 trait，新增 trait 需评审开关与回归证明。
 - 测试/DoD：未审批 trait 不可上线。
@@ -431,7 +434,7 @@
 
 ### H/P1-16 风险护栏：LLM 直写状态封禁（A20.5）
 - 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/20.5` `spec/12`
 - 实现方式：仅允许通过 `proposal -> gates -> apply` 写状态，封禁直写通道。
 - 测试/DoD：直写尝试全部失败且可审计。
@@ -439,7 +442,7 @@
 
 ### H/P1-17 附录示例结构契约化（A52）
 - 原编号：`新增`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`archive/附录示例结构` `spec/28`
 - 实现方式：将附录示例结构转换为 schema 契约与版本校验规则。
 - 测试/DoD：样例结构全部通过 schema 校验。
@@ -447,7 +450,7 @@
 
 ### H/P1-18 Spec 附录A（A1~A4）Schema 契约化
 - 原编号：`新增（spec/28）`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`spec/28`（`engagement_plan.json` `interests.json` `topic_state.json` `proactive_plan.json`）
 - 实现方式：为 A1~A4 建立版本化 schema、兼容校验与迁移策略；在 lint/compile 阶段执行结构验证。
 - 测试/DoD：四类结构在样例与真实数据上校验通过；版本升级可回滚。
@@ -455,7 +458,7 @@
 
 ### H/P1-19 Spec 附录B 最小侵入接入点核查
 - 原编号：`新增（spec/29）`
-- 状态：`todo`，必要性：`Must`
+- 状态：`done`，必要性：`Must`
 - 来源需求：`spec/29` `archive/17`
 - 实现方式：把附录B接入点列表转为工程检查单，逐项绑定代码锚点与回归用例，防止“接错层/侵入过深”。
 - 测试/DoD：接入点检查单全通过，且每项都有代码证据与回归案例。

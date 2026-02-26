@@ -2,7 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — Phase H (State Closure & Compatibility Fulfillment)
+## [Unreleased]
+
+### Added
+- (Next phase work)
+
+## [0.5.0] - 2026-02-26
+
+### Phase Hc Complete (Verification & Governance)
+
+All 11 Hc tasks done: H/P1-8 (Relationship continuity regression), H/P1-9 (Emotional depth regression), H/P1-10 (Governance harness), H/P1-12 (Over-numericalization guard), H/P1-13 (Relationship noise guard), H/P1-14 (Epigenetics gate), H/P1-15 (Genome trait whitelist), H/P1-16 (Direct-writes gate), H/P1-17 (Appendix schema contracts), H/P1-18 (Appendix A schemas), H/P1-19 (Appendix B access-point checklist).
+
+### Added
+- **Regression suites**: `scripts/regression/relationship_continuity.mjs`, `emotional_depth.mjs`, `governance.mjs`; scenarios under `test/regression/relationship/`, `emotional/`; thresholds in `config/regression/`.
+- **Risk guards**: `guards/over_numericalization.ts`, `guards/relationship_noise.ts`; epigenetics gate (evidence required, genome trait whitelist); `scripts/check_direct_writes.mjs` extended (genome.json, epigenetics.json).
+- **Schema contracts**: `schemas/v1/*.schema.json` (engagement_plan, interests, topic_state, proactive_plan); `scripts/validate_appendix_a.mjs`; `doc/checklists/appendix_b_access_points.md`.
+- NPM scripts: `regression:governance`, `regression:relationship`, `regression:emotional`, `validate:appendix-a`.
+
+## [0.4.0] - 2026-02-26
+
+### Phase Hb Complete (Mind Model State Modules)
+
+All 8 Hb tasks done: H/P1-0 (Values/Personality), H/P1-1 (Goals/Beliefs), H/P1-2 (Memory Forgetting), H/P1-3 (Relationship State), H/P1-4 (Persona Package v0.4), H/P1-5 (Affect 3-Layer), H/P1-6 (Imperfection DoD), H/P1-7 (Compat Checklist).
 
 ### Added
 - Adaptive decision trace metadata (optional, backward-compatible): `reasoningDepth`, `l3Triggered`, `l3TriggerReason`, `coreConflictMode`, `implicitCoreTension`.
@@ -14,6 +35,11 @@ All notable changes to this project will be documented in this file.
 - Phase H execution plans: `doc/plans/H-State-Closure-Plan.md`, `H1-Foundation.md`, `H2-State-Modules.md`, `H3-Validation-and-Guards.md`.
 - Phase Ha sub-phase plans: `doc/plans/Ha-State-Infra-Plan.md` (high-level), `Ha-1-State-Delta-Invariant.md` (H/P0-0,1), `Ha-2-Compat-Genome.md` (H/P0-2,3,4).
 - Phase Hb sub-phase plans: `doc/plans/Hb-Mind-Model-State-Modules.md` (high-level), `Hb-1-State-Core.md`, `Hb-2-Package-Compat.md` (subplans), `Hb-1-1-Identity-Beliefs.md`, `Hb-1-2-Memory-Relationships.md`, `Hb-1-3-Affect-Module.md`, `Hb-1-4-Imperfection-DoD.md`, `Hb-2-1-Persona-Package.md`, `Hb-2-2-Compat-Checklist.md` (nested subplans).
+- **Persona migration**: Export manifest renamed to `EXPORT_MANIFEST.json` to avoid case-insensitive FS conflict with v0.4 `manifest.json` on macOS.
+- **Hb-1-2**: Memory Forgetting (decay, interference, compression) + People Registry (EntityLinker, RelationshipCardGenerator, RelationshipDecayJob).
+- **Hb-1-3**: Affect 3-Layer (mood baseline, emotion episodes, temperament); AffectContextInjector; MoodDeltaGate evidence chain.
+- **Hb-2-2**: Compat checklist (`config/compat_checklist.json`), `compat_lint.mjs`, foundation preservation tests; wired into verify.sh.
+- **Compat regression**: Shadow-mode test updated for Hb-1-3 mood gate (strong attribution requires evidence; oversized delta with evidence → clamp).
 - Backlog item for Genome → Memory Lifecycle wiring (4 derived params computed but not yet consumed by `memory_lifecycle.ts`).
 - Cursor rule `progress-tracking.mdc` for session protocol and verification gates.
 - **State Delta Pipeline** (`packages/core/src/state_delta.ts`, `state_delta_gates.ts`, `state_delta_apply.ts`): `proposal → gates → deterministic apply` mechanism for state mutations. 7 gates (identity, recall grounding, relationship, mood, belief, epigenetics, budget). Atomic writes with append-only trace. 12 tests.
@@ -23,24 +49,31 @@ All notable changes to this project will be documented in this file.
 - **Compat Calibration** (`packages/core/src/compat_calibration.ts`): Versioned calibration config with inference from life.log events, lock mechanism, and validation. 8 tests.
 - **Genome Presets** (`config/genome_presets.json`): 4 personality presets (balanced, empathetic, analytical, social) with `loadGenomePresets()` and `createGenomeFromPreset()`.
 - **Persona Lint genome rules** (`packages/core/src/persona_lint.ts`): `genome_schema_invalid`, `genome_trait_out_of_range`, `epigenetics_adjustment_out_of_range`.
+- **Persona Package v0.4** (H/P1-4, Hb-2-1): `manifest.json` schema, `PackageLoader` (loadPersonaPackageV04), `PackageSnapshotter`, `MigrationLogger`. Cross-version load (v0.3→v0.4), snapshot/restore cycle, corrupt file handling, migration log. `initPersonaPackage` now creates `manifest.json` for new packages.
+- **Hb-1-1 (Identity & Beliefs) tests** (`packages/core/test/state_delta.test.mjs`): Values gate rule-violation scenarios (when=always, when=value, when=contains:keyword), legacy compat mode (log-only vs reject), belief cooldown, commitment evidence, goals/beliefs cross-session continuity.
+- **Hb-1-3 (Affect 3-Layer State Machine)** (H/P1-5): Layer 1 — `mood_state.json` schema extended (valence, arousal, energy, stress, baseline); MoodUpdateHandler (`decayMoodTowardBaseline`) uses Genome `emotion_recovery` → baselineRegressionSpeed; MoodDeltaGate enhanced with inertia, per-turn max shift, evidence requirement for strong attribution (>0.12). Layer 2 — `EmotionEpisode` type (episodeId, trigger, label, intensity, causeConfidence); `EmotionEpisodeManager` (create, decay, archival); `triggerEpisodeFromCue` for Cue Extraction; "not knowing why" supported (low causeConfidence). Layer 3 — `personality_profile` temperament section (moodSusceptibility); Genome `emotion_sensitivity` for delta scale; Epigenetics gate for temperament. `AffectContextInjector` builds mood/episode summary for context; affect informs context, does NOT control emoji/tone templates. `emotion_episodes.jsonl` + `emotion_episode_manager.ts` in direct-writes allowlist.
+- **Phase Hc plans** (`doc/plans/`): High-level `Hc-Verification-Governance.md`; subplans `Hc-1-Regression-Suites.md`, `Hc-2-Risk-Guards.md`, `Hc-3-Schema-Access.md`; nested subplans Hc-1-1..3 (regression), Hc-2-1..2 (guards), Hc-3-1..3 (schema/access). Roadmap and H-State-Closure-Plan updated with Hc plan references.
+- **Hb-1-2 (Memory Forgetting & Relationship State)** (H/P1-2, H/P1-3): `memory_forgetting.ts` — MemoryDecayJob, InterferenceScorer, MemoryCompressor, DeepRecallHandler. Genome: memory_retention→decay_rate, memory_imprint→salience gain on ingest. `people_registry.ts` — people_registry.json, EntityLinker, RelationshipCardGenerator, RelationshipDecayJob. relationship_state.json first-class in DOMAIN_FILE_MAP. RelationshipDeltaGate in pipeline. check_direct_writes: people_registry.json + people_registry.ts.
+- **Hb-2-2 (Compat Checklist)** (H/P1-7): `config/compat_checklist.json` with 32 entry/storage/recall/rollback items for Phase H modules; `scripts/compat_lint.mjs` CI validation (all modules have entry, evidencePath resolves); `packages/core/test/foundation_preservation.test.mjs` (life.log interface, memory.db schema, executeTurnProtocol signature, doctor/consistency guards); `packages/core/test/compat_checklist.test.mjs` (positive + negative lint tests); compat lint wired into `verify.sh`.
+- **Hc (Verification & Governance)**: H/P1-16 — check_direct_writes extended (genome.json, epigenetics.json; genome.ts allowed). H/P1-15 — genome trait whitelist in epigenetics gate. H/P1-14 — epigenetics zero-evidence test. H/P1-12 — over-numericalization guard (`guards/over_numericalization.ts`). H/P1-10 — governance regression harness (`scripts/regression/governance.mjs`). H/P1-19 — Appendix B access-point checklist (`doc/checklists/appendix_b_access_points.md`). H/P1-8 — relationship continuity regression (`scripts/regression/relationship_continuity.mjs`, scenarios). H/P1-9 — emotional depth regression (`scripts/regression/emotional_depth.mjs`). H/P1-13 — relationship noise guard (`guards/relationship_noise.ts`). H/P1-17, H/P1-18 — Appendix A JSON schemas (`schemas/v1/*.schema.json`), `scripts/validate_appendix_a.mjs`, fixtures.
 
 ### Changed
 - Core conflict policy now uses **explicit-only refusal**: explicit core override still refuses; implicit semantic tension degrades to cautious clarify/brief response instead of hard refusal.
 - Adaptive reasoning depth wired into turn protocol and chat runtime (`fast` by default, escalates to `deep` on complexity/ambiguity/low-confidence signals).
 - Soul-mode meta-review is now conditionally triggered on risk/quality/deep-path signals to reduce unnecessary slow-path latency.
 - Thinking preview default threshold adjusted to `1000ms` (persona defaults + CLI defaults), reusing existing `voice_profile.thinkingPreview` contract.
-- **Persona init/load** (`packages/core/src/persona.ts`): New personas auto-create `genome.json` + `epigenetics.json`; `loadPersonaPackage` includes genome/epigenetics with fallback to defaults.
+- **Persona init/load** (`packages/core/src/persona.ts`): New personas auto-create `genome.json` + `epigenetics.json`; `loadPersonaPackage` includes genome/epigenetics with fallback to defaults. New personas now also create `manifest.json` (v0.4 package layout).
 - **PersonaPackage type** (`packages/core/src/types.ts`): Added optional `genome` and `epigenetics` fields; added `stateDeltaProposal` and `deltaCommitResult` to `DecisionTrace`; added `state_delta_committed` and `state_delta_rejected` life event types.
 - **ExecuteTurnResult** (`packages/core/src/execution_protocol.ts`): Added optional `deltaCommitResult` field for pipeline output.
 - **Orchestrator** (`packages/core/src/orchestrator.ts`): `selectedMemoryCap` now derived from `derivedParams.recallTopK` instead of hardcoded values (legacy parity: base 6, strong +6=12, soft +3=9).
 - **Recall budget policy** (`packages/core/src/recall_budget_policy.ts`): Accepts `genomeDerived` param; `injectMax` baseline from `recallTopK + 1` (legacy=7); all profiles respect genome baseline via `Math.max`.
-- **Mood state** (`packages/core/src/mood_state.ts`): `decayMoodTowardBaseline` and `evolveMoodStateFromTurn` accept genome-derived `moodDeltaScale` and `baselineRegressionSpeed`.
+- **Mood state** (`packages/core/src/mood_state.ts`): `decayMoodTowardBaseline` and `evolveMoodStateFromTurn` accept genome-derived `moodDeltaScale` and `baselineRegressionSpeed`. Hb-1-3: energy, stress, baseline fields; decay uses baseline from state; `mergeMoodState` in state_delta_apply for mood-specific merge.
 - **Memory recall** (`packages/core/src/memory_recall.ts`): `injectMax` clamp raised from 12 to 20 to support high-trait personas.
 - **CLI wiring** (`packages/cli/src/index.ts`): Computes `genomeDerived` per turn and passes to recall budget, mood evolution, and social graph.
 - **2-tier compat model**: Legacy personas auto-load default genome (all traits=0.5) with no behavior change; no hybrid tier.
 - `DerivedParams` pruned: removed `cardsCap`, `recentWindowTurns`, `entityLinkingThreshold` (no clear consumer or miscalibrated).
 - **Epigenetics gate**: Enhanced with cooldown enforcement — rejects adjustments when `cooldownUntil` is in the future.
-- **E2: Zero direct-write paths**: All state writes (mood, relationship, interests, cognition, voice, social_graph) route through the State Delta Pipeline when persona is in full compat mode. Legacy personas retain direct writes. System-generated writes bypass gates via `systemGenerated` flag. New domains added to `StateDeltaDomain` and `DOMAIN_FILE_MAP`. `state_delta_writer.ts` provides `shouldUseStateDeltaPipelineFromRoot` and `writeStateDelta`. CI gate `scripts/check_direct_writes.mjs` enforces no unauthorized state file writes.
+- **E2: Zero direct-write paths**: All state writes (mood, relationship, interests, cognition, voice, social_graph) route through the State Delta Pipeline when persona is in full compat mode. Legacy personas retain direct writes. System-generated writes bypass gates via `systemGenerated` flag. New domains added to `StateDeltaDomain` and `DOMAIN_FILE_MAP`. `state_delta_writer.ts` provides `shouldUseStateDeltaPipelineFromRoot` and `writeStateDelta`. CI gate `scripts/check_direct_writes.mjs` enforces no unauthorized state file writes. Added `package_snapshotter.ts` and `goal_store.ts` to allowed writers (rollback restore, goals index).
 - **Doc sync**: `contributing_ai.md` (§5.1 verify.sh coverage, §5.3 state file writes), `AGENT.md` (§6.4 E2 gate, §9 scripts), `README.md` (verify.sh description) updated for direct-writes gate and state delta pipeline.
 
 ### Fixed

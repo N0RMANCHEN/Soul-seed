@@ -5,7 +5,7 @@
 > **Schedule**: W4–W6 (primary track)  
 > **Tasks**: 6 (H/P1-0, H/P1-1, H/P1-2, H/P1-3, H/P1-5, H/P1-6)  
 > **Execution Strategy**: Serial primary; H/P1-6 parallel; H/P1-5 after sync-1  
-> **Status**: `todo`  
+> **Status**: `done`  
 > **Parent**: `doc/plans/Hb-Mind-Model-State-Modules.md`  
 > **Source**: `doc/Roadmap.md`, `04-Archive.md` §5–§12, `doc/plans/H2-State-Modules.md`
 
