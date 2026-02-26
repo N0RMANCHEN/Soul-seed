@@ -2897,22 +2897,17 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     }
     const compact = source.replace(/\s+/g, " ").slice(0, 36);
     const templates = [
-      `你${temporalRef}提到“${compact}”，我们继续往下走。`,
-      `回到你${temporalRef}说的“${compact}”，我接着往下说。`,
-      `先接住“${compact}”这点，我继续往前推进。`
+      `你${temporalRef}提到“${compact}”，我接着说。`,
+      `回到你${temporalRef}说的“${compact}”，我从这点继续。`,
+      `先接住“${compact}”这点，我们从这里聊。`
     ];
     const idx = Math.floor(Date.now() / 1000) % templates.length;
     return templates[idx] ?? templates[0];
   };
 
-  const normalizeConversationalReply = (
-    raw: string,
-    mode: "greeting" | "proactive" | "farewell" | "exit_confirm" | "reply",
-    fallbackText: string,
-    seedInput?: string
-  ): string => {
+  const normalizeConversationalReply = (raw: string): string => {
     const isMechanicalTemplateTone = (text: string): boolean =>
-      /(我刚整理了|要不要我继续展开|我整理了一下脉络|给你一个可执行清单|继续展开)/u.test(text.trim());
+      /(我刚整理了|要不要我继续展开|我整理了一下脉络|给你一个可执行清单|继续展开|我们继续往下走|继续往下走|往前推进)/u.test(text.trim());
     let normalized = stripAssistantLabelPrefix(sanitizeAutonomyText(raw));
     normalized = stripStageDirections(normalized);
     if (isDramaticRoleplayOpener(normalized)) {
@@ -2925,10 +2920,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     if (normalized) {
       return normalized;
     }
-    if (mode === "reply" || mode === "proactive" || mode === "greeting") {
-      return buildContextualReplyFallback(seedInput);
-    }
-    return fallbackText;
+    return "";
   };
 
   const isHardRedlineInput = (text: string): boolean => {
@@ -3118,12 +3110,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     proactiveText = proactiveTemporalGuard.text;
     const proactiveFactualGrounding = enforceFactualGroundingGuard(proactiveText, { mode: "proactive" });
     proactiveText = proactiveFactualGrounding.text;
-    const proactiveNormalized = normalizeConversationalReply(
-      proactiveText,
-      "proactive",
-      buildProactiveMessage(),
-      lastUserInput
-    );
+    const proactiveNormalized = normalizeConversationalReply(proactiveText);
     const proactiveAdjusted = proactiveNormalized !== proactiveText;
     proactiveText = proactiveNormalized;
     const proactivePlanned = proactivePlan && isProactivePlanValid(proactivePlan)
@@ -4094,23 +4081,30 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     anchor: greetingTemporalAnchor
   });
   greetingText = greetingTemporalGuard.text;
-  const greetingNormalized = normalizeConversationalReply(greetingText, "greeting", buildGreetingFallback(), lastUserInput);
-  greetingText = (greetingNormalized || buildGreetingFallback()).trim();
-  if (!greetingText) {
-    greetingText = "我在这，我们从你最想说的那一点开始。";
+  const greetingNormalized = normalizeConversationalReply(greetingText);
+  greetingText = greetingNormalized.trim();
+  if (greetingText) {
+    if (!streamReplyEnabled) {
+      await applyHumanPacedDelay(greetingStartedAtMs, greetingText);
+    }
+    sayAsAssistant(greetingText);
+    await appendAutonomyAssistantMessage({
+      text: greetingText,
+      mode: "greeting",
+      source: greetingGenerated.source,
+      reasonCodes: greetingGenerated.reasonCodes
+    });
+    lastAssistantOutput = greetingText;
+    lastAssistantAt = Date.now();
+  } else {
+    await appendLifeEvent(personaPath, {
+      type: "conflict_logged",
+      payload: {
+        category: "greeting_suppressed_empty",
+        reasonCodes: greetingGenerated.reasonCodes
+      }
+    });
   }
-  if (!streamReplyEnabled) {
-    await applyHumanPacedDelay(greetingStartedAtMs, greetingText);
-  }
-  sayAsAssistant(greetingText);
-  await appendAutonomyAssistantMessage({
-    text: greetingText,
-    mode: "greeting",
-    source: greetingGenerated.source,
-    reasonCodes: greetingGenerated.reasonCodes
-  });
-  lastAssistantOutput = greetingText;
-  lastAssistantAt = Date.now();
   dispatchNonPollingSignal("session_start");
 
   rl.on("SIGINT", () => {
@@ -5369,12 +5363,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         anchor: replyTemporalAnchor
       });
       assistantContent = temporalPhraseGuard.text;
-      const conversationalNormalized = normalizeConversationalReply(
-        assistantContent,
-        "reply",
-        buildContextualReplyFallback(input),
-        input
-      );
+      const conversationalNormalized = normalizeConversationalReply(assistantContent);
       assistantContent = conversationalNormalized;
       const emotion = parseEmotionTag(assistantContent);
       assistantContent = emotion.text;
@@ -5591,7 +5580,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         !isHardRedlineInput(effectiveInput) &&
         isRefusalStyleOutput(assistantContent)
       ) {
-        assistantContent = buildContextualReplyFallback(input);
+        assistantContent = "";
       }
       const rewriteStartedAtMs = Date.now();
       assistantContent = compactReplyForChatPace(assistantContent, input);
@@ -5599,12 +5588,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       assistantContent = compactedEmotion.text;
       assistantContent = stripPromptArtifactTags(assistantContent);
       assistantContent = guardAssistantOutput(assistantContent, "reply");
-      if (!assistantContent.trim()) {
-        assistantContent = buildContextualReplyFallback(input);
-      }
       addLatency("rewrite", rewriteStartedAtMs);
       const resolvedEmotion = compactedEmotion.emotion ?? emotion.emotion ?? inferEmotionFromText(assistantContent);
-      const shouldDisplayAssistant = !(loopBreak.triggered && assistantContent.trim().length === 0);
+      const shouldDisplayAssistant = assistantContent.trim().length > 0 && !loopBreak.triggered;
       const replyDisplayMode = resolveReplyDisplayMode({
         streamed: streamReplyEnabled && streamPrintStarted,
         shouldDisplayAssistant,
