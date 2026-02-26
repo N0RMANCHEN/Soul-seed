@@ -72,6 +72,10 @@ All 8 Hb tasks done: H/P1-0 (Values/Personality), H/P1-1 (Goals/Beliefs), H/P1-2
 - **CLI wiring** (`packages/cli/src/index.ts`): Computes `genomeDerived` per turn and passes to recall budget, mood evolution, and social graph.
 - **2-tier compat model**: Legacy personas auto-load default genome (all traits=0.5) with no behavior change; no hybrid tier.
 - `DerivedParams` pruned: removed `cardsCap`, `recentWindowTurns`, `entityLinkingThreshold` (no clear consumer or miscalibrated).
+- **Persona initialization** (`packages/core/src/persona.ts`): new persona package now seeds `values_rules.json`, `personality_profile.json`, `goals.json`, `beliefs.json`, `people_registry.json`.
+- **Persona lint** (`packages/core/src/persona_lint.ts`): warns on missing optional H/P1 state files and errors on invalid JSON for those files.
+- **CLI context injection** (`packages/cli/src/index.ts`): appends people-registry person-card context block alongside social graph block.
+- **Roadmap/plan sync**: updated `doc/Roadmap.md`, `doc/plans/H2-State-Modules.md`, and `doc/plans/H-State-Closure-Plan.md` to reflect H/P1-0..H/P1-3 in-progress implementation status and progress notes.
 - **Epigenetics gate**: Enhanced with cooldown enforcement — rejects adjustments when `cooldownUntil` is in the future.
 - **E2: Zero direct-write paths**: All state writes (mood, relationship, interests, cognition, voice, social_graph) route through the State Delta Pipeline when persona is in full compat mode. Legacy personas retain direct writes. System-generated writes bypass gates via `systemGenerated` flag. New domains added to `StateDeltaDomain` and `DOMAIN_FILE_MAP`. `state_delta_writer.ts` provides `shouldUseStateDeltaPipelineFromRoot` and `writeStateDelta`. CI gate `scripts/check_direct_writes.mjs` enforces no unauthorized state file writes. Added `package_snapshotter.ts` and `goal_store.ts` to allowed writers (rollback restore, goals index).
 - **Doc sync**: `contributing_ai.md` (§5.1 verify.sh coverage, §5.3 state file writes), `AGENT.md` (§6.4 E2 gate, §9 scripts), `README.md` (verify.sh description) updated for direct-writes gate and state delta pipeline.

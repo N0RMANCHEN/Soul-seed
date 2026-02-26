@@ -5,6 +5,11 @@ import type { PersonaLibraryBlock, PersonaPinned } from "./types.js";
 import { MAX_PINNED_CHARS, MAX_PINNED_COUNT } from "./types.js";
 import type { GenomeConfig, EpigeneticsConfig } from "./genome.js";
 import { validateGenome, GENOME_FILENAME, EPIGENETICS_FILENAME, GENOME_TRAIT_NAMES } from "./genome.js";
+import { VALUES_RULES_FILENAME } from "./values_rules.js";
+import { PERSONALITY_PROFILE_FILENAME } from "./personality_profile.js";
+import { GOALS_STATE_FILENAME } from "./goals_state.js";
+import { BELIEFS_STATE_FILENAME } from "./beliefs_state.js";
+import { PEOPLE_REGISTRY_FILENAME } from "./people_registry.js";
 
 export type PersonaLintLevel = "error" | "warn" | "info";
 
@@ -204,6 +209,35 @@ export async function lintPersona(personaPath: string, options?: { strict?: bool
           message: `adjustment ${name} value ${adj.value} outside [${adj.min}, ${adj.max}]`
         });
       }
+    }
+  }
+
+  const optionalStateFiles = [
+    VALUES_RULES_FILENAME,
+    PERSONALITY_PROFILE_FILENAME,
+    GOALS_STATE_FILENAME,
+    BELIEFS_STATE_FILENAME,
+    PEOPLE_REGISTRY_FILENAME,
+  ];
+  for (const file of optionalStateFiles) {
+    const filePath = path.join(personaPath, file);
+    if (!existsSync(filePath)) {
+      issues.push({
+        level: "warn",
+        code: "missing_optional_state_file",
+        path: file,
+        message: `${file} is missing; runtime will fallback to defaults`,
+      });
+      continue;
+    }
+    const parsed = await safeReadJson<Record<string, unknown>>(filePath);
+    if (!parsed) {
+      issues.push({
+        level: "error",
+        code: "invalid_optional_state_file",
+        path: file,
+        message: `${file} is invalid JSON`,
+      });
     }
   }
 

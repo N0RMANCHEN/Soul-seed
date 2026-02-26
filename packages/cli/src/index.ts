@@ -138,6 +138,7 @@ import {
   removeSocialPerson,
   searchSocialPersons,
   compileRelatedPersonContext,
+  compilePeopleRelationshipContext,
   computeBehaviorMetrics,
   saveBehaviorSnapshot,
   detectBehaviorDrift,
@@ -4708,6 +4709,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const alwaysInjectBlock = formatAlwaysInjectContext(alwaysInjectCtx);
         // P2-6: compile related person context from social graph
         const socialBlock = await compileRelatedPersonContext(personaPath, effectiveInput, { lifeEvents: pastEvents, maxPersons: genomeDerived.entityCandidateCount });
+        const peopleRelationshipBlock = await compilePeopleRelationshipContext(personaPath, effectiveInput, {
+          maxCards: genomeDerived.entityCandidateCount,
+        });
         const importantDates = await listUpcomingTemporalLandmarks(personaPath, { daysAhead: 60, maxItems: 8 });
         const importantDatesBlock = formatUpcomingTemporalLandmarksBlock(importantDates);
         // P5-6: few-shot golden examples injection (skip if disabled by memoryPolicy)
@@ -4730,7 +4734,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           ].join("\n");
         })();
         const temporalAnchorBlock = buildTemporalAnchorBlock(pastEvents);
-        const contextExtras = [alwaysInjectBlock, socialBlock, importantDatesBlock, fewShotBlock, sharedSpaceBlock, temporalAnchorBlock]
+        const contextExtras = [alwaysInjectBlock, socialBlock, peopleRelationshipBlock, importantDatesBlock, fewShotBlock, sharedSpaceBlock, temporalAnchorBlock]
           .filter(Boolean)
           .join("\n");
         const messages = turnExecution.mode === "soul"
