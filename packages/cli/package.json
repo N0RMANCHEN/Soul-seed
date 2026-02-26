@@ -1,6 +1,6 @@
 {
   "name": "@soulseed/cli",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "license": "CC-BY-NC-ND-4.0",
   "type": "module",
   "main": "dist/index.js",
@@ -9,7 +9,7 @@
     "soulseed": "dist/index.js"
   },
   "dependencies": {
-    "@soulseed/core": "0.3.0"
+    "@soulseed/core": "0.4.0"
   },
   "scripts": {
     "lint": "tsc -p tsconfig.json --noEmit",

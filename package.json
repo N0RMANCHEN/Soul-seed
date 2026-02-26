@@ -1,6 +1,6 @@
 {
   "name": "soulseed",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "license": "CC-BY-NC-ND-4.0",
   "private": true,
   "type": "module",
@@ -16,6 +16,10 @@
     "verify": "./scripts/verify.sh",
     "h0:check": "node ./scripts/check_h0_gate.mjs",
     "changelog:check": "node ./scripts/check_changelog.mjs",
+    "regression:governance": "node ./scripts/regression/governance.mjs",
+    "regression:relationship": "node ./scripts/regression/relationship_continuity.mjs",
+    "regression:emotional": "node ./scripts/regression/emotional_depth.mjs",
+    "validate:appendix-a": "node ./scripts/validate_appendix_a.mjs",
     "eval:all": "./scripts/eval_all.sh",
     "migration:audit": "node ./scripts/migration_audit.mjs",
     "eval:temporal": "node ./scripts/eval_temporal.mjs",
@@ -25,6 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
+    "ajv": "^8.18.0",
     "typescript": "^5.7.3"
   }
 }
