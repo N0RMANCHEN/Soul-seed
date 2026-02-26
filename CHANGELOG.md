@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **Phase J P1 closure**: `J/P1-0..P1-2` completed with runtime flags and trace hardening:
+  - Added `SOULSEED_PHASE_J_ENABLE`, `SOULSEED_PHASE_J_RECORD_ONLY`, `SOULSEED_PHASE_J_TOPIC_SCHEDULER` runtime toggles in CLI path.
+  - Extended `conversationControl` trace with `phaseJMode`, `engagementTrace`, budget remaining/cooldown fields, and topic scheduler `queueSnapshot`/`recycleAction`.
+  - Wired cooldown context into conversation budget evaluation and added record-only budget observation mode.
+  - Updated Phase J docs/roadmap status and added regression tests for phase-j flags + trace normalization.
 - **AG/P2-4** Core export whitelist gate: Wired `config/governance/core_export_whitelist.json` into `arch_governance_check.mjs`; internal-only modules (e.g. `persona_write_lock`) must not be re-exported; new rule `internalModuleReExport` (error).
 - **AG/P2-5** Plan naming unification: Removed H1/H2/H3 plan files; updated all references to Ha/Hb/Hc; `doc/plans/README.md` simplified; `planNamingMix` warning resolved.
 - **Archive** Architecture Governance 12 项：Architecture-Governance-Roadmap 任务状态全部标记 done，风险总览更新为已闭环，归档说明已添加；Roadmap 当前执行总览补充 AG 完成记录。

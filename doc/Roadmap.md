@@ -30,12 +30,13 @@
 ## 4) 当前执行总览
 
 - `blocked`: `none`
-- `in_progress`: `J/P1-0`
-- `todo`: `Phase J`（P1 其余）, `Phase M`, `Phase K`, `Phase I`, `Phase L`
+- `in_progress`: `none`
+- `todo`: `Phase M`, `Phase K`, `Phase I`, `Phase L`
 - `historical`:
   - Phase H（Ha/Hb/Hc）完成记录：`doc/plans/archive/H-State-Closure-Plan.md` 及同目录 H*/Ha*/Hb*/Hc* 子计划。
   - Architecture Governance 12 项完成归档：`doc/plans/archive/AG-2026-02-Completion.md`。
   - Phase J P0 交互闭环归档：`doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`。
+  - Phase J P1 交互闭环完成（2026-02-26）：预算门禁、话题调度、Phase J 评测赛道 PR 阻断上线。
   - Core 分层重构（2026-02-26）：`packages/core/src` 根层收敛为 `index.ts`/`types.ts`，其余迁入 `runtime|memory|persona|state|guards|governance|capabilities|proactive`。
 
 ## 5) Active Roadmap
@@ -59,24 +60,25 @@
 - 索引：`doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`（含 `J/P0-0`、`J/P0-1`、`J/P0-2`）
 
 ### J/P1-0 Engagement Plan + 预算门禁
-- 状态：`in_progress`
+- 状态：`done`
 - 依赖：`J/P0-2`
 - 交付：兴趣/注意力预算模型、触发阈值、冷却窗口、抢占策略
+- 当前实现：新增 `phaseJMode` 与 `engagementTrace`（triggerType/triggerReason/budgetBefore/budgetAfter/cooldownApplied/recordOnly），并支持 `SOULSEED_PHASE_J_ENABLE`、`SOULSEED_PHASE_J_RECORD_ONLY` 灰度策略
 - 门禁：连续 30 轮内主动触发频率与预算偏差保持在预设阈值内
 
 ### J/P1-1 多话题上下文调度器
-- 状态：`in_progress`
+- 状态：`done`
 - 依赖：`J/P1-0`
 - 交付：topic slot 分配、优先级队列、话题回收与跨话题桥接规则
-- 当前实现：已接入 `topic_state` 到会话控制，输出候选话题优先队列、饥饿提升标记与 bridgeFromTopic 观测字段
+- 当前实现：已接入 `topic_state` 到会话控制，输出候选话题优先队列、`queueSnapshot`、饥饿提升标记、`recycleAction` 与 `bridgeFromTopic` 观测字段；支持 `SOULSEED_PHASE_J_TOPIC_SCHEDULER` 开关
 - 门禁：不得出现高优先级话题长期饥饿；上下文命中率可观测
 
 ### J/P1-2 交互体验评测赛道
-- 状态：`in_progress`
+- 状态：`done`
 - 依赖：`J/P1-0`, `J/P1-1`
 - 交付：主动交互体验基线、AB 对照脚本、失败样本回放模板
-- 当前实现：`scripts/eval_phase_j.mjs` + `datasets/quality/phase_j_engagement_cases.json` 已接入 `eval_all.sh` 与 `verify.sh` 门禁链路；最小闭环门禁在 `2026-02-26` 本地验证通过
-- 门禁：评测结果可复现并进入 CI 阶段门禁
+- 当前实现：`scripts/eval_phase_j.mjs` + `datasets/quality/phase_j_engagement_cases.json` 已接入 `eval_all.sh` 与 `verify.sh` 门禁链路；`2026-02-26` 本地 strict 评测通过（ReplayPassRate=1, TopicHitRateB=1, Delta=0.5）
+- 门禁：评测结果可复现并已进入 PR 阶段阻断门禁
 
 ### Phase M（Bio-Inspired Human Dynamics）
 

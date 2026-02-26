@@ -365,20 +365,42 @@ export interface ConversationControlDecision {
   responsePolicy: ResponsePolicy;
   reasonCodes: string[];
   engagementPolicyVersion?: string;
+  phaseJMode?: "enabled" | "record_only" | "disabled";
   budget?: {
     turnBudgetMax: number;
     turnBudgetUsed: number;
+    turnBudgetRemaining: number;
     proactiveBudgetMax: number;
     proactiveBudgetUsed: number;
+    proactiveBudgetRemaining: number;
     degradedByBudget: boolean;
+    cooldownActive: boolean;
+    cooldownRemainingMs: number;
     budgetReasonCodes: string[];
+  };
+  engagementTrace?: {
+    triggerType: "reply" | "proactive" | "followup" | "closure";
+    triggerReason: string;
+    budgetBefore: {
+      turnBudgetRemaining: number;
+      proactiveBudgetRemaining: number;
+    };
+    budgetAfter: {
+      turnBudgetRemaining: number;
+      proactiveBudgetRemaining: number;
+    };
+    cooldownApplied: boolean;
+    preemptedBy?: string;
+    recordOnly: boolean;
   };
   topicScheduler?: {
     activeTopic: string;
     candidateTopics: string[];
+    queueSnapshot?: string[];
     selectedBy: "addressing" | "task" | "interest" | "clarify" | "active" | "starvation_boost";
     starvationBoostApplied: boolean;
     bridgeFromTopic?: string;
+    recycleAction?: "none" | "keep_active" | "recycle_oldest";
   };
   groupParticipation?: {
     mode: "speak" | "wait" | "brief_ack";

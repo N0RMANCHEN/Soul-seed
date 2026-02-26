@@ -1,5 +1,5 @@
 > Progress: 以 doc/Roadmap.md 为准（本计划仅描述 scope，不做逐任务快照）
-> Latest: `J/P1-1` 与 `J/P1-2` 均为 `in_progress`；J/P1-2 已有 AB+replay 最小评测赛道
+> Latest: `J/P1-0`、`J/P1-1`、`J/P1-2` 已闭环完成（以 `doc/Roadmap.md` 为准）
 
 # Phase J Engagement P1 Plan
 
@@ -33,6 +33,7 @@
 1. `J/P1-0~P1-2` 在 `doc/Roadmap.md` 状态闭环
 2. 预算/调度决策在 `DecisionTrace` 可观测、可回放
 3. 交互体验评测脚本纳入质量门禁并可在 CI 复现
+4. Phase J 评测门禁进入 PR 阻断链路（`npm run eval:phase-j`）
 
 ## A/B 分工（建议）
 

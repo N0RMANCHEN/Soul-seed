@@ -257,6 +257,9 @@ Available tools: `persona.get_context`, `memory.search`, `memory.search_hybrid`,
 | `SOULSEED_THINKING_PREVIEW_THRESHOLD_MS` | `1000` | Preview threshold in ms / 前置提示触发阈值（毫秒） |
 | `SOULSEED_THINKING_PREVIEW_MODEL_FALLBACK` | `0` | Allow LLM fallback for preview text / 是否允许用模型生成前置提示 |
 | `SOULSEED_THINKING_PREVIEW_MAX_MODEL_MS` | `220` | Max preview LLM time in ms / 前置提示模型最大耗时（毫秒） |
+| `SOULSEED_PHASE_J_ENABLE` | `1` | Enable Phase J engagement control path / 启用 Phase J 交互控制路径 |
+| `SOULSEED_PHASE_J_RECORD_ONLY` | `0` | Record-only mode (observe budget decisions without degrading tiers) / 仅记录预算决策，不执行降级 |
+| `SOULSEED_PHASE_J_TOPIC_SCHEDULER` | `1` | Enable topic scheduler output in DecisionTrace / 启用话题调度器与 trace 输出 |
 | `SOULSEED_MCP_ALLOW_WRITES` | `false` | Enable write tools in MCP / 启用 MCP 写入工具 |
 | `SOULSEED_OWNER_KEY` | — | Owner-level auth / 所有者级别鉴权 |
 | `DEEPSEEK_API_KEY` | — | Legacy: falls back if `SOULSEED_API_KEY` not set / 旧版兼容 |

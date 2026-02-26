@@ -193,13 +193,20 @@ function normalizeConversationControl(value: unknown): DecisionTrace["conversati
     typeof value.engagementPolicyVersion === "string" && value.engagementPolicyVersion.trim().length > 0
       ? value.engagementPolicyVersion.trim().slice(0, 32)
       : undefined;
+  const phaseJMode =
+    value.phaseJMode === "enabled" || value.phaseJMode === "record_only" || value.phaseJMode === "disabled"
+      ? value.phaseJMode
+      : undefined;
+  const engagementTrace = normalizeEngagementTrace(value.engagementTrace);
   return {
     engagementTier,
     topicAction,
     responsePolicy,
     reasonCodes: normalizeStringArray(value.reasonCodes, 16),
     ...(engagementPolicyVersion ? { engagementPolicyVersion } : {}),
+    ...(phaseJMode ? { phaseJMode } : {}),
     ...(budget ? { budget } : {}),
+    ...(engagementTrace ? { engagementTrace } : {}),
     ...(topicScheduler ? { topicScheduler } : {}),
     ...(groupParticipation ? { groupParticipation } : {})
   };
@@ -215,6 +222,9 @@ function normalizeControlBudget(
   const turnBudgetUsed = Number(value.turnBudgetUsed);
   const proactiveBudgetMax = Number(value.proactiveBudgetMax);
   const proactiveBudgetUsed = Number(value.proactiveBudgetUsed);
+  const turnBudgetRemainingRaw = Number(value.turnBudgetRemaining);
+  const proactiveBudgetRemainingRaw = Number(value.proactiveBudgetRemaining);
+  const cooldownRemainingMsRaw = Number(value.cooldownRemainingMs);
   if (
     !Number.isFinite(turnBudgetMax) ||
     !Number.isFinite(turnBudgetUsed) ||
@@ -223,13 +233,63 @@ function normalizeControlBudget(
   ) {
     return undefined;
   }
+  const turnBudgetRemaining = Number.isFinite(turnBudgetRemainingRaw)
+    ? turnBudgetRemainingRaw
+    : Math.max(0, Math.floor(turnBudgetMax) - Math.floor(turnBudgetUsed));
+  const proactiveBudgetRemaining = Number.isFinite(proactiveBudgetRemainingRaw)
+    ? proactiveBudgetRemainingRaw
+    : Math.max(0, Math.floor(proactiveBudgetMax) - Math.floor(proactiveBudgetUsed));
+  const cooldownRemainingMs = Number.isFinite(cooldownRemainingMsRaw) ? cooldownRemainingMsRaw : 0;
   return {
     turnBudgetMax: Math.max(1, Math.floor(turnBudgetMax)),
     turnBudgetUsed: Math.max(0, Math.floor(turnBudgetUsed)),
+    turnBudgetRemaining: Math.max(0, Math.floor(turnBudgetRemaining)),
     proactiveBudgetMax: Math.max(1, Math.floor(proactiveBudgetMax)),
     proactiveBudgetUsed: Math.max(0, Math.floor(proactiveBudgetUsed)),
+    proactiveBudgetRemaining: Math.max(0, Math.floor(proactiveBudgetRemaining)),
     degradedByBudget: value.degradedByBudget === true,
+    cooldownActive: value.cooldownActive === true,
+    cooldownRemainingMs: Math.max(0, Math.floor(cooldownRemainingMs)),
     budgetReasonCodes: normalizeStringArray(value.budgetReasonCodes, 16)
+  };
+}
+
+function normalizeEngagementTrace(
+  value: unknown
+): NonNullable<DecisionTrace["conversationControl"]>["engagementTrace"] | undefined {
+  if (!isRecord(value)) return undefined;
+  const triggerType = value.triggerType;
+  const validTriggerType =
+    triggerType === "reply" || triggerType === "proactive" || triggerType === "followup" || triggerType === "closure";
+  const triggerReason =
+    typeof value.triggerReason === "string" && value.triggerReason.trim().length > 0
+      ? value.triggerReason.trim().slice(0, 80)
+      : "";
+  if (!validTriggerType || !triggerReason || !isRecord(value.budgetBefore) || !isRecord(value.budgetAfter)) {
+    return undefined;
+  }
+  const beforeTurn = Number(value.budgetBefore.turnBudgetRemaining);
+  const beforeProactive = Number(value.budgetBefore.proactiveBudgetRemaining);
+  const afterTurn = Number(value.budgetAfter.turnBudgetRemaining);
+  const afterProactive = Number(value.budgetAfter.proactiveBudgetRemaining);
+  if (!Number.isFinite(beforeTurn) || !Number.isFinite(beforeProactive) || !Number.isFinite(afterTurn) || !Number.isFinite(afterProactive)) {
+    return undefined;
+  }
+  const preemptedBy = typeof value.preemptedBy === "string" ? value.preemptedBy.trim().slice(0, 64) : "";
+  return {
+    triggerType,
+    triggerReason,
+    budgetBefore: {
+      turnBudgetRemaining: Math.max(0, Math.floor(beforeTurn)),
+      proactiveBudgetRemaining: Math.max(0, Math.floor(beforeProactive))
+    },
+    budgetAfter: {
+      turnBudgetRemaining: Math.max(0, Math.floor(afterTurn)),
+      proactiveBudgetRemaining: Math.max(0, Math.floor(afterProactive))
+    },
+    cooldownApplied: value.cooldownApplied === true,
+    ...(preemptedBy ? { preemptedBy } : {}),
+    recordOnly: value.recordOnly === true
   };
 }
 
@@ -252,12 +312,18 @@ function normalizeTopicScheduler(
     return undefined;
   }
   const bridgeFromTopic = typeof value.bridgeFromTopic === "string" ? value.bridgeFromTopic.trim().slice(0, 64) : "";
+  const recycleAction =
+    value.recycleAction === "none" || value.recycleAction === "keep_active" || value.recycleAction === "recycle_oldest"
+      ? value.recycleAction
+      : undefined;
   return {
     activeTopic,
     candidateTopics: normalizeStringArray(value.candidateTopics, 8),
+    queueSnapshot: normalizeStringArray(value.queueSnapshot, 8),
     selectedBy,
     starvationBoostApplied: value.starvationBoostApplied === true,
-    ...(bridgeFromTopic ? { bridgeFromTopic } : {})
+    ...(bridgeFromTopic ? { bridgeFromTopic } : {}),
+    ...(recycleAction ? { recycleAction } : {})
   };
 }
 

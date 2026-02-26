@@ -187,10 +187,50 @@ test("normalizeDecisionTrace keeps engagement budget and topic scheduler fields"
   assert.equal(normalized.conversationControl?.engagementPolicyVersion, "j-p1-0/v1");
   assert.equal(normalized.conversationControl?.budget?.degradedByBudget, true);
   assert.equal(normalized.conversationControl?.budget?.turnBudgetMax, 120);
+  assert.equal(normalized.conversationControl?.budget?.turnBudgetRemaining, 0);
+  assert.equal(normalized.conversationControl?.budget?.proactiveBudgetRemaining, 2);
   assert.deepEqual(normalized.conversationControl?.budget?.budgetReasonCodes, ["turn_budget_exhausted"]);
   assert.equal(normalized.conversationControl?.topicScheduler?.activeTopic, "roadmap");
   assert.equal(normalized.conversationControl?.topicScheduler?.selectedBy, "task");
   assert.equal(normalized.conversationControl?.topicScheduler?.bridgeFromTopic, "music");
+});
+
+test("normalizeDecisionTrace keeps phase-j engagement trace fields", () => {
+  const normalized = normalizeDecisionTrace({
+    version: DECISION_TRACE_SCHEMA_VERSION,
+    timestamp: "2026-02-26T00:00:00.000Z",
+    selectedMemories: [],
+    askClarifyingQuestion: false,
+    refuse: false,
+    riskLevel: "low",
+    reason: "phase-j-trace",
+    model: "deepseek-chat",
+    conversationControl: {
+      engagementTier: "NORMAL",
+      topicAction: "maintain",
+      responsePolicy: "normal_response",
+      reasonCodes: ["task_intent_detected"],
+      phaseJMode: "record_only",
+      engagementTrace: {
+        triggerType: "reply",
+        triggerReason: "task_intent_detected",
+        budgetBefore: {
+          turnBudgetRemaining: 0,
+          proactiveBudgetRemaining: 2
+        },
+        budgetAfter: {
+          turnBudgetRemaining: 0,
+          proactiveBudgetRemaining: 2
+        },
+        cooldownApplied: false,
+        recordOnly: true
+      }
+    }
+  });
+
+  assert.equal(normalized.conversationControl?.phaseJMode, "record_only");
+  assert.equal(normalized.conversationControl?.engagementTrace?.triggerType, "reply");
+  assert.equal(normalized.conversationControl?.engagementTrace?.recordOnly, true);
 });
 
 test("normalizeDecisionTrace keeps adaptive reasoning and core conflict metadata", () => {

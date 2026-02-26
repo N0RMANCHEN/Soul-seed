@@ -174,6 +174,31 @@ test("J/P1-1: decide derives topic scheduler with bridge when switching to user-
   assert.equal(trace.conversationControl?.topicScheduler?.bridgeFromTopic, "音乐");
 });
 
+test("decide supports phase-j record-only and topic-scheduler disable flags", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-orchestrator-phasej-flags-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+  await initPersonaPackage(personaPath, "Roxy");
+  const pkg = await loadPersonaPackage(personaPath);
+
+  const trace = decide(pkg, "请详细分析这个方案并给完整推导", "deepseek-chat", {
+    lifeEvents: [],
+    conversationBudget: {
+      turnBudgetMax: 10,
+      turnBudgetUsed: 10,
+      proactiveBudgetMax: 4,
+      proactiveBudgetUsed: 1
+    },
+    phaseJFlags: {
+      recordOnly: true,
+      topicScheduler: false
+    }
+  });
+
+  assert.equal(trace.conversationControl?.phaseJMode, "record_only");
+  assert.equal(trace.conversationControl?.topicScheduler, undefined);
+  assert.equal(trace.conversationControl?.engagementTrace?.recordOnly, true);
+});
+
 test("decide attaches group participation arbitration for transcript-style input", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-orchestrator-group-"));
   const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");

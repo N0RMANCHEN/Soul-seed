@@ -46,6 +46,13 @@ export function decide(
       turnBudgetUsed: number;
       proactiveBudgetMax: number;
       proactiveBudgetUsed: number;
+      proactiveCooldownUntilMs?: number;
+      nowMs?: number;
+    };
+    phaseJFlags?: {
+      enabled?: boolean;
+      recordOnly?: boolean;
+      topicScheduler?: boolean;
     };
   }
 ): DecisionTrace {
@@ -211,7 +218,8 @@ export function decide(
     groupContext,
     topicContext,
     budgetContext: options?.conversationBudget,
-    semanticProjection: conversationProjection
+    semanticProjection: conversationProjection,
+    phaseJFlags: options?.phaseJFlags
   });
   const routing = resolveSemanticRouting({
     projectionSource: conversationProjection.source,

@@ -49,6 +49,11 @@ export async function executeTurnProtocol(params: {
       ? B
       : never
     : never;
+  phaseJFlags?: Parameters<typeof decide>[3] extends infer T
+    ? T extends { phaseJFlags?: infer F }
+      ? F
+      : never
+    : never;
   toolExecutor?: AgentToolExecutor;
   plannerAdapter?: ModelAdapter;
   goalId?: string;
@@ -90,7 +95,8 @@ export async function executeTurnProtocol(params: {
         riskLatent: semantic.riskLatent,
         riskAssessmentPath: semantic.riskAssessmentPath,
         conversationProjection: semantic.conversationProjection,
-        conversationBudget: params.conversationBudget
+        conversationBudget: params.conversationBudget,
+        phaseJFlags: params.phaseJFlags
       });
       trace.reasoningDepth = semantic.reasoningDepth;
       trace.l3Triggered = semantic.l3Triggered;

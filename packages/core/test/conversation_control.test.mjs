@@ -155,6 +155,9 @@ test("conversation control degrades engagement tier when turn budget is exhauste
   assert.equal(control.engagementTier, "NORMAL");
   assert.equal(control.budget?.degradedByBudget, true);
   assert.equal(control.budget?.budgetReasonCodes.includes("turn_budget_exhausted"), true);
+  assert.equal(control.budget?.turnBudgetRemaining, 0);
+  assert.equal(control.budget?.proactiveBudgetRemaining, 3);
+  assert.equal(control.engagementTrace?.recordOnly, false);
   assert.equal(control.engagementPolicyVersion, "j-p1-0/v1");
 });
 
@@ -179,4 +182,47 @@ test("conversation control keeps topic scheduler bridge metadata from topic cont
   assert.equal(control.topicScheduler?.selectedBy, "starvation_boost");
   assert.equal(control.topicScheduler?.starvationBoostApplied, true);
   assert.equal(control.topicScheduler?.bridgeFromTopic, "音乐");
+  assert.equal(control.topicScheduler?.queueSnapshot?.length, 2);
+});
+
+test("conversation control record-only mode keeps tier while recording budget pressure", () => {
+  const control = decideConversationControl({
+    userInput: "请详细分析这个方案并给完整推导",
+    recallNavigationMode: false,
+    isRiskyRequest: false,
+    isRefusal: false,
+    coreConflict: false,
+    impulseWindow: false,
+    budgetContext: {
+      turnBudgetMax: 10,
+      turnBudgetUsed: 10,
+      proactiveBudgetMax: 4,
+      proactiveBudgetUsed: 4
+    },
+    phaseJFlags: {
+      recordOnly: true
+    }
+  });
+
+  assert.equal(control.engagementTier, "DEEP");
+  assert.equal(control.budget?.degradedByBudget, false);
+  assert.equal(control.reasonCodes.some((code) => code.startsWith("record_only_budget_degraded")), true);
+  assert.equal(control.phaseJMode, "record_only");
+  assert.equal(control.engagementTrace?.recordOnly, true);
+});
+
+test("conversation control can disable topic scheduler via phase-j flag", () => {
+  const control = decideConversationControl({
+    userInput: "继续这个话题",
+    recallNavigationMode: false,
+    isRiskyRequest: false,
+    isRefusal: false,
+    coreConflict: false,
+    impulseWindow: false,
+    phaseJFlags: {
+      topicScheduler: false
+    }
+  });
+
+  assert.equal(control.topicScheduler, undefined);
 });

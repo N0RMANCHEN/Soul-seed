@@ -25,6 +25,8 @@ export interface ConversationControlInput {
     turnBudgetUsed: number;
     proactiveBudgetMax: number;
     proactiveBudgetUsed: number;
+    proactiveCooldownUntilMs?: number;
+    nowMs?: number;
   };
   topicContext?: {
     activeTopic?: string;
@@ -34,11 +36,24 @@ export interface ConversationControlInput {
     bridgeFromTopic?: string;
   };
   semanticProjection?: SemanticProjectionResult;
+  phaseJFlags?: {
+    enabled?: boolean;
+    recordOnly?: boolean;
+    topicScheduler?: boolean;
+  };
 }
 
 export function decideConversationControl(input: ConversationControlInput): ConversationControlDecision {
   const text = input.userInput.trim();
   const reasonCodes: string[] = [];
+  const phaseJEnabled = input.phaseJFlags?.enabled !== false;
+  const phaseJRecordOnly = input.phaseJFlags?.recordOnly === true;
+  const phaseJTopicSchedulerEnabled = phaseJEnabled && input.phaseJFlags?.topicScheduler !== false;
+  const phaseJMode: ConversationControlDecision["phaseJMode"] = !phaseJEnabled
+    ? "disabled"
+    : phaseJRecordOnly
+      ? "record_only"
+      : "enabled";
 
   if (input.isRefusal || input.isRiskyRequest || input.coreConflict) {
     const budget = normalizeBudget(input.budgetContext);
@@ -48,6 +63,7 @@ export function decideConversationControl(input: ConversationControlInput): Conv
       topicAction: "maintain",
       responsePolicy: "safety_refusal",
       reasonCodes,
+      phaseJMode,
       engagementPolicyVersion: "j-p1-0/v1",
       ...(budget ? { budget } : {})
     };
@@ -60,16 +76,21 @@ export function decideConversationControl(input: ConversationControlInput): Conv
       topicAction: "clarify",
       responsePolicy: "light_response",
       reasonCodes,
+      phaseJMode,
       engagementPolicyVersion: "j-p1-0/v1",
       ...(budget ? { budget } : {}),
-      topicScheduler: buildTopicScheduler({
-        topicAction: "clarify",
-        hasTaskIntent: false,
-        hasAddressing: false,
-        highAttention: false,
-        interests: input.interests,
-        topicContext: input.topicContext
-      })
+      ...(phaseJTopicSchedulerEnabled
+        ? {
+            topicScheduler: buildTopicScheduler({
+              topicAction: "clarify",
+              hasTaskIntent: false,
+              hasAddressing: false,
+              highAttention: false,
+              interests: input.interests,
+              topicContext: input.topicContext
+            })
+          }
+        : {})
     };
   }
 
@@ -128,18 +149,34 @@ export function decideConversationControl(input: ConversationControlInput): Conv
 
   const budget = normalizeBudget(input.budgetContext);
   if (budget) {
+    const budgetBefore = {
+      turnBudgetRemaining: budget.turnBudgetRemaining,
+      proactiveBudgetRemaining: budget.proactiveBudgetRemaining
+    };
     if (budget.turnBudgetUsed >= budget.turnBudgetMax) {
       const degraded = degradeTierForBudget(engagementTier);
-      if (degraded !== engagementTier) {
+      if (!phaseJRecordOnly && degraded !== engagementTier) {
         reasonCodes.push(`budget_degraded_${engagementTier.toLowerCase()}_to_${degraded.toLowerCase()}`);
         budget.degradedByBudget = true;
+        engagementTier = degraded;
+      } else if (phaseJRecordOnly && degraded !== engagementTier) {
+        reasonCodes.push(`record_only_budget_degraded_${engagementTier.toLowerCase()}_to_${degraded.toLowerCase()}`);
       }
-      engagementTier = degraded;
       budget.budgetReasonCodes.push("turn_budget_exhausted");
     }
     if (budget.proactiveBudgetUsed >= budget.proactiveBudgetMax) {
       budget.budgetReasonCodes.push("proactive_budget_exhausted");
     }
+    if (budget.cooldownActive) {
+      budget.budgetReasonCodes.push("proactive_cooldown_active");
+    }
+    const budgetAfter = {
+      turnBudgetRemaining: Math.max(0, budget.turnBudgetMax - budget.turnBudgetUsed),
+      proactiveBudgetRemaining: Math.max(0, budget.proactiveBudgetMax - budget.proactiveBudgetUsed)
+    };
+    reasonCodes.push(
+      `engagement_trace:reply(turn=${budgetBefore.turnBudgetRemaining}->${budgetAfter.turnBudgetRemaining},proactive=${budgetBefore.proactiveBudgetRemaining}->${budgetAfter.proactiveBudgetRemaining})`
+    );
   }
 
   const responsePolicy: ResponsePolicy = mapResponsePolicy(engagementTier);
@@ -159,16 +196,40 @@ export function decideConversationControl(input: ConversationControlInput): Conv
     topicAction,
     responsePolicy,
     reasonCodes,
+    phaseJMode,
     engagementPolicyVersion: "j-p1-0/v1",
     ...(budget ? { budget } : {}),
-    topicScheduler: buildTopicScheduler({
-      topicAction,
-      hasTaskIntent,
-      hasAddressing,
-      highAttention,
-      interests: input.interests,
-      topicContext: input.topicContext
-    }),
+    ...(budget
+      ? {
+          engagementTrace: {
+            triggerType: "reply",
+            triggerReason: reasonCodes[0] ?? "reply_turn",
+            budgetBefore: {
+              turnBudgetRemaining: Math.max(0, budget.turnBudgetMax - budget.turnBudgetUsed),
+              proactiveBudgetRemaining: Math.max(0, budget.proactiveBudgetMax - budget.proactiveBudgetUsed)
+            },
+            budgetAfter: {
+              turnBudgetRemaining: Math.max(0, budget.turnBudgetMax - budget.turnBudgetUsed),
+              proactiveBudgetRemaining: Math.max(0, budget.proactiveBudgetMax - budget.proactiveBudgetUsed)
+            },
+            cooldownApplied: budget.cooldownActive,
+            ...(budget.cooldownActive ? { preemptedBy: "cooldown_guard" } : {}),
+            recordOnly: phaseJRecordOnly
+          }
+        }
+      : {}),
+    ...(phaseJTopicSchedulerEnabled
+      ? {
+          topicScheduler: buildTopicScheduler({
+            topicAction,
+            hasTaskIntent,
+            hasAddressing,
+            highAttention,
+            interests: input.interests,
+            topicContext: input.topicContext
+          })
+        }
+      : {}),
     ...(groupParticipation ? { groupParticipation } : {})
   };
 }
@@ -183,12 +244,21 @@ function normalizeBudget(
   const turnBudgetUsed = Math.max(0, Math.floor(Number(value.turnBudgetUsed) || 0));
   const proactiveBudgetMax = Math.max(1, Math.floor(Number(value.proactiveBudgetMax) || 1));
   const proactiveBudgetUsed = Math.max(0, Math.floor(Number(value.proactiveBudgetUsed) || 0));
+  const nowMs = Number.isFinite(Number(value.nowMs)) ? Number(value.nowMs) : Date.now();
+  const cooldownUntil = Number.isFinite(Number(value.proactiveCooldownUntilMs))
+    ? Number(value.proactiveCooldownUntilMs)
+    : 0;
+  const cooldownRemainingMs = cooldownUntil > nowMs ? Math.max(0, Math.floor(cooldownUntil - nowMs)) : 0;
   return {
     turnBudgetMax,
     turnBudgetUsed,
+    turnBudgetRemaining: Math.max(0, turnBudgetMax - turnBudgetUsed),
     proactiveBudgetMax,
     proactiveBudgetUsed,
+    proactiveBudgetRemaining: Math.max(0, proactiveBudgetMax - proactiveBudgetUsed),
     degradedByBudget: false,
+    cooldownActive: cooldownRemainingMs > 0,
+    cooldownRemainingMs,
     budgetReasonCodes: []
   };
 }
@@ -240,8 +310,10 @@ function buildTopicScheduler(params: {
   return {
     activeTopic,
     candidateTopics: uniqueCandidates,
+    queueSnapshot: uniqueCandidates,
     selectedBy,
     starvationBoostApplied: params.topicContext?.starvationBoostApplied === true,
+    recycleAction: uniqueCandidates.length >= 8 ? "recycle_oldest" : activeTopic === uniqueCandidates[0] ? "keep_active" : "none",
     ...(typeof params.topicContext?.bridgeFromTopic === "string" && params.topicContext.bridgeFromTopic.trim().length > 0
       ? { bridgeFromTopic: params.topicContext.bridgeFromTopic.trim().slice(0, 64) }
       : {})

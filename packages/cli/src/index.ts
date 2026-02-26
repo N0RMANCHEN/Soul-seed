@@ -689,6 +689,24 @@ function resolveAdaptiveReasoningEnabled(options: Record<string, string | boolea
   return !(raw === "0" || raw === "false" || raw === "off" || raw === "no");
 }
 
+function resolvePhaseJFlags(options: Record<string, string | boolean>): {
+  enabled: boolean;
+  recordOnly: boolean;
+  topicScheduler: boolean;
+} {
+  const envEnabled = (process.env.SOULSEED_PHASE_J_ENABLE ?? "1").trim().toLowerCase();
+  const envRecordOnly = (process.env.SOULSEED_PHASE_J_RECORD_ONLY ?? "0").trim().toLowerCase();
+  const envTopicScheduler = (process.env.SOULSEED_PHASE_J_TOPIC_SCHEDULER ?? "1").trim().toLowerCase();
+  const enabled = !["0", "false", "off", "no"].includes(envEnabled);
+  const recordOnly = ["1", "true", "on", "yes"].includes(envRecordOnly);
+  const topicScheduler = !["0", "false", "off", "no"].includes(envTopicScheduler);
+  return {
+    enabled: resolveBooleanOption(options, "phase-j-enable", enabled),
+    recordOnly: resolveBooleanOption(options, "phase-j-record-only", recordOnly),
+    topicScheduler: resolveBooleanOption(options, "phase-j-topic-scheduler", topicScheduler)
+  };
+}
+
 /**
  * Chat policy unified defaults.
  *
@@ -4726,6 +4744,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const executionInput =
           goalAssist.kind === "resume" ? goalAssist.resumeInput : effectiveInput;
         const planningStartedAtMs = Date.now();
+        const phaseJFlags = resolvePhaseJFlags(options);
         const turnBudgetUsed = Math.max(
           0,
           Math.min(
@@ -4749,8 +4768,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             turnBudgetMax: TURN_BUDGET_MAX,
             turnBudgetUsed,
             proactiveBudgetMax: PROACTIVE_BUDGET_MAX,
-            proactiveBudgetUsed: proactiveRecentEmitCount
+            proactiveBudgetUsed: proactiveRecentEmitCount,
+            proactiveCooldownUntilMs,
+            nowMs: Date.now()
           },
+          phaseJFlags,
           safetyContext: adultSafetyContext,
           plannerAdapter,
           goalId: goalAssist.kind === "resume" ? goalAssist.goalId : undefined,
