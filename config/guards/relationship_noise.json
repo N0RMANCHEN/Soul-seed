@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "1.0",
+  "description": "H/P1-13: Relationship noise guard. Control card injection frequency and weight.",
+  "maxCardsPerTurn": 2,
+  "maxCharsPerCard": 180,
+  "minLinkingConfidence": 0.6
+}

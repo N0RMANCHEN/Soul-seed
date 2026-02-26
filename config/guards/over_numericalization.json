@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.0",
+  "description": "H/P1-12: Over-numericalization guard. Replies must stay natural-language dominant.",
+  "mode": "warn",
+  "patterns": [
+    "trust:\\s*0\\.\\d+",
+    "mood.*0\\.\\d+",
+    "valence.*\\d+\\.?\\d*",
+    "arousal.*\\d+\\.?\\d*",
+    "emotion_sensitivity.*\\d+\\.?\\d*",
+    "memory_retention.*\\d+\\.?\\d*",
+    "attention_span.*\\d+\\.?\\d*",
+    "social_attunement.*\\d+\\.?\\d*"
+  ],
+  "maxExposuresPerResponse": 2,
+  "numericOverloadThreshold": 0.02
+}

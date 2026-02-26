@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0",
+  "description": "H/P1-15: MVP trait whitelist. New traits require review gate + regression proof.",
+  "traits": [
+    "emotion_sensitivity",
+    "emotion_recovery",
+    "memory_retention",
+    "memory_imprint",
+    "attention_span",
+    "social_attunement"
+  ]
+}
