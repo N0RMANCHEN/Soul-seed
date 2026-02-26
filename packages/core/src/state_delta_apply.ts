@@ -10,6 +10,7 @@ import { normalizeGoalsState } from "./goals_state.js";
 import { normalizeBeliefsState } from "./beliefs_state.js";
 import { VALUES_RULES_SCHEMA_VERSION } from "./values_rules.js";
 import { createDefaultPersonalityProfile } from "./personality_profile.js";
+import { normalizeMoodState, createInitialMoodState } from "./mood_state.js";
 
 export const DOMAIN_FILE_MAP: Record<string, string> = {
   relationship: "relationship_state.json",
@@ -118,6 +119,15 @@ async function applyDeltaToFile(
     return;
   }
 
+  if (delta.type === "mood") {
+    const merged = mergeMoodState(current, delta.patch);
+    merged._lastDeltaAt = new Date().toISOString();
+    const tmpPath = filePath + ".tmp";
+    await fs.writeFile(tmpPath, JSON.stringify(merged, null, 2), "utf-8");
+    await fs.rename(tmpPath, filePath);
+    return;
+  }
+
   for (const [key, value] of Object.entries(delta.patch)) {
     if (
       typeof value === "string" &&
@@ -210,6 +220,34 @@ function mergeBeliefsState(
 
   base.updatedAt = now;
   return base as unknown as Record<string, unknown>;
+}
+
+function mergeMoodState(
+  current: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const base = Object.keys(current).length > 0
+    ? normalizeMoodState(current)
+    : createInitialMoodState();
+  const now = new Date().toISOString();
+  const result = { ...base } as Record<string, unknown>;
+
+  for (const [key, value] of Object.entries(patch)) {
+    if (key.startsWith("_")) continue;
+    if (typeof value === "string" && (value.startsWith("+") || value.startsWith("-"))) {
+      const numValue = parseFloat(value);
+      const currentVal = typeof (result as Record<string, unknown>)[key] === "number"
+        ? (result as Record<string, unknown>)[key] as number
+        : 0;
+      (result as Record<string, unknown>)[key] = Math.max(0, Math.min(1, currentVal + numValue));
+    } else if (typeof value === "number") {
+      (result as Record<string, unknown>)[key] = Math.max(0, Math.min(1, value));
+    } else if (value !== undefined && value !== null) {
+      (result as Record<string, unknown>)[key] = value;
+    }
+  }
+  result.updatedAt = now;
+  return result;
 }
 
 async function appendDeltaTrace(

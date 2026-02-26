@@ -25,7 +25,6 @@ import {
   logMigrationUpgrade,
   readMigrationLog,
   MANIFEST_FILENAME,
-  MANIFEST_SCHEMA_VERSION,
 } from "../dist/index.js";
 
 const envBackup = process.env.SOULSEED_USE_PACKAGE_LOADER_V04;
@@ -37,11 +36,12 @@ function setV04Loader(on) {
 // ─── Cross-version load (v0.3 package → v0.4 loader) ────────────────────────────
 
 test("loadPersonaPackageV04 loads v0.3 package (no manifest) without errors", async () => {
-  setV04Loader(false);
   const tmp = await mkdtemp(path.join(os.tmpdir(), "pkg-v03-"));
   const personaPath = path.join(tmp, "V03.soulseedpersona");
   await initPersonaPackage(personaPath, "V03");
+  await rm(path.join(personaPath, MANIFEST_FILENAME), { force: true });
 
+  setV04Loader(true);
   const result = await loadPersonaPackageV04(personaPath);
   assert.ok(result.package);
   assert.equal(result.package.persona.displayName, "V03");
@@ -57,20 +57,6 @@ test("loadPersonaPackageV04 with v0.4 manifest and missing optional file uses de
   const tmp = await mkdtemp(path.join(os.tmpdir(), "pkg-v04-missing-"));
   const personaPath = path.join(tmp, "V04Missing.soulseedpersona");
   await initPersonaPackage(personaPath, "V04Missing");
-
-  await writeFile(
-    path.join(personaPath, MANIFEST_FILENAME),
-    JSON.stringify({
-      schemaVersion: MANIFEST_SCHEMA_VERSION,
-      personaId: "test-id",
-      compatMode: "full",
-      createdAt: new Date().toISOString(),
-      lastMigratedAt: new Date().toISOString(),
-      checksum: "abc123",
-      files: {}
-    }),
-    "utf-8"
-  );
 
   await rm(path.join(personaPath, "worldview.json"));
 
@@ -92,20 +78,6 @@ test("loadPersonaPackageV04 with corrupt optional file uses defaults and warns",
   const tmp = await mkdtemp(path.join(os.tmpdir(), "pkg-corrupt-"));
   const personaPath = path.join(tmp, "Corrupt.soulseedpersona");
   await initPersonaPackage(personaPath, "Corrupt");
-
-  await writeFile(
-    path.join(personaPath, MANIFEST_FILENAME),
-    JSON.stringify({
-      schemaVersion: MANIFEST_SCHEMA_VERSION,
-      personaId: "test-id",
-      compatMode: "full",
-      createdAt: new Date().toISOString(),
-      lastMigratedAt: new Date().toISOString(),
-      checksum: "abc123",
-      files: {}
-    }),
-    "utf-8"
-  );
 
   await writeFile(path.join(personaPath, "constitution.json"), "{ invalid json", "utf-8");
 

@@ -87,3 +87,24 @@ test("compileInstinctContext keeps lightweight prompt with instinct evidence", (
   assert.match(messages[0].content, /Boundaries:/);
   assert.equal(messages[messages.length - 1].content, "我今天真的很难过");
 });
+
+test("compileContext injects imperfection signals when evidence weak (H/P1-6)", () => {
+  const pkg = {
+    persona: { displayName: "Roxy" },
+    constitution: { mission: "m", values: ["v1"], boundaries: ["b1"] },
+    userProfile: { preferredName: "", preferredLanguage: "en" },
+    pinned: { memories: [] }
+  };
+  const trace = decide(pkg, "What did we discuss last month?", "deepseek-chat", {
+    lifeEvents: [],
+    recalledMemories: [],
+    recalledMemoryBlocks: []
+  });
+  // Few memories + low causeConfidence triggers IMP-01
+  const messages = compileContext(pkg, "What did we discuss?", trace, {
+    imperfectionInput: { causeConfidence: 0.3 }
+  });
+  assert.ok(messages.length >= 2);
+  assert.match(messages[0].content, /Imperfection signals/, "imperfection block injected when signals present");
+  assert.match(messages[0].content, /hedge_language|I'm not sure|I think/, "hedge hints present");
+});

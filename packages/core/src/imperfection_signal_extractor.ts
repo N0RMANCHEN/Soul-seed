@@ -33,6 +33,8 @@ export interface ImperfectionExtractorInput {
   causeConfidence?: number;
   /** Optional: entity mentioned in user input without relationship card */
   entityWithoutRelationship?: string;
+  /** Optional: memory was compressed/summarized (stub until H/P1-2); when true, IMP-06 applies */
+  hasCompressedMemory?: boolean;
 }
 
 const SALIENCE_LOW_THRESHOLD = 0.3;
@@ -132,8 +134,18 @@ export function extractImperfectionSignals(
     });
   }
 
-  // IMP-06: Detail forgetting (stub — no compressed memory flag yet)
-  // Skip until H/P1-2 provides memory compression metadata
+  // IMP-06: Detail forgetting — prefer summaries over fabricated specifics when memory compressed
+  if (input.hasCompressedMemory && rules.some((r) => r.id === "IMP-06")) {
+    signals.push({
+      ruleId: "IMP-06",
+      signalKey: "detail_forgetting",
+      description: "Memory compressed; prefer summaries over invented details",
+      suggestedHints: [
+        "I remember the gist but not the specifics",
+        "it's a bit hazy on the details",
+      ],
+    });
+  }
 
   // IMP-07: Evidence requirement — enforced by gates; signal for context
   const hadRejections = (deltaResult?.rejectedDeltas?.length ?? 0) > 0;

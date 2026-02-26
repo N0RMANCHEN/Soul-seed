@@ -142,7 +142,9 @@ export async function exportPersonaPackage(rootPath: string, outPath: string): P
     files: inspect.files
   };
 
-  await writeFile(path.join(outPath, "MANIFEST.json"), JSON.stringify(manifest, null, 2), "utf8");
+  // Use EXPORT_MANIFEST.json to avoid case-insensitive FS conflict with manifest.json (v0.4)
+  const EXPORT_MANIFEST_FILENAME = "EXPORT_MANIFEST.json";
+  await writeFile(path.join(outPath, EXPORT_MANIFEST_FILENAME), JSON.stringify(manifest, null, 2), "utf8");
 
   return manifest;
 }
@@ -159,17 +161,18 @@ export async function importPersonaPackage(srcPath: string, destPath: string): P
     errors
   });
 
-  // 1. Verify manifest exists
-  const manifestPath = path.join(srcPath, "MANIFEST.json");
+  // 1. Verify manifest exists (EXPORT_MANIFEST.json avoids case conflict with manifest.json on macOS)
+  const EXPORT_MANIFEST_FILENAME = "EXPORT_MANIFEST.json";
+  const manifestPath = path.join(srcPath, EXPORT_MANIFEST_FILENAME);
   if (!existsSync(manifestPath)) {
-    return blankResult(["MANIFEST.json 不存在于源路径，这不是有效的 persona 导出目录"]);
+    return blankResult([`${EXPORT_MANIFEST_FILENAME} 不存在于源路径，这不是有效的 persona 导出目录`]);
   }
 
   let manifest: PersonaManifest;
   try {
     manifest = JSON.parse(await readFile(manifestPath, "utf8")) as PersonaManifest;
   } catch {
-    return blankResult(["MANIFEST.json 解析失败，文件可能已损坏"]);
+    return blankResult([`${EXPORT_MANIFEST_FILENAME} 解析失败，文件可能已损坏`]);
   }
 
   if (manifest.schema !== "soulseed.persona.manifest.v1") {

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
+import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from "./package_manifest.js";
 import path from "node:path";
 import { eventHash } from "./hash.js";
 import { ingestLifeEventMemory } from "./memory_ingest.js";
@@ -229,6 +230,26 @@ export async function initPersonaPackage(
   await writeJson(path.join(outPath, "goals.json"), createDefaultGoalsState(createdAt));
   await writeJson(path.join(outPath, "beliefs.json"), createDefaultBeliefsState(createdAt));
   await ensureMemoryStore(outPath);
+
+  // H/P1-4: Create manifest.json for v0.4 package layout (new packages are full from birth)
+  const manifestChecksum = createHash("sha256")
+    .update(personaId + createdAt)
+    .digest("hex")
+    .slice(0, 16);
+  await writeJson(path.join(outPath, MANIFEST_FILENAME), {
+    schemaVersion: MANIFEST_SCHEMA_VERSION,
+    personaId,
+    compatMode: "full",
+    createdAt,
+    lastMigratedAt: createdAt,
+    checksum: manifestChecksum,
+    files: {
+      "persona.json": { schemaVersion: PERSONA_SCHEMA_VERSION, updatedAt: createdAt },
+      "identity.json": { schemaVersion: "2.0", updatedAt: createdAt },
+      "genome.json": { schemaVersion: "1.0", updatedAt: createdAt },
+      "epigenetics.json": { schemaVersion: "1.0", updatedAt: createdAt }
+    }
+  });
 }
 
 export async function loadPersonaPackage(rootPath: string): Promise<PersonaPackage> {

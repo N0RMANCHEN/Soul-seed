@@ -7,6 +7,7 @@ import type {
   InvariantRule,
 } from "./state_delta.js";
 import { loadValuesRulesSync, ruleMatchesDelta } from "./values_rules.js";
+import { GENOME_TRAIT_NAMES } from "./genome.js";
 
 function lookupThreshold(
   rules: InvariantRule[] | undefined,
@@ -167,6 +168,10 @@ export function relationshipDeltaGate(
   return { deltaIndex, verdict: "accept", gate: "relationshipDelta", reason: "passed" };
 }
 
+/** Hb-1-3: Strong attribution = |delta| > this threshold requires evidence. */
+const MOOD_STRONG_ATTRIBUTION_THRESHOLD = 0.12;
+const MOOD_EVIDENCE_FOR_STRONG = 1;
+
 export function moodDeltaGate(
   delta: StateDelta,
   deltaIndex: number,
@@ -175,14 +180,24 @@ export function moodDeltaGate(
   if (delta.type !== "mood") {
     return { deltaIndex, verdict: "accept", gate: "moodDelta", reason: "not applicable" };
   }
+  // Genome emotion_sensitivity scales delta; gate uses invariant max, gate clamps excess
   const maxDelta = lookupThreshold(context.invariantTable, "mood-max-delta", MOOD_CLAMP_MAX);
   const numerics = extractNumericPatchValues(delta.patch);
   let needsClamp = false;
+  let hasStrongAttribution = false;
   for (const { value } of numerics) {
-    if (value < -maxDelta || value > maxDelta) {
-      needsClamp = true;
-      break;
-    }
+    const abs = Math.abs(value);
+    if (abs > maxDelta) needsClamp = true;
+    if (abs > MOOD_STRONG_ATTRIBUTION_THRESHOLD) hasStrongAttribution = true;
+  }
+  // Evidence chain: strong attribution requires supporting event hashes
+  if (hasStrongAttribution && delta.supportingEventHashes.length < MOOD_EVIDENCE_FOR_STRONG) {
+    return {
+      deltaIndex,
+      verdict: "reject",
+      gate: "moodDelta",
+      reason: `mood shift > ${MOOD_STRONG_ATTRIBUTION_THRESHOLD} requires at least ${MOOD_EVIDENCE_FOR_STRONG} supporting event hash`,
+    };
   }
   if (!needsClamp) {
     return { deltaIndex, verdict: "accept", gate: "moodDelta", reason: "passed" };
@@ -304,6 +319,19 @@ export function epigeneticsGate(
       }
     }
   }
+  // H/P1-15: Genome trait expansion gate — only whitelisted traits allowed
+  const whitelist = new Set(GENOME_TRAIT_NAMES as readonly string[]);
+  for (const key of Object.keys(delta.patch)) {
+    if (!whitelist.has(key)) {
+      return {
+        deltaIndex,
+        verdict: "reject",
+        gate: "epigenetics",
+        reason: `trait "${key}" not in whitelist; MVP allows only: ${GENOME_TRAIT_NAMES.join(", ")}`,
+      };
+    }
+  }
+
   const absCap = lookupThreshold(context.invariantTable, "epi-max-adjustment", EPIGENETICS_ABS_CAP);
   const minSupporting = lookupThreshold(context.invariantTable, "epi-evidence-required", EPIGENETICS_MIN_SUPPORTING);
   if (delta.supportingEventHashes.length < minSupporting) {

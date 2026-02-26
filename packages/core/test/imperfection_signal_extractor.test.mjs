@@ -174,6 +174,23 @@ function createBaseTrace(overrides = {}) {
   });
 }
 
+// IMP-06: Detail forgetting (compressed memory)
+{
+  const test = (await import("node:test")).default;
+  test("IMP-06: detail_forgetting when hasCompressedMemory true", () => {
+    resetImperfectionRulesCache();
+    resetRulesCache();
+    const signals = extractImperfectionSignals({
+      personaPkg: createBasePersonaPkg(),
+      trace: createBaseTrace(),
+      hasCompressedMemory: true,
+    });
+    const imp06 = signals.find((s) => s.ruleId === "IMP-06");
+    assert.ok(imp06, "IMP-06 signal expected when hasCompressedMemory");
+    assert.equal(imp06.signalKey, "detail_forgetting");
+  });
+}
+
 // IMP-07: Evidence requirement
 {
   const test = (await import("node:test")).default;

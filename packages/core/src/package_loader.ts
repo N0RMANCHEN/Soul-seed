@@ -197,6 +197,9 @@ export async function loadPersonaPackageV04(rootPath: string): Promise<PackageLo
   const identity = identityRaw ? normalizePersonaIdentity(identityRaw, persona.id) : undefined;
 
   const moodState = await loadMoodState(rootPath) ?? undefined;
+  const { loadActiveEpisodes, getActiveEpisode } = await import("./emotion_episode_manager.js");
+  const activeEpisodes = await loadActiveEpisodes(rootPath);
+  const activeEmotionEpisode = getActiveEpisode(activeEpisodes) ?? null;
   const autoRaw = await loadAutobiography(rootPath);
   const autobiography = autoRaw
     ? {
@@ -232,6 +235,7 @@ export async function loadPersonaPackageV04(rootPath: string): Promise<PackageLo
     voiceProfile: artifacts.voiceProfile,
     soulLineage,
     moodState,
+    activeEmotionEpisode,
     autobiography,
     genome,
     epigenetics,

@@ -55,6 +55,8 @@ test("compat regression: full lifecycle — legacy → migrate → shadow → ro
   assert.deepStrictEqual(derived, defaults);
 
   // 8. Shadow mode — evaluate gates without applying
+  // Hb-1-3: mood gate requires evidence for strong attribution (|delta| > 0.12); oversized delta with evidence → clamp
+  const fakeEventHash = "evt-00000000000000000000000000000001";
   const proposal = {
     turnId: "shadow-test-001",
     proposedAt: new Date().toISOString(),
@@ -72,8 +74,8 @@ test("compat regression: full lifecycle — legacy → migrate → shadow → ro
         targetId: "self",
         patch: { valence: "+0.9" },
         confidence: 0.8,
-        supportingEventHashes: [],
-        notes: "oversized mood delta — should be clamped",
+        supportingEventHashes: [fakeEventHash],
+        notes: "oversized mood delta — should be clamped (evidence provided)",
       },
       {
         type: "value",
@@ -85,14 +87,14 @@ test("compat regression: full lifecycle — legacy → migrate → shadow → ro
       },
     ],
   };
-  const context = { personaRoot: personaPath };
+  const context = { personaRoot: personaPath, lifeEventHashes: new Set([fakeEventHash]) };
   const shadow = runShadowMode(proposal, context);
 
   assert.equal(shadow.turnId, "shadow-test-001");
   assert.equal(shadow.proposalCount, 3);
   assert.equal(shadow.accepted + shadow.rejected + shadow.clamped, 3);
-  assert.ok(shadow.rejected >= 1, "expected at least one rejection");
-  assert.ok(shadow.clamped >= 1, "expected at least one clamp");
+  assert.ok(shadow.rejected >= 1, "expected at least one rejection (low-confidence value)");
+  assert.ok(shadow.clamped >= 1, "expected at least one clamp (oversized mood with evidence)");
   assert.ok(shadow.gateResults.length > 0);
   assert.ok(shadow.wouldHaveApplied.length < 3, "not all deltas should pass");
 

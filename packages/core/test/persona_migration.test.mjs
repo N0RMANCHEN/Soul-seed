@@ -77,7 +77,7 @@ test("inspectPersonaPackage throws for non-persona directory", async () => {
 
 // ── export ─────────────────────────────────────────────────────────────────────
 
-test("exportPersonaPackage creates MANIFEST.json with correct schema", async () => {
+test("exportPersonaPackage creates EXPORT_MANIFEST.json with correct schema", async () => {
   const { tmpDir, personaPath } = await makeTmpPersona("Dana");
   const outDir = path.join(tmpDir, "export");
   try {
@@ -87,9 +87,9 @@ test("exportPersonaPackage creates MANIFEST.json with correct schema", async () 
     assert.equal(typeof manifest.personaId, "string");
     assert.ok(manifest.personaId.length > 0);
     assert.ok(manifest.files.length > 0);
-    // Verify MANIFEST.json was written
-    const manifestPath = path.join(outDir, "MANIFEST.json");
-    assert.ok(existsSync(manifestPath), "MANIFEST.json should exist");
+    // Verify EXPORT_MANIFEST.json was written (avoids case conflict with manifest.json)
+    const manifestPath = path.join(outDir, "EXPORT_MANIFEST.json");
+    assert.ok(existsSync(manifestPath), "EXPORT_MANIFEST.json should exist");
     const written = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.equal(written.schema, "soulseed.persona.manifest.v1");
   } finally {
@@ -164,14 +164,14 @@ test("importPersonaPackage preserves persona identity after migration", async ()
   }
 });
 
-test("importPersonaPackage fails without MANIFEST.json", async () => {
+test("importPersonaPackage fails without EXPORT_MANIFEST.json", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-no-manifest-"));
   const importDir = path.join(tmpDir, "dest");
   try {
     const result = await importPersonaPackage(tmpDir, importDir);
     assert.equal(result.ok, false);
     assert.ok(result.errors.length > 0);
-    assert.match(result.errors[0], /MANIFEST/);
+    assert.match(result.errors[0], /EXPORT_MANIFEST/);
   } finally {
     await rm(tmpDir, { recursive: true });
   }
