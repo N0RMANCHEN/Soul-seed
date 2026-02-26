@@ -20,7 +20,7 @@
     "requiredDocs": "error",
     "lineLimits": "warn",
     "coreExportSurface": "warn",
-    "workspaceVersionConsistency": "warn",
+    "workspaceVersionConsistency": "error",
     "planNamingMix": "warn"
   }
 }
