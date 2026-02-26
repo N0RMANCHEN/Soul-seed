@@ -10,8 +10,8 @@ import {
   extractImperfectionSignals,
   buildImperfectionContextBlock,
   resetImperfectionRulesCache,
-} from "../dist/imperfection_signal_extractor.js";
-import { loadImperfectionRules, resetImperfectionRulesCache as resetRulesCache } from "../dist/imperfection_rules.js";
+} from "../dist/persona/imperfection_signal_extractor.js";
+import { loadImperfectionRules, resetImperfectionRulesCache as resetRulesCache } from "../dist/persona/imperfection_rules.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const configDir = resolve(__dirname, "../../../config");
