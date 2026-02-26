@@ -1,0 +1,7 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-02-26",
+  "description": "Core export surface policy. Internal-only modules are not re-exported from packages/core/src/index.ts.",
+  "internalModules": ["persona_write_lock"],
+  "note": "Shells (cli, mcp-server) must not import internal modules. New exports require review."
+}

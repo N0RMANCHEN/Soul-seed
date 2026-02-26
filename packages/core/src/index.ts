@@ -1,3 +1,8 @@
+/**
+ * Core public API. Shells (cli, mcp-server) must import only from this barrel.
+ * Internal-only modules (e.g. persona_write_lock) are not re-exported.
+ * See doc/Architecture-Folder-Governance.md §2.4.
+ */
 export * from "./types.js";
 export * from "./hash.js";
 export * from "./persona.js";
@@ -84,8 +89,6 @@ export * from "./expression_belief_state.js";
 export * from "./latent_cross_influence.js";
 export * from "./routing_adaptation.js";
 export * from "./memory_rotation.js";
-export * from "./memory_forgetting.js";
-export * from "./persona_write_lock.js";
 export * from "./memory_store_driver.js";
 export * from "./persona_lint.js";
 export * from "./persona_compile.js";

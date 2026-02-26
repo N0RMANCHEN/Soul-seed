@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - **AG/P1-2** Persona Package single truth source: Designated `doc/Persona-Package-Layout.md` as canonical; README and AGENT now reference it with brief summary; Hb-2-1 plan references canonical layout.
 - **AG/P1-3** Plan naming unification: Added H1/H2/H3 ↔ Ha/Hb/Hc mapping to `doc/plans/README.md`; added mapping header to H1/H2/H3 plan files; H-State-Closure-Plan batch naming clarified.
 - **AG/P2-2** Runtime/report asset governance: Added `doc/Runtime-Report-Asset-Governance.md`; README reference; personas/ and reports/ retention/archive policy documented.
+- **AG/P2-1** Core export surface: Removed internal-only `persona_write_lock` from barrel; added export policy comment; `config/governance/core_export_whitelist.json`.
 
 ### Added
 - Added `doc/Architecture-Governance-Roadmap.md` as an execution-oriented governance roadmap for architecture boundaries, folder/file management, A/B collaboration split, sync points, and acceptance gates.
