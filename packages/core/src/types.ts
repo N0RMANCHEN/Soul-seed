@@ -791,6 +791,8 @@ export type LifeEventType =
   | "capability_call_succeeded"
   | "owner_auth_succeeded"
   | "owner_auth_failed"
+  | "non_polling_wake_planned"
+  | "non_polling_tick_fired"
   | "proactive_decision_made"
   | "proactive_message_emitted"
   | "meta_intent_planned"

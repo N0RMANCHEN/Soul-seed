@@ -3067,9 +3067,10 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
 
   const dispatchNonPollingSignal = (signal: NonPollingSignal): void => {
     stopProactive();
+    const signalAtMs = Date.now();
     const wakePlan = deriveNonPollingWakePlan({
       signal,
-      nowMs: Date.now(),
+      nowMs: signalAtMs,
       lastUserAtMs: lastUserAt,
       lastAssistantAtMs: lastAssistantAt,
       hasUserSpokenThisSession,
@@ -3078,12 +3079,30 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       curiosity,
       relationshipState: personaPkg.relationshipState
     });
+    void appendLifeEvent(personaPath, {
+      type: "non_polling_wake_planned",
+      payload: {
+        signal,
+        shouldArm: wakePlan.shouldArm,
+        delayMs: wakePlan.delayMs,
+        gateReason: wakePlan.gateReason,
+        at: new Date(signalAtMs).toISOString()
+      }
+    }).catch(() => {});
     if (!wakePlan.shouldArm) {
       return;
     }
     proactiveTimer = setTimeout(() => {
       lineQueue = lineQueue
         .then(async () => {
+          await appendLifeEvent(personaPath, {
+            type: "non_polling_tick_fired",
+            payload: {
+              signal,
+              delayMs: wakePlan.delayMs,
+              firedAt: new Date().toISOString()
+            }
+          });
           const nextSignal = await runProactiveDecisionOnce();
           dispatchNonPollingSignal(nextSignal);
         })
