@@ -65,7 +65,7 @@ test("chat can resume last goal and report progress without creating a new goal"
   const chatResult = await runInteractive(
     [cliPath, "Roxy"],
     ["请帮我制定一个执行计划", "继续上次任务", "做到哪一步", "/exit", "确认退出"],
-    { cwd: tmpDir }
+    { cwd: tmpDir, intervalMs: 420 }
   );
   assert.equal(chatResult.status, 0);
   assert.match(chatResult.stdout, /当前任务「[\s\S]*」状态：/);

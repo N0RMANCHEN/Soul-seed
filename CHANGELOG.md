@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **CLI test** `chat can resume last goal and report progress without creating a new goal`: increased `intervalMs` to 420 to avoid flakiness when run in full suite.
+
 ### Changed
 - **AG/P0-0** Plan doc update rules: Added `doc/plans/README.md` with fixed declaration (progress 以 Roadmap 为准); replaced granular status in `H-State-Closure-Plan.md`, `H2-State-Modules.md` with scope-level; added Progress declaration to Ha/Hb/Hc/H1/H3 plans; updated `doc/Architecture-Folder-Governance.md` §3.3 cross-ref.
 - **AG/P1-2** Persona Package single truth source: Designated `doc/Persona-Package-Layout.md` as canonical; README and AGENT now reference it with brief summary; Hb-2-1 plan references canonical layout.
