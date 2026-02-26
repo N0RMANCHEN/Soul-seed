@@ -33,6 +33,8 @@ test("generateAutonomyUtterance uses degraded when llm unavailable", async () =>
   });
   assert.equal(out.source, "degraded");
   assert.equal(out.streamed, false);
+  assert.equal(out.suppressed, false);
+  assert.equal(out.displayPolicy, "show");
   assert.equal(out.text, "degraded");
   assert.match(out.reasonCodes.join(","), /llm_unavailable/);
 });
@@ -57,11 +59,13 @@ test("generateAutonomyUtterance returns llm text after normalization", async () 
   });
   assert.equal(out.source, "llm");
   assert.equal(out.streamed, true);
+  assert.equal(out.suppressed, false);
+  assert.equal(out.displayPolicy, "show");
   assert.match(out.text, /我在/);
   assert.doesNotMatch(out.text, /轻声/);
 });
 
-test("generateAutonomyUtterance falls back when llm output is ungrounded temporal recall", async () => {
+test("generateAutonomyUtterance suppresses proactive fallback on ungrounded temporal recall", async () => {
   const out = await generateAutonomyUtterance({
     mode: "proactive",
     allowLlm: true,
@@ -78,7 +82,11 @@ test("generateAutonomyUtterance falls back when llm output is ungrounded tempora
   });
   assert.equal(out.source, "degraded");
   assert.equal(out.streamed, false);
+  assert.equal(out.suppressed, true);
+  assert.equal(out.displayPolicy, "suppress");
+  assert.equal(out.text, "");
   assert.match(out.reasonCodes.join(","), /ungrounded_temporal_recall/);
+  assert.match(out.reasonCodes.join(","), /proactive_suppressed_on_fallback/);
 });
 
 test("generateAutonomyUtterance falls back on llm error", async () => {
@@ -97,5 +105,7 @@ test("generateAutonomyUtterance falls back on llm error", async () => {
   });
   assert.equal(out.source, "degraded");
   assert.equal(out.streamed, false);
+  assert.equal(out.suppressed, false);
+  assert.equal(out.displayPolicy, "show");
   assert.match(out.reasonCodes.join(","), /llm_error/);
 });

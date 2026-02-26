@@ -2177,6 +2177,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   }
 
   const assistantLabel = (): string => `${personaPkg.persona.displayName}>`;
+  const stripAssistantLabelPrefix = (text: string): string => {
+    const ownLabel = assistantLabel().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const genericLabelPattern = /^[\p{L}\p{N}_-]{1,24}>\s*/u;
+    return text
+      .replace(new RegExp(`^${ownLabel}\\s*`, "u"), "")
+      .replace(genericLabelPattern, "")
+      .trimStart();
+  };
   let lastOutputGuardTrace:
     | {
         leak_type: "system_prompt" | "execution_state" | "provider_meta";
@@ -2205,11 +2213,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     return guarded.text;
   };
   const sayAsAssistant = (content: string, emotionPrefix = ""): void => {
-    const safeContent = guardAssistantOutput(content, "reply");
+    const safeContent = stripAssistantLabelPrefix(guardAssistantOutput(content, "reply"));
     console.log(`${assistantLabel()} ${emotionPrefix}${safeContent}`);
   };
   const sayAsAssistantTypewriter = async (content: string, emotionPrefix = ""): Promise<void> => {
-    const safeContent = guardAssistantOutput(content, "reply");
+    const safeContent = stripAssistantLabelPrefix(guardAssistantOutput(content, "reply"));
     process.stdout.write(`${assistantLabel()} ${emotionPrefix}`);
     let delayBudgetMs = 1200;
     for (const ch of safeContent) {
@@ -2346,7 +2354,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       .replace(/\s+/g, " ")
       .replace(/\n+/g, " ")
       .trim()
-      .replace(/^Roxy>\s*/i, "")
+      .replace(new RegExp(`^${assistantLabel().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "u"), "")
+      .replace(/^[\p{L}\p{N}_-]{1,24}>\s*/u, "")
       .replace(/^[-*•]+\s*/u, "");
     if (!cleaned) {
       return "";
@@ -2774,7 +2783,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     const templatesByState: Record<string, string[]> = {
       "neutral-unknown": ["我在这，想继续哪个话题？", "如果你愿意，我们可以把当前问题再拆小一点。"],
       friend: ["刚想到一个可能更省力的做法，要不要我直接给你步骤？", "我在，想先看结论版还是详细版？"],
-      peer: ["我整理了一下脉络，我们可以继续推进下一步。", "需要的话我可以先给你一个可执行清单。"],
+      peer: ["我在，我们可以直接往下一步走。", "你要的话我现在就给你具体步骤。"],
       intimate: ["我在，慢慢来。你想先聊重点，还是先把情绪放下来？", "我一直在这。你想先从哪一小段开始，我陪你。"]
     };
     const pool = templatesByState[rs] ?? templatesByState["neutral-unknown"];
@@ -2807,7 +2816,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     const compact = source.replace(/\s+/g, " ").slice(0, 36);
     const templates = [
       `你${temporalRef}提到“${compact}”，我们继续往下走。`,
-      `回到你${temporalRef}说的“${compact}”，我给你接着展开。`,
+      `回到你${temporalRef}说的“${compact}”，我接着往下说。`,
       `先接住“${compact}”这点，我继续往前推进。`
     ];
     const idx = Math.floor(Date.now() / 1000) % templates.length;
@@ -2820,9 +2829,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     fallbackText: string,
     seedInput?: string
   ): string => {
-    let normalized = sanitizeAutonomyText(raw);
+    const isMechanicalTemplateTone = (text: string): boolean =>
+      /(我刚整理了|要不要我继续展开|我整理了一下脉络|给你一个可执行清单|继续展开)/u.test(text.trim());
+    let normalized = stripAssistantLabelPrefix(sanitizeAutonomyText(raw));
     normalized = stripStageDirections(normalized);
     if (isDramaticRoleplayOpener(normalized)) {
+      normalized = "";
+    }
+    if (isMechanicalTemplateTone(normalized)) {
       normalized = "";
     }
     normalized = normalized.replace(/[ \t]{2,}/g, " ").trim();
@@ -2862,7 +2876,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     fallback: string;
     emitTokens?: boolean;
     proactivePlan?: Record<string, unknown>;
-  }): Promise<{ text: string; streamed: boolean; source: "llm" | "degraded" | "fallback"; reasonCodes: string[] }> => {
+  }): Promise<{
+    text: string;
+    streamed: boolean;
+    source: "llm" | "degraded" | "fallback";
+    suppressed: boolean;
+    displayPolicy: "show" | "suppress";
+    reasonCodes: string[];
+  }> => {
     const temporalAnchor = deriveTemporalAnchor({
       nowMs: Date.now(),
       lastUserAtMs: Number.isFinite(lastUserAt) ? lastUserAt : null,
@@ -2904,6 +2925,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     };
     let started = false;
     const emitTokens = params.emitTokens !== false;
+    let firstChunk = true;
     const generated = await generateAutonomyUtterance({
       mode: params.mode,
       adapter,
@@ -2915,14 +2937,16 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         if (!emitTokens) {
           return;
         }
+        const safeChunk = firstChunk ? stripAssistantLabelPrefix(chunk) : chunk;
+        firstChunk = false;
         if (!started) {
           process.stdout.write(`\n${assistantLabel()} `);
           started = true;
         }
-        process.stdout.write(chunk);
+        process.stdout.write(safeChunk);
       }
     });
-    if (emitTokens && started && generated.streamed) {
+    if (!generated.suppressed && emitTokens && started && generated.streamed) {
       process.stdout.write("\n");
     }
     return generated;
@@ -2962,9 +2986,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     });
   };
 
-  const sendProactiveMessage = async (proactivePlan?: Record<string, unknown>): Promise<void> => {
+  const sendProactiveMessage = async (proactivePlan?: Record<string, unknown>): Promise<boolean> => {
     if (currentAbort) {
-      return;
+      return false;
     }
     const proactiveStartedAtMs = Date.now();
     const pastEvents = await readLifeEvents(personaPath);
@@ -2974,6 +2998,20 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       emitTokens: false,
       proactivePlan
     });
+    if (proactiveGenerated.suppressed || proactiveGenerated.displayPolicy === "suppress") {
+      await appendLifeEvent(personaPath, {
+        type: "conflict_logged",
+        payload: {
+          category: "proactive_message_suppressed",
+          reasonCodes: proactiveGenerated.reasonCodes,
+          source: proactiveGenerated.source,
+          displayPolicy: proactiveGenerated.displayPolicy,
+          suppressReason: "proactive_suppressed_on_fallback"
+        }
+      });
+      rl.prompt();
+      return false;
+    }
     let proactiveText = proactiveGenerated.text;
     const identityGuard = enforceIdentityGuard(proactiveText, personaPkg.persona.displayName, lastUserInput);
     proactiveText = identityGuard.text;
@@ -3011,6 +3049,20 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       : { text: proactiveText, constrained: false };
     proactiveText = proactivePlanned.text;
     proactiveText = guardAssistantOutput(proactiveText, "proactive");
+    if (!proactiveText.trim()) {
+      await appendLifeEvent(personaPath, {
+        type: "conflict_logged",
+        payload: {
+          category: "proactive_message_suppressed",
+          reasonCodes: [...proactiveGenerated.reasonCodes, "proactive_empty_after_guard"],
+          source: proactiveGenerated.source,
+          displayPolicy: proactiveGenerated.displayPolicy,
+          suppressReason: "proactive_empty_after_guard"
+        }
+      });
+      rl.prompt();
+      return false;
+    }
     if (
       !proactiveGenerated.streamed ||
       identityGuard.corrected ||
@@ -3059,6 +3111,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       }
     });
     rl.prompt();
+    return true;
   };
 
   const getProactiveProbability = (): number => buildProactiveSnapshot().probability;
@@ -3109,9 +3162,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       }
     });
     if (decision.emitted) {
-      await sendProactiveMessage(proactivePlan);
-      proactiveMissStreak = 0;
-      return "proactive_message_emitted";
+      const emitted = await sendProactiveMessage(proactivePlan);
+      if (emitted) {
+        proactiveMissStreak = 0;
+        return "proactive_message_emitted";
+      }
+      proactiveMissStreak += 1;
+      proactiveRecentEmitCount = Math.max(0, proactiveRecentEmitCount - 1);
+      return "proactive_decision_miss";
     }
     proactiveMissStreak += 1;
     proactiveRecentEmitCount = Math.max(0, proactiveRecentEmitCount - 1);

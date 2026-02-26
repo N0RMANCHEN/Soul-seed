@@ -34,6 +34,8 @@ export interface GenerateAutonomyUtteranceResult {
   text: string;
   streamed: boolean;
   source: "llm" | "degraded" | "fallback";
+  suppressed: boolean;
+  displayPolicy: "show" | "suppress";
   reasonCodes: string[];
 }
 
@@ -53,6 +55,7 @@ function normalizeText(text: string): string {
     return "刚刚想到你了。今天有没有哪一刻让你心里亮一下？";
   }
   return cleaned
+    .replace(/^[\p{L}\p{N}_-]{1,24}>\s*/u, "")
     .replace(/（[^）\n]{1,28}）/gu, " ")
     .replace(/\([^)\n]{1,28}\)/g, " ")
     .replace(/[ \t]{2,}/g, " ")
@@ -135,18 +138,36 @@ function resolveFallback(
   input: GenerateAutonomyUtteranceInput,
   reasonCode: string
 ): GenerateAutonomyUtteranceResult {
-  if (input.degradedText.trim()) {
+  const degraded = input.degradedText.trim();
+  const fallback = input.fallbackText.trim();
+  if (input.mode === "proactive") {
     return {
-      text: input.degradedText,
+      text: "",
+      streamed: false,
+      source: degraded ? "degraded" : "fallback",
+      suppressed: true,
+      displayPolicy: "suppress",
+      reasonCodes: degraded
+        ? [reasonCode, "proactive_suppressed_on_fallback"]
+        : [reasonCode, "degraded_empty", "proactive_suppressed_on_fallback"]
+    };
+  }
+  if (degraded) {
+    return {
+      text: degraded,
       streamed: false,
       source: "degraded",
+      suppressed: false,
+      displayPolicy: "show",
       reasonCodes: [reasonCode]
     };
   }
   return {
-    text: input.fallbackText,
+    text: fallback,
     streamed: false,
     source: "fallback",
+    suppressed: false,
+    displayPolicy: "show",
     reasonCodes: [reasonCode, "degraded_empty"]
   };
 }
@@ -185,6 +206,8 @@ export async function generateAutonomyUtterance(
     text: normalized,
     streamed: true,
     source: "llm",
+    suppressed: false,
+    displayPolicy: "show",
     reasonCodes: []
   };
 }

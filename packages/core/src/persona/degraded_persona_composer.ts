@@ -53,9 +53,9 @@ export function composeDegradedPersonaReply(input: DegradedPersonaComposerInput)
 
   if (input.mode === "proactive") {
     if (relationship === "intimate") {
-      return seed ? `我想到你${temporal}说的“${seed}”，想先接住这件事。` : "我想主动问一句，你现在最在意的是哪件事？";
+      return seed ? `我还在想着你${temporal}说的“${seed}”。` : "我在。你现在最想先说哪一段？";
     }
-    return seed ? `我刚整理了你${temporal}提到的“${seed}”，要不要我继续展开？` : "我在，想继续的话我可以给你下一步。";
+    return seed ? `你${temporal}提到“${seed}”，我还记着。` : "我在。想继续的话我们就接着聊。";
   }
 
   const fallback = seed
