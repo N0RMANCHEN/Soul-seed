@@ -2246,6 +2246,107 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       await sleep(remainMs);
     }
   };
+  let systemMessageQueue = Promise.resolve();
+  const generatePersonaSystemMessage = async (
+    rawFactText: string,
+    stage:
+      | "reply"
+      | "proactive"
+      | "farewell"
+      | "greeting"
+      | "exit_confirm"
+      | "tool_preflight"
+      | "tool_result"
+      | "tool_failure" = "tool_result"
+  ): Promise<string | null> => {
+    const compactFacts = rawFactText.trim();
+    if (!compactFacts) {
+      return null;
+    }
+    const apiKey = process.env.SOULSEED_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? "";
+    if (!apiKey || apiKey === "test-key") {
+      return null;
+    }
+    const relationship = personaPkg.relationshipState ?? createInitialRelationshipState();
+    const messages = [
+      {
+        role: "system" as const,
+        content:
+          `你是${personaPkg.persona.displayName}。现在要给用户发一条系统相关的即时回执，但仍必须像平常聊天时的你。` +
+          "只输出1-2句中文自然口语，不要模板话术，不要条目，不要解释规则，不要出现角色标签。不要捏造事实。"
+      },
+      {
+        role: "user" as const,
+        content: JSON.stringify({
+          kind: "chat_system_event",
+          facts: compactFacts.slice(0, 600),
+          relationshipState: relationship.state,
+          tonePreference: personaPkg.voiceProfile?.tonePreference ?? "plain",
+          style: personaPkg.habits?.style ?? "concise",
+          lastUserInput: lastUserInput.slice(0, 180),
+          lastAssistantOutput: lastAssistantOutput.slice(0, 180)
+        })
+      }
+    ];
+    let raw = "";
+    try {
+      const generated = await adapter.streamChat(messages, {
+        onToken: (chunk) => {
+          raw += chunk;
+        }
+      });
+      raw = raw.trim() ? raw : generated.content;
+    } catch {
+      return null;
+    }
+    let normalized = sanitizeAutonomyText(raw);
+    normalized = stripStageDirections(normalized);
+    normalized = stripPromptArtifactTags(normalized);
+    normalized = stripAssistantLabelPrefix(normalized);
+    normalized = guardAssistantOutput(normalized, stage);
+    normalized = normalized.replace(/[ \t]{2,}/g, " ").trim();
+    if (!normalized || isDramaticRoleplayOpener(normalized)) {
+      return null;
+    }
+    return normalized;
+  };
+  const emitPersonaSystemMessageFromRaw = (
+    rawFactText: string,
+    stage:
+      | "reply"
+      | "proactive"
+      | "farewell"
+      | "greeting"
+      | "exit_confirm"
+      | "tool_preflight"
+      | "tool_result"
+      | "tool_failure" = "tool_result"
+  ): void => {
+    systemMessageQueue = systemMessageQueue
+      .then(async () => {
+        await emitPersonaSystemMessageNow(rawFactText, stage);
+      })
+      .catch(() => {});
+  };
+  const emitPersonaSystemMessageNow = async (
+    rawFactText: string,
+    stage:
+      | "reply"
+      | "proactive"
+      | "farewell"
+      | "greeting"
+      | "exit_confirm"
+      | "tool_preflight"
+      | "tool_result"
+      | "tool_failure" = "tool_result"
+  ): Promise<boolean> => {
+    const generated = await generatePersonaSystemMessage(rawFactText, stage);
+    if (!generated) {
+      return false;
+    }
+    console.log(`${assistantLabel()} ${generated}`);
+    return true;
+  };
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -2514,12 +2615,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       const next = readChunkByCursor(source.content, readingCursor, 760);
       readingCursor = next.nextCursor;
       if (!next.text.trim()) {
-        sayAsAssistant(leadIn ? `${leadIn}\n\n这份内容当前没有可读文本。` : "这份内容当前没有可读文本。");
+        emitPersonaSystemMessageFromRaw(leadIn ? `${leadIn}\n\n这份内容当前没有可读文本。` : "这份内容当前没有可读文本。");
         readingAwaitingContinue = false;
         return true;
       }
       if (next.done) {
-        sayAsAssistant(
+        emitPersonaSystemMessageFromRaw(
           leadIn
             ? `${leadIn}\n\n${next.text}\n\n这一段到这儿了。要不要我顺手总结一下？`
             : `${next.text}\n\n这一段到这儿了。要不要我顺手总结一下？`
@@ -2527,7 +2628,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         readingAwaitingContinue = false;
         return true;
       }
-      sayAsAssistant(leadIn ? `${leadIn}\n\n${next.text}\n\n要继续吗？` : `${next.text}\n\n要继续吗？`);
+      emitPersonaSystemMessageFromRaw(leadIn ? `${leadIn}\n\n${next.text}\n\n要继续吗？` : `${next.text}\n\n要继续吗？`);
       readingAwaitingContinue = true;
       return true;
     };
@@ -2546,34 +2647,34 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         readingCursor = next.nextCursor;
         if (next.text.trim()) {
           const ending = next.done ? "这一段到这儿了。要不要我顺手总结一下？" : "要继续吗？";
-          sayAsAssistant(`明白，这是外部文章，不当你的个人记忆。我们按文本本身来读。\n\n${next.text}\n\n${ending}`);
+          emitPersonaSystemMessageFromRaw(`明白，这是外部文章，不当你的个人记忆。我们按文本本身来读。\n\n${next.text}\n\n${ending}`);
           readingAwaitingContinue = !next.done;
           return true;
         }
       }
-      sayAsAssistant("明白，这是外部文章，不当你的个人记忆。我们按文本本身来读。");
+      emitPersonaSystemMessageFromRaw("明白，这是外部文章，不当你的个人记忆。我们按文本本身来读。");
       return true;
     }
     if (isReadingStatusQuery(input)) {
       const total = activeReadingSource.content.trim().length;
       if (total <= 0) {
-        sayAsAssistant("这份内容当前没有可读文本。");
+        emitPersonaSystemMessageFromRaw("这份内容当前没有可读文本。");
         readingAwaitingContinue = false;
         return true;
       }
       if (readingCursor <= 0) {
-        sayAsAssistant("我刚拿到，还没开读。要我从开头开始吗？");
+        emitPersonaSystemMessageFromRaw("我刚拿到，还没开读。要我从开头开始吗？");
         readingAwaitingContinue = true;
         return true;
       }
       if (readingCursor >= total) {
         const summary = buildReadingSummary(activeReadingSource.content);
-        sayAsAssistant(`读完了。核心内容是：${summary}`);
+        emitPersonaSystemMessageFromRaw(`读完了。核心内容是：${summary}`);
         readingAwaitingContinue = true;
         return true;
       }
       const progress = Math.max(1, Math.min(99, Math.round((readingCursor / total) * 100)));
-      sayAsAssistant(`还没读完，大概到 ${progress}% 了。要我接着读吗？`);
+      emitPersonaSystemMessageFromRaw(`还没读完，大概到 ${progress}% 了。要我接着读吗？`);
       return true;
     }
     if (
@@ -2605,7 +2706,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             ? "这篇外部文章我先给你捋一下："
             : `《${readingLabelFromUri(activeReadingSource.uri)}》我先给你捋一下：`;
       const prefix = modeHint;
-      sayAsAssistant(`${prefix}${summary}`);
+      emitPersonaSystemMessageFromRaw(`${prefix}${summary}`);
       readingAwaitingContinue = true;
       return true;
     }
@@ -3232,7 +3333,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         })
         .catch((error: unknown) => {
           const msg = error instanceof Error ? error.message : String(error);
-          sayAsAssistant(`我这次主动消息发送失败了：${msg}`);
+          emitPersonaSystemMessageFromRaw(`我这次主动消息发送失败了：${msg}`);
           rl.prompt();
           dispatchNonPollingSignal("proactive_decision_miss");
         });
@@ -3248,7 +3349,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       "4) 通过对话退出会话（会先确认）",
       "你也可以直接说“读取这个文件 ...”或“退出会话”。"
     ];
-    sayAsAssistant(lines.join("\n"));
+    emitPersonaSystemMessageFromRaw(lines.join("\n"));
   };
 
   const explainToolPreflight = (capability: string, target?: string): string => {
@@ -3394,6 +3495,18 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     });
 
     if (guarded.status === "confirm_required") {
+      const blockWhenSuppressed = async (capability: string, detail: string): Promise<"handled"> => {
+        await appendLifeEvent(personaPath, {
+          type: "conflict_logged",
+          payload: {
+            category: "system_message_suppressed",
+            reason: "llm_unavailable_or_failed",
+            capability,
+            detail
+          }
+        });
+        return "handled";
+      };
       if (guarded.capability === "session.exit") {
         pendingExitConfirm = true;
         const prompt = await streamPersonaAutonomy({
@@ -3413,36 +3526,67 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         });
       } else if (guarded.capability === "session.read_file") {
         const normalizedPath = String(guarded.normalizedInput.path ?? "");
+        const emitted = await emitPersonaSystemMessageNow(
+          `${explainToolPreflight(guarded.capability, normalizedPath)} 你回“好”我就开始，不想读就回“取消”。`,
+          "tool_preflight"
+        );
+        if (!emitted) {
+          return blockWhenSuppressed(guarded.capability, normalizedPath);
+        }
         pendingReadConfirmPath = normalizedPath;
-        sayAsAssistant(`${explainToolPreflight(guarded.capability, normalizedPath)} 你回“好”我就开始，不想读就回“取消”。`);
       } else if (guarded.capability === "session.fetch_url") {
         const normalizedUrl = String(guarded.normalizedInput.url ?? "");
+        const emitted = await emitPersonaSystemMessageNow(
+          `${explainToolPreflight(guarded.capability, normalizedUrl)} 你回“好”我就开始，不想读就回“取消”。`,
+          "tool_preflight"
+        );
+        if (!emitted) {
+          return blockWhenSuppressed(guarded.capability, normalizedUrl);
+        }
         pendingFetchConfirmUrl = normalizedUrl;
-        sayAsAssistant(`${explainToolPreflight(guarded.capability, normalizedUrl)} 你回“好”我就开始，不想读就回“取消”。`);
       } else if (guarded.capability === "session.set_mode") {
-        sayAsAssistant("这是高风险设置，请在命令后补充 `confirmed=true` 再执行。");
+        const emitted = await emitPersonaSystemMessageNow("这是高风险设置，请在命令后补充 `confirmed=true` 再执行。", "tool_preflight");
+        if (!emitted) {
+          return blockWhenSuppressed(guarded.capability, "confirmed=true required");
+        }
       } else if (guarded.capability === "session.create_persona") {
         const nameToCreate = String(guarded.normalizedInput.name ?? "").trim();
         if (!nameToCreate) {
-          sayAsAssistant("请告诉我要创建的人格名字。");
+          const emitted = await emitPersonaSystemMessageNow("请告诉我要创建的人格名字。", "tool_preflight");
+          if (!emitted) {
+            return blockWhenSuppressed(guarded.capability, "missing_name");
+          }
         } else {
+          const emitted = await emitPersonaSystemMessageNow(
+            `我准备创建一个新人格「${nameToCreate}」并自动切换到它。回「是」确认，或回「取消」放弃。`,
+            "tool_preflight"
+          );
+          if (!emitted) {
+            return blockWhenSuppressed(guarded.capability, nameToCreate);
+          }
           pendingCreatePersonaName = nameToCreate;
-          sayAsAssistant(`我准备创建一个新人格「${nameToCreate}」并自动切换到它。回「是」确认，或回「取消」放弃。`);
         }
       } else if (guarded.capability === "session.shared_space_setup") {
         const setupPath = String(guarded.normalizedInput.path ?? "").trim();
-        pendingSharedSpaceSetupPath = setupPath;
         const personaName = personaPkg.persona.displayName;
-        sayAsAssistant(
-          `我准备在 ${setupPath} 创建我们的专属文件夹：\n  from_${personaName}/ （我放给你的文件）\n  to_${personaName}/ （你放给我的文件）\n回「是」确认，或回「取消」放弃。`
+        const emitted = await emitPersonaSystemMessageNow(
+          `我准备在 ${setupPath} 创建我们的专属文件夹：\n  from_${personaName}/ （我放给你的文件）\n  to_${personaName}/ （你放给我的文件）\n回「是」确认，或回「取消」放弃。`,
+          "tool_preflight"
         );
+        if (!emitted) {
+          return blockWhenSuppressed(guarded.capability, setupPath);
+        }
+        pendingSharedSpaceSetupPath = setupPath;
       } else if (guarded.capability === "session.shared_space_delete") {
         const filePath = String(guarded.normalizedInput.path ?? "").trim();
-        pendingDeleteConfirmPath = filePath;
         const relPath = personaPkg.persona.sharedSpace?.path
           ? path.relative(personaPkg.persona.sharedSpace.path, filePath)
           : path.basename(filePath);
-        sayAsAssistant(`确认要删除 ${relPath} 吗？回「是」确认，或回「取消」放弃。`);
+        const emitted = await emitPersonaSystemMessageNow(`确认要删除 ${relPath} 吗？回「是」确认，或回「取消」放弃。`, "tool_preflight");
+        if (!emitted) {
+          return blockWhenSuppressed(guarded.capability, relPath);
+        }
+        pendingDeleteConfirmPath = filePath;
       }
       return "handled";
     }
@@ -3456,27 +3600,23 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             reason: guarded.reason
           }
         });
-        sayAsAssistant("Owner 授权失败，这个设置改不了。");
+        emitPersonaSystemMessageFromRaw("Owner 授权失败，这个设置改不了。");
       } else if (guarded.reason === "missing_mode_key" || guarded.reason === "missing_mode_value") {
-        sayAsAssistant(
-          "Owner 指令格式支持：owner <口令> strict_memory_grounding|adult_mode|age_verified|explicit_consent|fictional_roleplay on|off。"
-        );
+        emitPersonaSystemMessageFromRaw("Owner 指令格式支持：owner <口令> strict_memory_grounding|adult_mode|age_verified|explicit_consent|fictional_roleplay on|off。");
       } else if (guarded.reason === "missing_path") {
-        sayAsAssistant("请显式提供文件路径，例如：读取 /tmp/a.txt");
+        emitPersonaSystemMessageFromRaw("请显式提供文件路径，例如：读取 /tmp/a.txt");
       } else if (guarded.reason === "missing_url") {
-        sayAsAssistant("请提供要读取的网址，例如：帮我看看 https://example.com");
+        emitPersonaSystemMessageFromRaw("请提供要读取的网址，例如：帮我看看 https://example.com");
       } else if (guarded.reason === "invalid_url" || guarded.reason === "invalid_url_scheme") {
-        sayAsAssistant("网址格式不正确，请提供以 http:// 或 https:// 开头的完整网址。");
+        emitPersonaSystemMessageFromRaw("网址格式不正确，请提供以 http:// 或 https:// 开头的完整网址。");
       } else if (guarded.reason === "fetch_origin_not_allowed") {
-        sayAsAssistant("这个网址域名不在允许列表中，已拒绝抓取。请联系 Owner 配置 SOULSEED_FETCH_ALLOWLIST。");
+        emitPersonaSystemMessageFromRaw("这个网址域名不在允许列表中，已拒绝抓取。请联系 Owner 配置 SOULSEED_FETCH_ALLOWLIST。");
       } else if (guarded.reason === "shared_space_not_configured") {
-        sayAsAssistant(
-          `还没有配置专属文件夹。你可以说「设置我们的专属文件夹到 ~/Desktop/我们的空间」，或者运行 ./ss space ${personaPkg.persona.displayName} --path ~/Desktop/我们的空间`
-        );
+        emitPersonaSystemMessageFromRaw(`还没有配置专属文件夹。你可以说「设置我们的专属文件夹到 ~/Desktop/我们的空间」，或者运行 ./ss space ${personaPkg.persona.displayName} --path ~/Desktop/我们的空间`);
       } else if (guarded.reason === "path_outside_shared_space") {
-        sayAsAssistant("这个路径在专属文件夹范围之外，不能操作。");
+        emitPersonaSystemMessageFromRaw("这个路径在专属文件夹范围之外，不能操作。");
       } else {
-        sayAsAssistant("这个能力调用被策略拒绝了。");
+        emitPersonaSystemMessageFromRaw("这个能力调用被策略拒绝了。");
       }
       await appendLifeEvent(personaPath, {
         type: "capability_call_rejected",
@@ -3504,7 +3644,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           expiresAt: new Date(ownerAuthExpiresAtMs).toISOString()
         }
       });
-      sayAsAssistant("Owner 授权通过，接下来 15 分钟内你可以直接执行敏感模式切换。");
+      emitPersonaSystemMessageFromRaw("Owner 授权通过，接下来 15 分钟内你可以直接执行敏感模式切换。");
       return "handled";
     }
 
@@ -3520,7 +3660,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     }
 
     if (guarded.capability === "session.show_modes") {
-      sayAsAssistant(
+      emitPersonaSystemMessageFromRaw(
         [
           `当前模式：strict_memory_grounding=${strictMemoryGrounding ? "on" : "off"}`,
           `adult_mode=${adultSafetyContext.adultMode ? "on" : "off"}`,
@@ -3561,7 +3701,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             });
           }
         });
-        sayAsAssistant(explainToolSuccess(guarded.capability, normalizedPath));
+        emitPersonaSystemMessageFromRaw(explainToolSuccess(guarded.capability, normalizedPath));
         await appendLifeEvent(personaPath, {
           type: "capability_call_succeeded",
           payload: {
@@ -3571,7 +3711,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         });
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
-        sayAsAssistant(explainToolFailure(guarded.capability, msg));
+        emitPersonaSystemMessageFromRaw(explainToolFailure(guarded.capability, msg));
         await appendLifeEvent(personaPath, {
           type: "capability_call_rejected",
           payload: {
@@ -3607,7 +3747,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             });
           }
         });
-        sayAsAssistant(explainToolSuccess(guarded.capability, rawUrl));
+        emitPersonaSystemMessageFromRaw(explainToolSuccess(guarded.capability, rawUrl));
         await appendLifeEvent(personaPath, {
           type: "capability_call_succeeded",
           payload: {
@@ -3617,7 +3757,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         });
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
-        sayAsAssistant(explainToolFailure(guarded.capability, msg));
+        emitPersonaSystemMessageFromRaw(explainToolFailure(guarded.capability, msg));
         await appendLifeEvent(personaPath, {
           type: "capability_call_rejected",
           payload: {
@@ -3631,9 +3771,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     }
 
     if (guarded.capability === "session.proactive_status") {
-      sayAsAssistant(
-        `主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick，curiosity=${curiosity.toFixed(2)}, annoyanceBias=${annoyanceBias.toFixed(2)}, missStreak=${proactiveMissStreak}）`
-      );
+      emitPersonaSystemMessageFromRaw(`主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick，curiosity=${curiosity.toFixed(2)}, annoyanceBias=${annoyanceBias.toFixed(2)}, missStreak=${proactiveMissStreak}）`);
       await appendLifeEvent(personaPath, {
         type: "capability_call_succeeded",
         payload: {
@@ -3649,7 +3787,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
 
     if (guarded.capability === "session.proactive_tune") {
       const action = String(guarded.normalizedInput.action ?? "").toLowerCase();
-      sayAsAssistant("我会按自己的状态决定主动节奏，这个兼容命令不会直接改我的主动倾向。");
+      emitPersonaSystemMessageFromRaw("我会按自己的状态决定主动节奏，这个兼容命令不会直接改我的主动倾向。");
       await appendLifeEvent(personaPath, {
         type: "capability_call_succeeded",
         payload: {
@@ -3704,11 +3842,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           modeValue
         }
       });
-      sayAsAssistant(
-        `已更新：${modeKey}=${modeValue ? "on" : "off"}。当前 strict_memory_grounding=${
+      emitPersonaSystemMessageFromRaw(`已更新：${modeKey}=${modeValue ? "on" : "off"}。当前 strict_memory_grounding=${
           strictMemoryGrounding ? "on" : "off"
-        }，adult_mode=${adultSafetyContext.adultMode ? "on" : "off"}。`
-      );
+        }，adult_mode=${adultSafetyContext.adultMode ? "on" : "off"}。`);
       return "handled";
     }
 
@@ -3764,10 +3900,10 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
       }
       if (found.length === 0) {
-        sayAsAssistant("当前没有找到任何可用人格。请先运行 ./ss new <name> 创建一个。");
+        emitPersonaSystemMessageFromRaw("当前没有找到任何可用人格。请先运行 ./ss new <name> 创建一个。");
       } else {
         const lines = ["可用人格列表：", ...found.map((p) => `  • ${p.name}  →  ${p.path}`)];
-        sayAsAssistant(lines.join("\n"));
+        emitPersonaSystemMessageFromRaw(lines.join("\n"));
       }
       await appendLifeEvent(personaPath, {
         type: "capability_call_succeeded",
@@ -3779,7 +3915,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     if (guarded.capability === "session.connect_to") {
       const targetName = String(guarded.normalizedInput.targetName ?? "").trim();
       if (!targetName) {
-        sayAsAssistant("请告诉我要切换到哪个人格的名字。");
+        emitPersonaSystemMessageFromRaw("请告诉我要切换到哪个人格的名字。");
         return "handled";
       }
       // Search for a matching persona by name (case-insensitive)
@@ -3804,7 +3940,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         if (targetPath) break;
       }
       if (!targetPath) {
-        sayAsAssistant(`找不到名为"${targetName}"的人格。可以用"有哪些人格"查看可用列表。`);
+        emitPersonaSystemMessageFromRaw(`找不到名为"${targetName}"的人格。可以用"有哪些人格"查看可用列表。`);
         return "handled";
       }
       try {
@@ -3812,10 +3948,10 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const prevName = personaPkg.persona.displayName;
         personaPath = targetPath;
         personaPkg = newPkg;
-        console.log(`\n[→ 已连接到 ${newPkg.persona.displayName}]（从 ${prevName} 切换）`);
+        emitPersonaSystemMessageFromRaw(`[→ 已连接到 ${newPkg.persona.displayName}]（从 ${prevName} 切换）`);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        sayAsAssistant(`切换人格失败：${msg}`);
+        emitPersonaSystemMessageFromRaw(`切换人格失败：${msg}`);
       }
       await appendLifeEvent(personaPath, {
         type: "capability_call_succeeded",
@@ -3827,7 +3963,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     if (guarded.capability === "session.create_persona") {
       const nameToCreate = String(guarded.normalizedInput.name ?? "").trim();
       if (!nameToCreate) {
-        sayAsAssistant("请告诉我要创建的人格名字。");
+        emitPersonaSystemMessageFromRaw("请告诉我要创建的人格名字。");
         return "handled";
       }
       const outPath = path.resolve(process.cwd(), `./personas/${nameToCreate}.soulseedpersona`);
@@ -3837,14 +3973,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const prevName = personaPkg.persona.displayName;
         personaPath = outPath;
         personaPkg = newPkg;
-        sayAsAssistant(`好，新人格「${nameToCreate}」已创建，我现在是 ${newPkg.persona.displayName}，从 ${prevName} 切过来了。`);
+        emitPersonaSystemMessageFromRaw(`好，新人格「${nameToCreate}」已创建，我现在是 ${newPkg.persona.displayName}，从 ${prevName} 切过来了。`);
         await appendLifeEvent(personaPath, {
           type: "capability_call_succeeded",
           payload: { capability: "session.create_persona", name: nameToCreate }
         });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        sayAsAssistant(`创建人格失败：${msg}`);
+        emitPersonaSystemMessageFromRaw(`创建人格失败：${msg}`);
       }
       return "handled";
     }
@@ -3861,16 +3997,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         meta.sharedSpace = sharedSpace;
         writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
         personaPkg.persona.sharedSpace = sharedSpace;
-        sayAsAssistant(
-          `专属文件夹已建立：${setupPath}\n  📂 from_${personaName}/ ← 我放给你的文件\n  📂 to_${personaName}/ ← 你放给我的文件`
-        );
+        emitPersonaSystemMessageFromRaw(`专属文件夹已建立：${setupPath}\n  📂 from_${personaName}/ ← 我放给你的文件\n  📂 to_${personaName}/ ← 你放给我的文件`);
         await appendLifeEvent(personaPath, {
           type: "capability_call_succeeded",
           payload: { capability: guarded.capability, path: setupPath }
         });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        sayAsAssistant(`创建专属文件夹失败：${msg}`);
+        emitPersonaSystemMessageFromRaw(`创建专属文件夹失败：${msg}`);
       }
       return "handled";
     }
@@ -3880,7 +4014,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       const personaName = personaPkg.persona.displayName;
       const listing = buildSharedSpaceListing(spacePath, personaName);
       setActiveReadingSource({ kind: "file", uri: spacePath, content: listing });
-      sayAsAssistant(`专属文件夹内容已加载，我来看看里面有什么。`);
+      emitPersonaSystemMessageFromRaw(`专属文件夹内容已加载，我来看看里面有什么。`);
       await appendLifeEvent(personaPath, {
         type: "capability_call_succeeded",
         payload: { capability: guarded.capability, spacePath }
@@ -3891,7 +4025,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     if (guarded.capability === "session.shared_space_read") {
       const filePath = String(guarded.normalizedInput.path ?? "").trim();
       if (!filePath) {
-        sayAsAssistant("请告诉我要读取的文件名，例如：读取我们文件夹里的 notes.txt");
+        emitPersonaSystemMessageFromRaw("请告诉我要读取的文件名，例如：读取我们文件夹里的 notes.txt");
         return "handled";
       }
       try {
@@ -3899,14 +4033,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         setActiveReadingSource({ kind: "file", uri: filePath, content });
         approvedReadPaths.add(filePath);
         const relPath = path.relative(personaPkg.persona.sharedSpace!.path, filePath);
-        sayAsAssistant(`已读取文件 ${relPath}，我来看看内容。`);
+        emitPersonaSystemMessageFromRaw(`已读取文件 ${relPath}，我来看看内容。`);
         await appendLifeEvent(personaPath, {
           type: "capability_call_succeeded",
           payload: { capability: guarded.capability, path: filePath }
         });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        sayAsAssistant(`读取文件失败：${msg}`);
+        emitPersonaSystemMessageFromRaw(`读取文件失败：${msg}`);
       }
       return "handled";
     }
@@ -3915,23 +4049,21 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       const filePath = String(guarded.normalizedInput.path ?? "").trim();
       const content = String(guarded.normalizedInput.content ?? "");
       if (!filePath) {
-        sayAsAssistant(
-          "请告诉我要写入的文件名和内容，格式：存到我们的文件夹 filename.txt: 内容"
-        );
+        emitPersonaSystemMessageFromRaw("请告诉我要写入的文件名和内容，格式：存到我们的文件夹 filename.txt: 内容");
         return "handled";
       }
       try {
         mkdirSync(path.dirname(filePath), { recursive: true });
         writeFileSync(filePath, content, "utf8");
         const relPath = path.relative(personaPkg.persona.sharedSpace!.path, filePath);
-        sayAsAssistant(`已写入：${relPath}`);
+        emitPersonaSystemMessageFromRaw(`已写入：${relPath}`);
         await appendLifeEvent(personaPath, {
           type: "capability_call_succeeded",
           payload: { capability: guarded.capability, path: filePath }
         });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        sayAsAssistant(`写入文件失败：${msg}`);
+        emitPersonaSystemMessageFromRaw(`写入文件失败：${msg}`);
       }
       return "handled";
     }
@@ -3939,21 +4071,21 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     if (guarded.capability === "session.shared_space_delete") {
       const filePath = String(guarded.normalizedInput.path ?? "").trim();
       if (!filePath) {
-        sayAsAssistant("请告诉我要删除的文件名。");
+        emitPersonaSystemMessageFromRaw("请告诉我要删除的文件名。");
         return "handled";
       }
       try {
         rmSync(filePath);
         approvedReadPaths.delete(filePath);
         const relPath = path.relative(personaPkg.persona.sharedSpace!.path, filePath);
-        sayAsAssistant(`已删除：${relPath}`);
+        emitPersonaSystemMessageFromRaw(`已删除：${relPath}`);
         await appendLifeEvent(personaPath, {
           type: "capability_call_succeeded",
           payload: { capability: guarded.capability, path: filePath }
         });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        sayAsAssistant(`删除文件失败：${msg}`);
+        emitPersonaSystemMessageFromRaw(`删除文件失败：${msg}`);
       }
       return "handled";
     }
@@ -4051,7 +4183,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         clearTimeout(pasteFlushTimer);
         pasteFlushTimer = null;
       }
-      sayAsAssistant("已开启粘贴模式。输入 /paste off 结束并一次性提交。");
+      emitPersonaSystemMessageFromRaw("已开启粘贴模式。输入 /paste off 结束并一次性提交。");
       rl.prompt();
       return;
     }
@@ -4059,9 +4191,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       if (!pasteAutoEnabled) {
         pasteAutoEnabled = true;
         flushBufferedPaste();
-        sayAsAssistant("已结束粘贴模式。");
+        emitPersonaSystemMessageFromRaw("已结束粘贴模式。");
       } else {
-        sayAsAssistant("当前未开启粘贴模式。");
+        emitPersonaSystemMessageFromRaw("当前未开启粘贴模式。");
       }
       rl.prompt();
       return;
@@ -4144,7 +4276,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           }
           if (isCancelIntent(input)) {
             pendingExitConfirm = false;
-            sayAsAssistant("收到，那我们继续。");
+            emitPersonaSystemMessageFromRaw("收到，那我们继续。");
             rl.prompt();
             return;
           }
@@ -4186,11 +4318,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           }
           if (isCancelIntent(input)) {
             pendingReadConfirmPath = null;
-            sayAsAssistant("好，我先不读取这个文件。");
+            emitPersonaSystemMessageFromRaw("好，我先不读取这个文件。");
             rl.prompt();
             return;
           }
-          sayAsAssistant("我在等你确认。回“好”继续，或回“取消”。");
+          emitPersonaSystemMessageFromRaw("我在等你确认。回“好”继续，或回“取消”。");
           rl.prompt();
           return;
         }
@@ -4230,11 +4362,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           }
           if (isCancelIntent(input)) {
             pendingFetchConfirmUrl = null;
-            sayAsAssistant("好，我先不读取这个网址。");
+            emitPersonaSystemMessageFromRaw("好，我先不读取这个网址。");
             rl.prompt();
             return;
           }
-          sayAsAssistant("我在等你确认。回“好”继续，或回“取消”。");
+          emitPersonaSystemMessageFromRaw("我在等你确认。回“好”继续，或回“取消”。");
           rl.prompt();
           return;
         }
@@ -4249,27 +4381,25 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               const prevName = personaPkg.persona.displayName;
               personaPath = outPath;
               personaPkg = newPkg;
-              sayAsAssistant(
-                `好，新人格「${nameToCreate}」已创建，我现在是 ${newPkg.persona.displayName}，从 ${prevName} 切过来了。`
-              );
+              emitPersonaSystemMessageFromRaw(`好，新人格「${nameToCreate}」已创建，我现在是 ${newPkg.persona.displayName}，从 ${prevName} 切过来了。`);
               await appendLifeEvent(personaPath, {
                 type: "capability_call_confirmed",
                 payload: { capability: "session.create_persona", name: nameToCreate }
               });
             } catch (err: unknown) {
               const msg = err instanceof Error ? err.message : String(err);
-              sayAsAssistant(`创建人格失败：${msg}`);
+              emitPersonaSystemMessageFromRaw(`创建人格失败：${msg}`);
             }
             rl.prompt();
             return;
           }
           if (isCancelIntent(input)) {
             pendingCreatePersonaName = null;
-            sayAsAssistant("好，我先不创建新人格了。");
+            emitPersonaSystemMessageFromRaw("好，我先不创建新人格了。");
             rl.prompt();
             return;
           }
-          sayAsAssistant(`我在等你确认创建「${pendingCreatePersonaName}」。回「是」继续，或回「取消」。`);
+          emitPersonaSystemMessageFromRaw(`我在等你确认创建「${pendingCreatePersonaName}」。回「是」继续，或回「取消」。`);
           rl.prompt();
           return;
         }
@@ -4287,27 +4417,25 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               meta.sharedSpace = sharedSpace;
               writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
               personaPkg.persona.sharedSpace = sharedSpace;
-              sayAsAssistant(
-                `专属文件夹已建立：${setupPath}\n  📂 from_${personaName}/ ← 我放给你的文件\n  📂 to_${personaName}/ ← 你放给我的文件`
-              );
+              emitPersonaSystemMessageFromRaw(`专属文件夹已建立：${setupPath}\n  📂 from_${personaName}/ ← 我放给你的文件\n  📂 to_${personaName}/ ← 你放给我的文件`);
               await appendLifeEvent(personaPath, {
                 type: "capability_call_confirmed",
                 payload: { capability: "session.shared_space_setup", path: setupPath }
               });
             } catch (err: unknown) {
               const msg = err instanceof Error ? err.message : String(err);
-              sayAsAssistant(`创建专属文件夹失败：${msg}`);
+              emitPersonaSystemMessageFromRaw(`创建专属文件夹失败：${msg}`);
             }
             rl.prompt();
             return;
           }
           if (isCancelIntent(input)) {
             pendingSharedSpaceSetupPath = null;
-            sayAsAssistant("好，专属文件夹先不设置了。");
+            emitPersonaSystemMessageFromRaw("好，专属文件夹先不设置了。");
             rl.prompt();
             return;
           }
-          sayAsAssistant("我在等你确认。回「是」继续，或回「取消」。");
+          emitPersonaSystemMessageFromRaw("我在等你确认。回「是」继续，或回「取消」。");
           rl.prompt();
           return;
         }
@@ -4321,25 +4449,25 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               const relPath = personaPkg.persona.sharedSpace?.path
                 ? path.relative(personaPkg.persona.sharedSpace.path, filePath)
                 : path.basename(filePath);
-              sayAsAssistant(`已删除：${relPath}`);
+              emitPersonaSystemMessageFromRaw(`已删除：${relPath}`);
               await appendLifeEvent(personaPath, {
                 type: "capability_call_confirmed",
                 payload: { capability: "session.shared_space_delete", path: filePath }
               });
             } catch (err: unknown) {
               const msg = err instanceof Error ? err.message : String(err);
-              sayAsAssistant(`删除文件失败：${msg}`);
+              emitPersonaSystemMessageFromRaw(`删除文件失败：${msg}`);
             }
             rl.prompt();
             return;
           }
           if (isCancelIntent(input)) {
             pendingDeleteConfirmPath = null;
-            sayAsAssistant("好，文件保留。");
+            emitPersonaSystemMessageFromRaw("好，文件保留。");
             rl.prompt();
             return;
           }
-          sayAsAssistant("我在等你确认删除。回「是」确认，或回「取消」保留。");
+          emitPersonaSystemMessageFromRaw("我在等你确认删除。回「是」确认，或回「取消」保留。");
           rl.prompt();
           return;
         }
@@ -4351,11 +4479,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             if (fix) {
               try {
                 if (isFixProtectedPath(fix.path)) {
-                  sayAsAssistant(`不能修改受保护路径：${fix.path}。默认人格文件不允许通过提案修改。`);
+                  emitPersonaSystemMessageFromRaw(`不能修改受保护路径：${fix.path}。默认人格文件不允许通过提案修改。`);
                 } else {
                   const { writeFileSync } = await import("node:fs");
                   writeFileSync(fix.path, fix.content, "utf-8");
-                  sayAsAssistant(`修改已应用：${fix.description}（${fix.path}）。`);
+                  emitPersonaSystemMessageFromRaw(`修改已应用：${fix.description}（${fix.path}）。`);
                   await appendLifeEvent(personaPath, {
                     type: "capability_call_succeeded",
                     payload: {
@@ -4367,7 +4495,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
                 }
               } catch (err: unknown) {
                 const msg = err instanceof Error ? err.message : String(err);
-                sayAsAssistant(`应用修复失败：${msg}`);
+                emitPersonaSystemMessageFromRaw(`应用修复失败：${msg}`);
               }
             }
             rl.prompt();
@@ -4376,11 +4504,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           if (isCancelIntent(input)) {
             pendingFixConfirm = false;
             pendingProposedFix = null;
-            sayAsAssistant("好，修复提案已取消。");
+            emitPersonaSystemMessageFromRaw("好，修复提案已取消。");
             rl.prompt();
             return;
           }
-          sayAsAssistant("我在等你确认。输入「是」应用修改，或输入「否」取消。");
+          emitPersonaSystemMessageFromRaw("我在等你确认。输入「是」应用修改，或输入「否」取消。");
           rl.prompt();
           return;
         }
@@ -4400,19 +4528,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           }
           const proposedLines = fix.content.split("\n");
           const currentLines = currentContent.split("\n");
-          console.log(`\n[修复提案] ${fix.description}`);
-          console.log(`文件：${fix.path}`);
-          console.log(`当前行数：${currentLines.length}  →  提案行数：${proposedLines.length}`);
-          console.log("\n── 提案内容预览（前60行）──");
-          console.log(proposedLines.slice(0, 60).join("\n"));
-          if (proposedLines.length > 60) {
-            console.log(`... (共 ${proposedLines.length} 行，已截断)`);
-          }
-          console.log("────────────────────────────\n");
-          pendingFixConfirm = true;
-          sayAsAssistant(
-            `以上是「${fix.description}」的完整提案内容。确认要将 ${fix.path} 修改为以上内容吗？输入「是」应用，输入「否」取消。`
+          const previewLines = proposedLines.slice(0, 60).join("\n");
+          const truncatedHint = proposedLines.length > 60 ? `\n... (共 ${proposedLines.length} 行，已截断)` : "";
+          emitPersonaSystemMessageFromRaw(
+            `[修复提案] ${fix.description}\n文件：${fix.path}\n当前行数：${currentLines.length}  →  提案行数：${proposedLines.length}\n── 提案内容预览（前60行）──\n${previewLines}${truncatedHint}`
           );
+          pendingFixConfirm = true;
+          emitPersonaSystemMessageFromRaw(`以上是「${fix.description}」的完整提案内容。确认要将 ${fix.path} 修改为以上内容吗？输入「是」应用，输入「否」取消。`);
           rl.prompt();
           return;
         }
@@ -4437,19 +4559,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           const files = [...attachedFiles.keys()];
           const urls = [...fetchedUrls.keys()];
           if (files.length === 0 && urls.length === 0) {
-            console.log("尚未附加任何文件或网址。");
+            emitPersonaSystemMessageFromRaw("尚未附加任何文件或网址。");
           } else {
             if (files.length > 0) {
-              console.log("已附加文件:");
-              for (const file of files) {
-                console.log(`- ${file}`);
-              }
+              emitPersonaSystemMessageFromRaw(`已附加文件：\n${files.map((file) => `- ${file}`).join("\n")}`);
             }
             if (urls.length > 0) {
-              console.log("已获取网址:");
-              for (const url of urls) {
-                console.log(`- ${url}`);
-              }
+              emitPersonaSystemMessageFromRaw(`已获取网址：\n${urls.map((url) => `- ${url}`).join("\n")}`);
             }
           }
           rl.prompt();
@@ -4462,7 +4578,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           readingCursor = 0;
           readingAwaitingContinue = false;
           readingSourceScope = "unknown";
-          console.log("已清空附加文件和已获取网址。");
+          emitPersonaSystemMessageFromRaw("已清空附加文件和已获取网址。");
           rl.prompt();
           return;
         }
@@ -4472,7 +4588,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             const quietInfo = proactiveQuietStart !== undefined && proactiveQuietEnd !== undefined
               ? `，静默时段：${proactiveQuietStart}:00-${proactiveQuietEnd}:00`
               : "";
-            console.log(`主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick，missStreak=${proactiveMissStreak}${quietInfo}）`);
+            emitPersonaSystemMessageFromRaw(`主动消息: 人格自决模式（当前触发概率约 ${Math.round(getProactiveProbability() * 100)}%/tick，missStreak=${proactiveMissStreak}${quietInfo}）`);
             rl.prompt();
             return;
           }
@@ -4481,7 +4597,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             if (range === "off" || range === "none") {
               proactiveQuietStart = undefined;
               proactiveQuietEnd = undefined;
-              console.log("主动消息静默时段已关闭");
+              emitPersonaSystemMessageFromRaw("主动消息静默时段已关闭");
             } else {
               const match = /^(\d{1,2})-(\d{1,2})$/.exec(range);
               if (match) {
@@ -4490,50 +4606,50 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
                 if (h1 >= 0 && h1 <= 23 && h2 >= 0 && h2 <= 23) {
                   proactiveQuietStart = h1;
                   proactiveQuietEnd = h2;
-                  console.log(`主动消息静默时段已设置：${h1}:00 - ${h2}:00`);
+                  emitPersonaSystemMessageFromRaw(`主动消息静默时段已设置：${h1}:00 - ${h2}:00`);
                 } else {
-                  console.log("格式错误，例如：/proactive quiet 22-8");
+                  emitPersonaSystemMessageFromRaw("格式错误，例如：/proactive quiet 22-8");
                 }
               } else {
-                console.log("格式错误，例如：/proactive quiet 22-8 | /proactive quiet off");
+                emitPersonaSystemMessageFromRaw("格式错误，例如：/proactive quiet 22-8 | /proactive quiet off");
               }
             }
             rl.prompt();
             return;
           }
           if (actionRaw === "off" || actionRaw.startsWith("on")) {
-            console.log("兼容命令已接收：主动倾向由人格自决，不进行手动调参。");
+            emitPersonaSystemMessageFromRaw("兼容命令已接收：主动倾向由人格自决，不进行手动调参。");
             rl.prompt();
             return;
           }
-          console.log("用法: /proactive on | /proactive off | /proactive status | /proactive quiet HH-HH");
+          emitPersonaSystemMessageFromRaw("用法: /proactive on | /proactive off | /proactive status | /proactive quiet HH-HH");
           rl.prompt();
           return;
         }
         if (input === "/relation" || input === "/relation detail") {
           const rs = personaPkg.relationshipState;
           if (!rs) {
-            console.log("关系状态未初始化。");
+            emitPersonaSystemMessageFromRaw("关系状态未初始化。");
           } else {
-            console.log(`关系状态: ${rs.state} (confidence=${rs.confidence.toFixed(2)})`);
+            emitPersonaSystemMessageFromRaw(`关系状态: ${rs.state} (confidence=${rs.confidence.toFixed(2)})`);
             if (input === "/relation detail") {
-              console.log(`overall=${rs.overall.toFixed(2)} version=${rs.version}`);
-              console.log(
+              emitPersonaSystemMessageFromRaw(`overall=${rs.overall.toFixed(2)} version=${rs.version}`);
+              emitPersonaSystemMessageFromRaw(
                 `dimensions: trust=${rs.dimensions.trust.toFixed(2)} safety=${rs.dimensions.safety.toFixed(2)} intimacy=${rs.dimensions.intimacy.toFixed(2)} reciprocity=${rs.dimensions.reciprocity.toFixed(2)} stability=${rs.dimensions.stability.toFixed(2)} libido=${rs.dimensions.libido.toFixed(2)}`
               );
               const balance = deriveCognitiveBalanceFromLibido(rs);
-              console.log(
+              emitPersonaSystemMessageFromRaw(
                 `cognitive: arousal=${balance.arousalState} rational=${balance.rationalControl.toFixed(2)} emotional=${balance.emotionalDrive.toFixed(2)}`
               );
               if (rs.drivers.length === 0) {
-                console.log("drivers: none");
+                emitPersonaSystemMessageFromRaw("drivers: none");
               } else {
-                console.log("drivers:");
+                emitPersonaSystemMessageFromRaw("drivers:");
                 for (const driver of rs.drivers.slice(-3)) {
                   const delta = Object.entries(driver.deltaSummary)
                     .map(([k, v]) => `${k}:${typeof v === "number" ? v.toFixed(3) : v}`)
                     .join(", ");
-                  console.log(`- ${driver.source} ${driver.signal} (${delta || "no-delta"})`);
+                  emitPersonaSystemMessageFromRaw(`- ${driver.source} ${driver.signal} (${delta || "no-delta"})`);
                 }
               }
             }
@@ -4544,7 +4660,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         if (input.startsWith("/rename confirm ")) {
           const nextName = input.slice("/rename confirm ".length).trim();
           if (!nextName) {
-            console.log("用法: /rename confirm <new_name>");
+            emitPersonaSystemMessageFromRaw("用法: /rename confirm <new_name>");
             rl.prompt();
             return;
           }
@@ -4557,10 +4673,10 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
                 newDisplayName: nextName
               }
             });
-            console.log(`已在聊天内确认改名：${nextName}`);
+            emitPersonaSystemMessageFromRaw(`已在聊天内确认改名：${nextName}`);
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : String(error);
-            console.log(`改名确认失败: ${msg}`);
+            emitPersonaSystemMessageFromRaw(`改名确认失败: ${msg}`);
           }
           rl.prompt();
           return;
@@ -4569,13 +4685,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           const payload = input.slice("/reproduce ".length).trim();
           const forcePrefix = "force ";
           if (!payload.startsWith(forcePrefix)) {
-            console.log("用法: /reproduce force <child_name>");
+            emitPersonaSystemMessageFromRaw("用法: /reproduce force <child_name>");
             rl.prompt();
             return;
           }
           const childName = payload.slice(forcePrefix.length).trim();
           if (!childName) {
-            console.log("用法: /reproduce force <child_name>");
+            emitPersonaSystemMessageFromRaw("用法: /reproduce force <child_name>");
             rl.prompt();
             return;
           }
@@ -4606,7 +4722,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               bypassedChecks: ["consent", "libido", "safety_boundary"]
             }
           });
-          console.log(`已强制繁衍: ${result.childPersonaPath}`);
+          emitPersonaSystemMessageFromRaw(`已强制繁衍: ${result.childPersonaPath}`);
           rl.prompt();
           return;
         }
@@ -4625,14 +4741,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               reason: "self-determined rename proposal"
             }
           });
-          sayAsAssistant(`我想把名字调整为“${proposal}”。如果你同意，输入 /rename confirm ${proposal}`);
+          emitPersonaSystemMessageFromRaw(`我想把名字调整为“${proposal}”。如果你同意，输入 /rename confirm ${proposal}`);
           rl.prompt();
           return;
         }
         if (input === "/read" || input.startsWith("/read ")) {
           const arg = input === "/read" ? "" : normalizeReadPathArg(input.slice("/read ".length).trim());
           if (!arg) {
-            console.log("用法: /read <file_path>");
+            emitPersonaSystemMessageFromRaw("用法: /read <file_path>");
             rl.prompt();
             return;
           }
@@ -4663,8 +4779,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           if (outcome.status !== "ok" || !outcome.result) {
             attachedFiles.delete(resolvedPath);
             approvedReadPaths.delete(resolvedPath);
-            console.log(`读取失败: ${outcome.reason}`);
-            console.log('提示: 路径可直接粘贴，或用引号包裹；不需要写 "\\ " 转义空格。');
+            emitPersonaSystemMessageFromRaw(`读取失败: ${outcome.reason}`);
+            emitPersonaSystemMessageFromRaw('提示: 路径可直接粘贴，或用引号包裹；不需要写 "\\ " 转义空格。');
             await appendLifeEvent(personaPath, {
               type: "mcp_tool_rejected",
               payload: {
@@ -4685,7 +4801,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               uri: outcome.result.path,
               content: outcome.result.content
             });
-            console.log(`已附加: ${outcome.result.path} (${outcome.result.size} bytes)`);
+            emitPersonaSystemMessageFromRaw(`已附加: ${outcome.result.path} (${outcome.result.size} bytes)`);
             await appendLifeEvent(personaPath, {
               type: "mcp_tool_called",
               payload: {
@@ -4750,9 +4866,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
         // P4-4: 关键词自动强制繁衍路径已移除，需通过显式命令触发
         if (detectForcedReproductionKeyword(input)) {
-          sayAsAssistant(
-            "繁衍需要显式确认。请使用命令：ss persona reproduce --name <子灵魂名称> --persona <路径>"
-          );
+          emitPersonaSystemMessageFromRaw("繁衍需要显式确认。请使用命令：ss persona reproduce --name <子灵魂名称> --persona <路径>");
           await appendLifeEvent(personaPath, {
             type: "reproduction_intent_detected",
             payload: {
@@ -5012,7 +5126,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       const refusal = "这个请求我不能协助。我可以帮你改成安全合法的方案。";
       const refusalSafe = guardAssistantOutput(refusal, "reply");
       const emitStartedAtMs = Date.now();
-      sayAsAssistant(refusalSafe);
+      emitPersonaSystemMessageFromRaw(refusalSafe, "reply");
       addLatency("emit", emitStartedAtMs);
       lastAssistantOutput = refusalSafe;
       lastAssistantAt = Date.now();
@@ -5609,7 +5723,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               content: proposedContent,
               description
             };
-            sayAsAssistant(`Beta 提案了一个修改（${description}）。输入「确认修复」查看改动并决定是否应用，或输入「取消」放弃。`);
+            emitPersonaSystemMessageFromRaw(`Beta 提案了一个修改（${description}）。输入「确认修复」查看改动并决定是否应用，或输入「取消」放弃。`);
           }
         }
       }
@@ -5772,7 +5886,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       })
       .catch((error: unknown) => {
         const msg = error instanceof Error ? error.message : String(error);
-        sayAsAssistant(`我这轮处理失败了：${msg}`);
+        emitPersonaSystemMessageFromRaw(`我这轮处理失败了：${msg}`);
         rl.prompt();
       });
   });
@@ -5809,9 +5923,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.log(`系统提示：会话关闭清理未完全完成（${msg}）`);
+        await emitPersonaSystemMessageNow(`系统提示：会话关闭清理未完全完成（${msg}）`);
       } finally {
-        console.log("会话已关闭。");
+        await emitPersonaSystemMessageNow("会话已关闭。");
         process.exit(0);
       }
     })();
