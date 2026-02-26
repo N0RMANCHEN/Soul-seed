@@ -16,6 +16,7 @@
     "verify": "./scripts/verify.sh",
     "h0:check": "node ./scripts/check_h0_gate.mjs",
     "governance:check": "node ./scripts/arch_governance_check.mjs",
+    "doc-consistency:check": "node ./scripts/check_doc_code_consistency.mjs",
     "direct-writes:test": "node --test ./scripts/test_direct_writes_gate.mjs",
     "changelog:check": "node ./scripts/check_changelog.mjs",
     "regression:governance": "node ./scripts/regression/governance.mjs",

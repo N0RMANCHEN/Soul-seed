@@ -1,0 +1,51 @@
+{
+  "version": "1.0.0",
+  "naming": {
+    "roadmapFile": "doc/Architecture-Governance-Roadmap.md",
+    "taskIdPattern": "AG\\/P[0-2]-\\d+",
+    "requiredGroups": ["AG/P0", "AG/P1", "AG/P2"]
+  },
+  "pathReferences": [
+    {
+      "doc": "doc/Architecture-Folder-Governance.md",
+      "path": "doc/Roadmap.md"
+    },
+    {
+      "doc": "doc/Architecture-Folder-Governance.md",
+      "path": "scripts/arch_governance_check.mjs"
+    },
+    {
+      "doc": "doc/Architecture-Folder-Governance.md",
+      "path": "config/governance/architecture_rules.json"
+    },
+    {
+      "doc": "doc/Architecture-Governance-Roadmap.md",
+      "path": "scripts/check_direct_writes.mjs"
+    },
+    {
+      "doc": "doc/Architecture-Governance-Roadmap.md",
+      "path": "scripts/arch_governance_check.mjs"
+    },
+    {
+      "doc": "doc/Architecture-Governance-Roadmap.md",
+      "path": "packages/cli/src/index.ts"
+    }
+  ],
+  "fieldAssertions": [
+    {
+      "doc": "doc/CLI.md",
+      "field": "persona export manifest filename",
+      "mustContain": "EXPORT_MANIFEST.json"
+    },
+    {
+      "doc": "doc/Persona-Package-Layout.md",
+      "field": "layout migration log",
+      "mustContain": "migration_log.jsonl"
+    },
+    {
+      "doc": "doc/Architecture-Folder-Governance.md",
+      "field": "governance gate command",
+      "mustContain": "npm run governance:check"
+    }
+  ]
+}
