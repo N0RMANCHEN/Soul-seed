@@ -5,7 +5,7 @@
 > **Task**: H/P1-10  
 > **Status**: `todo`  
 > **Parent**: `doc/plans/Hc-1-Regression-Suites.md`  
-> **Source**: `doc/Roadmap.md`, `04-Archive.md` §18.3, `doc/plans/H3-Validation-and-Guards.md` §4.3
+> **Source**: `doc/Roadmap.md`, `04-Archive.md` §18.3, `doc/plans/Hc-Verification-Governance.md` §4.3
 
 ---
 

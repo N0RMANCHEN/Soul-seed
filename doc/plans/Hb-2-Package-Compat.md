@@ -7,7 +7,7 @@
 > **Execution Strategy**: Serial (H/P1-4 → H/P1-7)  
 > **Status**: `done`  
 > **Parent**: `doc/plans/Hb-Mind-Model-State-Modules.md`  
-> **Source**: `doc/Roadmap.md`, `04-Archive.md` §15, §17, `doc/plans/H2-State-Modules.md`
+> **Source**: `doc/Roadmap.md`, `04-Archive.md` §15, §17, `doc/plans/Hb-Mind-Model-State-Modules.md`
 
 ---
 

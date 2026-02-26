@@ -7,7 +7,7 @@
 > **Execution Strategy**: Serial primary; H/P1-6 parallel; H/P1-5 after sync-1  
 > **Status**: `done`  
 > **Parent**: `doc/plans/Hb-Mind-Model-State-Modules.md`  
-> **Source**: `doc/Roadmap.md`, `04-Archive.md` §5–§12, `doc/plans/H2-State-Modules.md`
+> **Source**: `doc/Roadmap.md`, `04-Archive.md` §5–§12, `doc/plans/Hb-Mind-Model-State-Modules.md`
 
 ---
 

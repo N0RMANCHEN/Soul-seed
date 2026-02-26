@@ -5,7 +5,7 @@
 > **Task**: H/P1-17  
 > **Status**: `todo`  
 > **Parent**: `doc/plans/Hc-3-Schema-Access.md`  
-> **Source**: `doc/Roadmap.md`, `01-Spec.md` §28, `04-Archive.md` 附录示例结构, `doc/plans/H3-Validation-and-Guards.md` §6.1
+> **Source**: `doc/Roadmap.md`, `01-Spec.md` §28, `04-Archive.md` 附录示例结构, `doc/plans/Hc-Verification-Governance.md` §6.1
 
 ---
 

@@ -5,7 +5,7 @@
 > **Tasks**: H/P1-14, H/P1-15, H/P1-16  
 > **Status**: `todo`  
 > **Parent**: `doc/plans/Hc-2-Risk-Guards.md`  
-> **Source**: `doc/Roadmap.md`, `04-Archive.md` §20.3–§20.5, `doc/plans/H3-Validation-and-Guards.md` §5.3–§5.5
+> **Source**: `doc/Roadmap.md`, `04-Archive.md` §20.3–§20.5, `doc/plans/Hc-Verification-Governance.md` §5.3–§5.5
 
 ---
 

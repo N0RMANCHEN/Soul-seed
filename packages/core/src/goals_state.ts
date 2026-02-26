@@ -1,7 +1,7 @@
 /**
  * Goals State Module — first-class state for goals, commitments, drives.
  * H/P1-1: Goals / Beliefs State Module.
- * Schema per doc/plans/H2-State-Modules.md §3.2.
+ * Schema per doc/plans/Hb-Mind-Model-State-Modules.md §3.2.
  */
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
