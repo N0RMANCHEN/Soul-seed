@@ -3291,7 +3291,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         pendingExitConfirm = true;
         const prompt = await streamPersonaAutonomy({
           mode: "exit_confirm",
-          fallback: "你要是想先离开，我会在这等你。回复“确认退出”我就先安静退下；想继续就说“继续”。"
+          fallback: "你要是想先离开，我会在这等你。回复“确认退出”我就先安静退下；想继续就说“继续”。",
+          emitTokens: false
         });
         if (!prompt.streamed) {
           sayAsAssistant(prompt.text);
@@ -3607,7 +3608,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     if (guarded.capability === "session.exit") {
       const farewell = await streamPersonaAutonomy({
         mode: "farewell",
-        fallback: "好，那我先安静待在这里。你回来时我还在。"
+        fallback: "好，那我先安静待在这里。你回来时我还在。",
+        emitTokens: false
       });
       if (!farewell.streamed) {
         sayAsAssistant(farewell.text);
@@ -3857,7 +3859,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   hydrateConversationAnchorsFromHistory(historyForGreeting);
   const greetingGenerated = await streamPersonaAutonomy({
     mode: "greeting",
-    fallback: buildGreetingFallback()
+    fallback: buildGreetingFallback(),
+    emitTokens: false
   });
   let greetingText = greetingGenerated.text;
   const greetingFactualGrounding = enforceFactualGroundingGuard(greetingText, { mode: "greeting" });
@@ -4020,7 +4023,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             });
             const farewell = await streamPersonaAutonomy({
               mode: "farewell",
-              fallback: "好，那我先安静待在这里。你回来时我还在。"
+              fallback: "好，那我先安静待在这里。你回来时我还在。",
+              emitTokens: false
             });
             if (!farewell.streamed) {
               sayAsAssistant(farewell.text);
@@ -5031,19 +5035,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
                   if (!streamReplyEnabled) {
                     return;
                   }
-                  if (!streamed) {
-                    process.stdout.write(`${assistantLabel()} `);
-                    streamed = true;
-                  }
-                  process.stdout.write(chunk);
+                  // Main chat reply is rendered only after guard/rewrite pipeline completes,
+                  // so users see exactly one finalized assistant message per turn.
                 },
                 onDone: () => {
-                  if (!streamReplyEnabled) {
-                    return;
-                  }
-                  if (streamed) {
-                    process.stdout.write("\n");
-                  }
+                  // no-op: finalized message is emitted once at the end of turn
                 }
               },
               currentAbort?.signal
@@ -5343,7 +5339,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       assistantContent = compactReplyForChatPace(assistantContent, input);
       const compactedEmotion = parseEmotionTag(assistantContent);
       assistantContent = compactedEmotion.text;
+      assistantContent = stripPromptArtifactTags(assistantContent);
       assistantContent = guardAssistantOutput(assistantContent, "reply");
+      if (!assistantContent.trim()) {
+        assistantContent = buildContextualReplyFallback(input);
+      }
       addLatency("rewrite", rewriteStartedAtMs);
       const resolvedEmotion = compactedEmotion.emotion ?? emotion.emotion ?? inferEmotionFromText(assistantContent);
       const shouldDisplayAssistant = !(loopBreak.triggered && assistantContent.trim().length === 0);
@@ -5362,9 +5362,6 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         rawText: parseEmotionTag(rawAssistantContent).text,
         finalText: assistantContent
       });
-      if (displayMode === "adjusted") {
-        sayAsAssistant("[已按边界与一致性规则调整输出]");
-      }
       if (displayMode !== "none") {
         const emitStartedAtMs = Date.now();
         await applyHumanPacedDelay(turnStartedAtMs, assistantContent);
@@ -6056,6 +6053,17 @@ function stripStageDirections(raw: string): string {
   return raw
     .replace(/（[^）\n]{1,28}）/gu, " ")
     .replace(/\([^)\n]{1,28}\)/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ *\n */g, "\n")
+    .trim();
+}
+
+function stripPromptArtifactTags(raw: string): string {
+  if (!raw) {
+    return raw;
+  }
+  return raw
+    .replace(/\[(?:思考|内心独白|内部思考|已按边界与一致性规则调整输出)\]\s*/giu, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/ *\n */g, "\n")
     .trim();
