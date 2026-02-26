@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- (Next phase work)
+- Added `doc/Architecture-Governance-Roadmap.md` as an execution-oriented governance roadmap for architecture boundaries, folder/file management, A/B collaboration split, sync points, and acceptance gates.
 
 ## [0.5.0] - 2026-02-26
 

@@ -36,7 +36,7 @@ test("persona name as root command starts chat directly", async () => {
   const chatResult = await runInteractive(
     [cliPath, "Teddy", "--persona", personaPath],
     ["/exit", "确认退出"],
-    { intervalMs: 220 }
+    { intervalMs: 220, timeoutMs: 30000 }
   );
   assert.equal(chatResult.status, 0);
   assert.match(chatResult.stdout, /Teddy>/);

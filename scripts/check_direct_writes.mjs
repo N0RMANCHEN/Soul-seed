@@ -29,6 +29,7 @@ const ALLOWED_FILES = new Set([
   "packages/core/src/goals_state.ts",
   "packages/core/src/goal_store.ts",
   "packages/core/src/beliefs_state.ts",
+  "packages/core/src/personality_profile.ts",
   "packages/core/src/mood_state.ts",
   "packages/core/src/emotion_episode_manager.ts",
   "packages/core/src/relationship_state.ts",

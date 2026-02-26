@@ -31,6 +31,39 @@ const DEFAULT_VALUES_RULES: ValuesRulesDocument = {
   rules: [],
 };
 
+// Legacy-compatible values-rules helpers used by existing tests.
+export interface LegacyValuesRule {
+  id: string;
+  value: string;
+  priority: number;
+}
+
+export interface LegacyValuesRulesConfig {
+  rules: LegacyValuesRule[];
+}
+
+export function createDefaultValuesRules(input: { values?: string[] }): LegacyValuesRulesConfig {
+  const values = Array.isArray(input.values) ? input.values : [];
+  const rules = values.map((value, idx) => ({
+    id: `value_${idx + 1}`,
+    value,
+    priority: idx + 1,
+  }));
+  return { rules };
+}
+
+export function evaluateValuesRules(
+  text: string,
+  config: LegacyValuesRulesConfig
+): Array<{ rule: LegacyValuesRule }> {
+  const lowered = text.toLowerCase();
+  const matches = config.rules
+    .filter((rule) => lowered.includes(rule.value.toLowerCase()))
+    .sort((a, b) => b.priority - a.priority)
+    .map((rule) => ({ rule }));
+  return matches;
+}
+
 export async function loadValuesRules(personaRoot: string): Promise<ValuesRulesDocument> {
   const filePath = join(personaRoot, VALUES_RULES_FILENAME);
   try {

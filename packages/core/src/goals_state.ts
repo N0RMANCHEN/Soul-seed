@@ -123,3 +123,65 @@ export async function saveGoals(personaRoot: string, state: GoalsState): Promise
   normalized.updatedAt = new Date().toISOString();
   await fs.writeFile(filePath, JSON.stringify(normalized, null, 2), "utf-8");
 }
+
+// Legacy-compatible lightweight goals API used by existing tests.
+export type LegacyGoalStatus = "draft" | "active" | "completed" | "abandoned";
+
+export interface LegacyGoal {
+  id: string;
+  title: string;
+  status: LegacyGoalStatus;
+  evidenceRefs: string[];
+}
+
+export interface LegacyGoalsState {
+  goals: LegacyGoal[];
+}
+
+export function createEmptyGoalsState(): LegacyGoalsState {
+  return { goals: [] };
+}
+
+export function addGoal(state: LegacyGoalsState, input: { id: string; title: string }): LegacyGoalsState {
+  const goals = state.goals.filter((g) => g.id !== input.id);
+  goals.push({
+    id: input.id,
+    title: input.title,
+    status: "draft",
+    evidenceRefs: [],
+  });
+  return { goals };
+}
+
+const LEGAL_GOAL_TRANSITIONS: Record<LegacyGoalStatus, Set<LegacyGoalStatus>> = {
+  draft: new Set(["active", "abandoned"]),
+  active: new Set(["completed", "abandoned"]),
+  completed: new Set(),
+  abandoned: new Set(),
+};
+
+export function transitionGoalStatus(
+  state: LegacyGoalsState,
+  id: string,
+  nextStatus: LegacyGoalStatus,
+  evidenceRefs?: string[]
+): { ok: true; state: LegacyGoalsState } | { ok: false; reason: "goal_not_found" | "illegal_transition" | "missing_evidence" } {
+  const idx = state.goals.findIndex((g) => g.id === id);
+  if (idx < 0) {
+    return { ok: false, reason: "goal_not_found" };
+  }
+  const current = state.goals[idx];
+  if (!LEGAL_GOAL_TRANSITIONS[current.status].has(nextStatus)) {
+    return { ok: false, reason: "illegal_transition" };
+  }
+  if (nextStatus === "completed" && (!Array.isArray(evidenceRefs) || evidenceRefs.length === 0)) {
+    return { ok: false, reason: "missing_evidence" };
+  }
+  const goals = state.goals.slice();
+  goals[idx] = {
+    ...current,
+    status: nextStatus,
+    evidenceRefs: nextStatus === "completed" ? (evidenceRefs ?? []) : current.evidenceRefs,
+  };
+  return { ok: true, state: { goals } };
+}
