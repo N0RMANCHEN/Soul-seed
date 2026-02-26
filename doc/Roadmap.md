@@ -180,45 +180,51 @@
 - K2 出口：CLI 命令可操作，评测覆盖核心多人格场景。
 
 ### K/P0-0 多人格会话图谱与注册表
-- 状态：`todo`
-- 交付：persona registry、会话拓扑、角色元数据约束
-- 门禁：注册失败与冲突必须有明确错误码与恢复路径
+- 状态：`done`
+- 交付：`multi_persona_registry.ts`（PersonaRegistryEntry / SessionGraph / GroupPolicy 接口 + 3 个 JSON Schema + load/save/register/seed/ensure 全链路）；PersonaPackage 载入含 K 工件隐式默认；direct-write 门禁已覆盖
+- 门禁：8 tests pass；注册冲突有 RegistrationError 错误码；legacy persona 无 K 工件时返回默认值
 
 ### K/P0-1 多人格发言仲裁器（addressing 优先）
-- 状态：`todo`
+- 状态：`done`
 - 依赖：`K/P0-0`
-- 交付：addressing 命中优先、冲突仲裁、静默角色唤醒机制
-- 门禁：冲突时必须确定唯一发言者，且理由可追溯
+- 交付：`multi_persona_arbitration.ts`（arbitrateMultiPersonaTurn；addressing×0.55 + interest×0.25 + base×0.20；cooldown penalty；deterministic tiebreak by actorId）
+- 门禁：6 tests pass；冲突时唯一发言者；reasonCodes 可追溯
 
 ### K/P0-2 回合调度与抢答抑制
-- 状态：`todo`
+- 状态：`done`
 - 依赖：`K/P0-1`
-- 交付：round-robin + 优先级混合调度、抢答抑制与超时接管
-- 门禁：不得出现同一 persona 连续霸占回合
+- 交付：`multi_persona_turn_scheduler.ts`（strict_round_robin / round_robin_priority / free_form 三模式；antiMonopolyApplied flag；history 50 cap）
+- 门禁：11 tests pass；连续霸占受 maxConsecutiveTurns 阻断
+
+### K/P0-3 兼容性与迁移门禁
+- 状态：`done`
+- 依赖：`K/P0-0`
+- 交付：`multi_persona_feature_flag.ts`（SOULSEED_PHASE_K_ENABLE 默认 0）；migratePersonaToPhaseK（幂等）；doctor K 工件健康检查（hint/warning）；compat_checklist 已扩展；fixture 回归套件（legacy/hybrid/full-K）
+- 门禁：6 tests pass；flag=0 下零退化；迁移幂等
 
 ### K/P1-0 上下文总线与私有记忆隔离
-- 状态：`todo`
-- 依赖：`K/P0-0`
-- 交付：shared bus 与 private lane 分层、读写权限与泄漏审计
-- 门禁：跨 persona 私有记忆泄漏率必须为 0（评测样本集）
+- 状态：`done`
+- 依赖：`K/P0-0`, `K/P0-3`
+- 交付：`multi_persona_context_bus.ts`（strict/shared/hybrid 三级隔离；checkAccessPermission / postMessage / getVisibleMessages / assertNoLeakage / buildMemoryIsolationFilter 全链路；accessLog 500 cap）
+- 门禁：24 tests pass；strict 模式跨 persona 私有访问全拒绝；leakCheck.ok 断言可复用
 
 ### K/P1-1 多人格主动协同规划器
-- 状态：`todo`
+- 状态：`done`
 - 依赖：`K/P0-2`, `K/P1-0`
-- 交付：协作任务分解、角色分工、互相引用与冲突降解策略
-- 门禁：协同模式下总体回复时延不超过单人格基线阈值上限
+- 交付：`multi_persona_cooperation.ts`（decomposeRequest 按枚举/名字引用分任务；resolveConflict 按注册顺序仲裁；advanceTask 状态推进；computeCooperationLatencyBudget = 1.5× timeout）
+- 门禁：10 tests pass；cooperation disabled 时退化为单任务
 
 ### K/P1-2 CLI 多人格交互命令与会话视图
-- 状态：`todo`
+- 状态：`done`
 - 依赖：`K/P0-2`, `K/P1-0`
-- 交付：会话内 persona 视图、发言来源标注、切换与静默控制命令
-- 门禁：命令行为与输出标注一致，不得出现身份混淆
+- 交付：`multi_persona_commands.ts`（/who /mute /solo /invite /mp status；isMultiPersonaCommand 识别器；formatSpeakerLabel；flag=0 返回 "not enabled" 提示）
+- 门禁：22 tests pass；speaker label case-insensitive match；flag=0 优雅降级
 
 ### K/P1-3 多人格评测赛道（AB 共建）
-- 状态：`todo`
-- 依赖：`K/P1-1`, `K/P1-2`
-- 交付：多人格对话质量指标、隔离性指标、仲裁正确率指标
-- 门禁：评测进入 `doc/Quality-Evaluation.md` 且可在 CI 复现
+- 状态：`done`
+- 依赖：`K/P1-1`, `K/P1-2`, `K/P0-3`
+- 交付：12 条评测数据集 `test/fixtures/k_eval/scenarios.json`；`scripts/eval_multi_persona.mjs`（ArbitrationAccuracy=1.0 / LeakageRate=0 / TurnMonopolyRate=0 / SpeakerLabelAccuracy=1.0 / CooperationLatencyRatio=1.5）；scorecard 归档 `reports/quality/phase_k_scorecard.json` + `.md`
+- 门禁：`eval_all.sh` + `verify.sh` 含 strict 阻断；Quality-Evaluation §6.1 已更新阈值
 
 ### Phase I（产品化收口）
 

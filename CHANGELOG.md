@@ -4,7 +4,37 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Phase K plan**: Added `doc/plans/K-Multi-Persona-Chat-Plan.md` for multi-persona chat system (registry, arbitration, turn scheduling, context isolation, CLI, eval); registered in `doc/plans/README.md` Active Index.
+- **Phase K implementation (K/P0-0 through K/P1-3)**:
+  - `multi_persona_registry.ts`: PersonaRegistryEntry, SessionGraph, GroupPolicy types + load/save/register/seed/ensure + 3 JSON Schemas (`group_policy`, `session_graph`, `speaker_registry`) + direct-write registry coverage (8 tests).
+  - `multi_persona_arbitration.ts`: `arbitrateMultiPersonaTurn()` with addressing×0.55 + interest×0.25 + base×0.20 weighting, cooldown penalty, deterministic tiebreak (6 tests).
+  - `multi_persona_turn_scheduler.ts`: Three scheduling modes (strict_round_robin, round_robin_priority, free_form), anti-monopoly enforcement, 50-entry history cap (11 tests).
+  - `multi_persona_feature_flag.ts`: `SOULSEED_PHASE_K_ENABLE` (default off), `isPhaseKEnabled()`.
+  - `multi_persona_context_bus.ts`: strict/shared/hybrid isolation, `checkAccessPermission`, `assertNoLeakage`, `buildMemoryIsolationFilter`, accessLog 500-cap (24 tests).
+  - `multi_persona_cooperation.ts`: Task decomposition, conflict resolution, latency budget 1.5× (10 tests).
+  - `multi_persona_commands.ts`: `/who`, `/mute`, `/solo`, `/invite`, `/mp status` with flag=0 graceful degradation (22 tests).
+  - Doctor extension: K artifact health checks (`k_artifact_missing`, `k_artifact_invalid_schema`, `k_registry_invalid_entry`).
+  - Migration: `migratePersonaToPhaseK()` idempotent seed function.
+  - Compat fixtures: legacy/hybrid/full-K persona regression suite (6 tests).
+  - Eval track: 12 scenarios in `test/fixtures/k_eval/scenarios.json`, `scripts/eval_multi_persona.mjs` with strict gate, scorecard to `reports/quality/phase_k_scorecard.json`.
+  - Gate integration: `eval_all.sh` + `package.json` `eval:phase-k` script; Quality-Evaluation.md §6.1 thresholds updated.
+
 ### Changed
+- **Memory speaker attribution (multi-agent ready)**:
+  - Added `payload.speaker` normalization for `user_message` / `assistant_message` life events.
+  - Upgraded memory schema to v10 with `speaker_role` / `speaker_id` / `speaker_label` columns (with migration/backfill from `origin_role`).
+  - Ingest path now persists speaker attribution; recall rendering can show assistant speaker labels for same-role multi-persona history disambiguation.
+  - Added compatibility regressions for legacy saved personas: legacy life.log entries without `speaker` remain appendable/chain-valid, and memory.db v9 -> v10 migration backfills `speaker_role` deterministically.
+- **Phase K plan v2 hardening**:
+  - Added `已落地基础设施` section linking speaker attribution (schema v10, life event speaker, CLI builders) as K prerequisite.
+  - Expanded K/P0-0 with detailed artifact specs (`group_policy.json`, `session_graph.json`, `speaker_registry.json`), JSON Schema requirement, and explicit compat gates.
+  - Added K/P0-3 (兼容性与迁移门禁): fixture regression suite (legacy/hybrid/full-K), `SOULSEED_PHASE_K_ENABLE` feature flag, doctor K-artifact health checks, idempotent migration.
+  - Enriched K/P1-0 with `speaker_id`-based leak audit, isolation assertion library, and fail-closed rollback.
+  - Enriched K/P1-2 with per-command unit tests, e2e acceptance script, speaker label accuracy gate, and flag=0 graceful degradation.
+  - Enriched K/P1-3 with concrete metrics/thresholds (ArbitrationAccuracy>=0.90, LeakageRate==0, TurnMonopolyRate<=0.05, SpeakerLabelAccuracy==1.0, CooperationLatencyP95<=1.5x), dataset contract (>=50 scenarios), and `eval_multi_persona.mjs` script spec.
+  - Updated DoD with compatibility exit criteria per sub-phase.
+  - Synced Roadmap.md with all K plan changes (added K/P0-3 task, updated dependencies and deliverables for K/P1-0..K/P1-3).
 - **Phase J P1 closure**: `J/P1-0..P1-2` completed with runtime flags and trace hardening:
   - Added `SOULSEED_PHASE_J_ENABLE`, `SOULSEED_PHASE_J_RECORD_ONLY`, `SOULSEED_PHASE_J_TOPIC_SCHEDULER` runtime toggles in CLI path.
   - Extended `conversationControl` trace with `phaseJMode`, `engagementTrace`, budget remaining/cooldown fields, and topic scheduler `queueSnapshot`/`recycleAction`.
@@ -19,6 +49,14 @@ All notable changes to this project will be documented in this file.
 - **Reply interaction lag (default mode)**: Added `SOULSEED_REPLY_LATENCY_MODE` (`low_latency|balanced|quality_first`, default `low_latency`) and low-latency skip/timeout policy for meta-review in fast+low-risk turns.
 - **Streaming UX regression**: Restored streamed-feel output with finalized-text typewriter rendering when `SOULSEED_STREAM_REPLY=1`, while keeping guard-consistent final output.
 - **CLI test** `chat can resume last goal and report progress without creating a new goal`: increased `intervalMs` to 420 to avoid flakiness when run in full suite.
+- **Phase K post-review hardening**:
+  - Context bus private state switched to JSON-safe `Record<string, ContextBusMessage[]>`; added explicit `toActorId` support so cross-actor private writes are actually permission-checked.
+  - Leakage semantics corrected: denied cross-actor private access is treated as expected guard behavior; only unexpected allowed cross-actor private access in strict/hybrid is counted as leakage.
+  - Turn scheduler added monotonic `nextTurnIndex` (fixes duplicate `turnIndex` after history trim) and optional injected `now` for deterministic scheduling tests.
+  - Registry load path deduplicated reads in artifact ensure/migrate flows, write helper renamed to `writeJson`, and concurrent register/unregister write-serialization requirement documented.
+  - Arbitration cleanup: removed unused `cooldownActive`, exported `DEFAULT_BASE_PRIORITY`, and replaced in-place loser mutation with immutable decision updates.
+  - Eval hardening: Phase K eval now performs real cross-actor leakage probes, adds per-scenario error isolation, and uses Unicode-safe addressing fallback for CJK names.
+  - Command detection now treats `/mute`, `/solo`, `/invite` without arguments as commands (so usage hints are returned instead of falling back to chat).
 
 ### Changed
 - **AG/P0-0** Plan doc update rules: Added `doc/plans/README.md` with fixed declaration (progress 以 Roadmap 为准); replaced granular status in `H-State-Closure-Plan.md`, `H2-State-Modules.md` with scope-level; added Progress declaration to Ha/Hb/Hc/H1/H3 plans; updated `doc/Architecture-Folder-Governance.md` §3.3 cross-ref.

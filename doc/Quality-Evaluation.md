@@ -259,6 +259,11 @@
 - `PhaseJ.replayPassRate >= 0.95`
 - `PhaseJ.topicHitRateB >= 0.80`
 - `PhaseJ.topicHitDelta(B-A) >= 0.15`
+- `PhaseK.arbitrationAccuracy >= 0.90`
+- `PhaseK.leakageRate == 0`
+- `PhaseK.turnMonopolyRate <= 0.05`
+- `PhaseK.speakerLabelAccuracy == 1.0`
+- `PhaseK.cooperationLatencyRatioMax <= 1.5`
 
 ### 6.2 Nightly 门禁
 

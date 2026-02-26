@@ -1,0 +1,155 @@
+{
+  "runId": "phase-k-1772123452576",
+  "timestamp": "2026-02-26T16:30:52.576Z",
+  "scenarioCount": 12,
+  "pass": true,
+  "metrics": {
+    "arbitrationAccuracy": 1,
+    "leakageRate": 0,
+    "turnMonopolyRate": 0,
+    "speakerLabelAccuracy": 1,
+    "cooperationLatencyRatioMax": 1.5
+  },
+  "thresholds": {
+    "arbitrationAccuracy": 0.9,
+    "leakageRate": 0,
+    "turnMonopolyRate": 0.05,
+    "speakerLabelAccuracy": 1,
+    "cooperationLatencyRatio": 1.5
+  },
+  "failures": [],
+  "details": [
+    {
+      "scenarioId": "k-eval-001",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": "p-aster",
+      "expectedActorId": "p-aster",
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-002",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": "p-luna",
+      "expectedActorId": "p-luna",
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-003",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": null,
+      "expectedActorId": null,
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-004",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": "p-luna",
+      "expectedActorId": "p-luna",
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-005",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": "p-luna",
+      "expectedActorId": "p-luna",
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-006",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": "p-aster",
+      "expectedActorId": "p-aster",
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-007",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": "p-alpha",
+      "expectedActorId": "p-alpha",
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-008",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": "p-aster",
+      "expectedActorId": "p-aster",
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-009",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": null,
+      "expectedActorId": null,
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-010",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": "p-nova",
+      "expectedActorId": "p-nova",
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-011",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": "p-aster",
+      "expectedActorId": "p-aster",
+      "error": null
+    },
+    {
+      "scenarioId": "k-eval-012",
+      "arbitrationCorrect": true,
+      "leakageDetected": false,
+      "monopolyDetected": false,
+      "speakerLabelCorrect": true,
+      "cooperationLatencyRatio": 1.5,
+      "selectedActorId": "p-aster",
+      "expectedActorId": "p-aster",
+      "error": null
+    }
+  ]
+}

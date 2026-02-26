@@ -40,4 +40,5 @@
 ## Active Index
 
 - `doc/plans/J-Engagement-P1-Plan.md`（Phase J active）
+- `doc/plans/K-Multi-Persona-Chat-Plan.md`（Phase K active）
 - `doc/plans/L-Incremental-Input-Plan.md`（Phase L active）

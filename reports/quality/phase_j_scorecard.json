@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-02-26T15:14:41.236Z",
+  "suite": "phase-j",
+  "dataset": "datasets/quality/phase_j_engagement_cases.json",
+  "totalCases": 6,
+  "pass": true,
+  "metrics": {
+    "replayPassRate": 1,
+    "topicHitRateA": 0.5,
+    "topicHitRateB": 1,
+    "topicHitDelta": 0.5,
+    "bridgeCoverageB": 1,
+    "starvationProtectionB": 1
+  },
+  "gates": {
+    "replayPassRate": true,
+    "topicHitRateB": true,
+    "topicHitDelta": true
+  },
+  "failures": []
+}
