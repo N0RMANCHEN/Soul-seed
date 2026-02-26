@@ -1,4 +1,4 @@
-import type { ModelAdapter, PersonaConstitution } from "./types.js";
+import type { ModelAdapter, PersonaConstitution } from "../types.js";
 
 export interface IdentityGuardResult {
   text: string;

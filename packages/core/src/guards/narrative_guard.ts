@@ -1,4 +1,4 @@
-import type { LifeEvent, ModelAdapter, PersonaConstitution, VoiceProfile } from "./types.js";
+import type { LifeEvent, ModelAdapter, PersonaConstitution, VoiceProfile } from "../types.js";
 
 export interface NarrativeDriftResult {
   score: number;

@@ -1,5 +1,5 @@
-import type { LifeEvent } from "./types.js";
-import { projectTopicAttention } from "./semantic_projection.js";
+import type { LifeEvent } from "../types.js";
+import { projectTopicAttention } from "../semantic_projection.js";
 
 export interface PronounRoleGuardResult {
   text: string;

@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - **AG/P1-3** Plan naming unification: Added H1/H2/H3 ↔ Ha/Hb/Hc mapping to `doc/plans/README.md`; added mapping header to H1/H2/H3 plan files; H-State-Closure-Plan batch naming clarified.
 - **AG/P2-2** Runtime/report asset governance: Added `doc/Runtime-Report-Asset-Governance.md`; README reference; personas/ and reports/ retention/archive policy documented.
 - **AG/P2-1** Core export surface: Removed internal-only `persona_write_lock` from barrel; added export policy comment; `config/governance/core_export_whitelist.json`.
+- **AG/P2-0** Core directory layering (batch 1): Migrated 6 guards to `guards/` (identity_guard, recall_grounding_guard, factual_grounding_guard, relational_guard, pronoun_role_guard, narrative_guard).
 
 ### Added
 - Added `doc/Architecture-Governance-Roadmap.md` as an execution-oriented governance roadmap for architecture boundaries, folder/file management, A/B collaboration split, sync points, and acceptance gates.
