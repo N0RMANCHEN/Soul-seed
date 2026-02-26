@@ -22,7 +22,7 @@
 
 ## 3) Phase 与编号规则（强制）
 
-1. 当前执行优先级：`Phase J > Phase M > Phase K > Phase I > Phase L`。
+1. 当前执行优先级：`Phase M > Phase I > Phase L`。
 2. 任务 ID 冻结，不重排；新增任务仅允许追加编号。
 3. 编号格式：`{Phase}/P{priority}-{seq}`。
 4. 每次进入新 Phase 前必须先完成分工规划（A/B 归属、依赖链、同步点、回滚归属）。
@@ -31,54 +31,24 @@
 
 - `blocked`: `none`
 - `in_progress`: `none`
-- `todo`: `Phase M`, `Phase K`, `Phase I`, `Phase L`
+- `todo`: `Phase M`, `Phase I`, `Phase L`
 - `historical`:
   - Phase H（Ha/Hb/Hc）完成记录：`doc/plans/archive/H-State-Closure-Plan.md` 及同目录 H*/Ha*/Hb*/Hc* 子计划。
   - Architecture Governance 12 项完成归档：`doc/plans/archive/AG-2026-02-Completion.md`。
-  - Phase J P0 交互闭环归档：`doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`。
-  - Phase J P1 交互闭环完成（2026-02-26）：预算门禁、话题调度、Phase J 评测赛道 PR 阻断上线。
+  - Phase `J/P0-2` 交互闭环归档（含 `J/P0-0`、`J/P0-1`）：`doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`。
+  - Phase `J/P1` 交互闭环归档：`doc/plans/archive/J-2026-02-Engagement-P1-Plan.md`。
+  - Phase K 多人格聊天归档（`K/P0-0` ~ `K/P1-3`）：`doc/plans/archive/K-2026-02-Multi-Persona-Chat-Plan.md`。
   - Core 分层重构（2026-02-26）：`packages/core/src` 根层收敛为 `index.ts`/`types.ts`，其余迁入 `runtime|memory|persona|state|guards|governance|capabilities|proactive`。
 
-## 5) Active Roadmap
-
-### Phase J（交互体验闭环）
-
-目标：补齐兴趣/注意力/主动交互闭环，形成非轮询式会话体验。
-
-执行拆解：
-1. J1（调度）：建立 engagement 预算、优先级、冷却与抢占规则。
-2. J2（路由）：多话题上下文分配与回收，降低话题漂移与抢答。
-3. J3（评测）：形成可重放体验评测并纳入质量门禁。
-
-阶段出口标准（DoD）：
-- J1 出口：预算消耗与触发原因在 DecisionTrace 可见，空转与过触发受控。
-- J2 出口：多话题切换稳定，跨话题串线率下降且可回放定位。
-- J3 出口：评测脚本可复现，关键体验指标纳入 `doc/Quality-Evaluation.md`。
-
-### J/P0-2 非轮询会话循环（已归档）
+### J/P0-2（historical anchor）
 - 状态：`historical`
-- 索引：`doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`（含 `J/P0-0`、`J/P0-1`、`J/P0-2`）
+- 索引：`doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`
 
-### J/P1-0 Engagement Plan + 预算门禁
-- 状态：`done`
-- 依赖：`J/P0-2`
-- 交付：兴趣/注意力预算模型、触发阈值、冷却窗口、抢占策略
-- 当前实现：新增 `phaseJMode` 与 `engagementTrace`（triggerType/triggerReason/budgetBefore/budgetAfter/cooldownApplied/recordOnly），并支持 `SOULSEED_PHASE_J_ENABLE`、`SOULSEED_PHASE_J_RECORD_ONLY` 灰度策略
-- 门禁：连续 30 轮内主动触发频率与预算偏差保持在预设阈值内
+### K/P0-0（historical anchor）
+- 状态：`historical`
+- 索引：`doc/plans/archive/K-2026-02-Multi-Persona-Chat-Plan.md`
 
-### J/P1-1 多话题上下文调度器
-- 状态：`done`
-- 依赖：`J/P1-0`
-- 交付：topic slot 分配、优先级队列、话题回收与跨话题桥接规则
-- 当前实现：已接入 `topic_state` 到会话控制，输出候选话题优先队列、`queueSnapshot`、饥饿提升标记、`recycleAction` 与 `bridgeFromTopic` 观测字段；支持 `SOULSEED_PHASE_J_TOPIC_SCHEDULER` 开关
-- 门禁：不得出现高优先级话题长期饥饿；上下文命中率可观测
-
-### J/P1-2 交互体验评测赛道
-- 状态：`done`
-- 依赖：`J/P1-0`, `J/P1-1`
-- 交付：主动交互体验基线、AB 对照脚本、失败样本回放模板
-- 当前实现：`scripts/eval_phase_j.mjs` + `datasets/quality/phase_j_engagement_cases.json` 已接入 `eval_all.sh` 与 `verify.sh` 门禁链路；`2026-02-26` 本地 strict 评测通过（ReplayPassRate=1, TopicHitRateB=1, Delta=0.5）
-- 门禁：评测结果可复现并已进入 PR 阶段阻断门禁
+## 5) Active Roadmap
 
 ### Phase M（Bio-Inspired Human Dynamics）
 
@@ -164,67 +134,6 @@
 - 依赖：`M/P2-1`
 - 交付：一次切换发布检查单、降级条件、回滚脚本与审计要求
 - 门禁：若连续性指标回退则自动进入回滚路径
-
-### Phase K（多人格聊天系统）
-
-目标：建立多 persona 会话编排、发言仲裁、上下文隔离和评测闭环。
-
-执行拆解：
-1. K0（会话层）：建立多人格图谱、注册和回合调度基线。
-2. K1（治理层）：完成发言仲裁、上下文隔离、主动协同策略。
-3. K2（产品层）：CLI 可用、评测闭环可跑、故障可回放。
-
-阶段出口标准（DoD）：
-- K0 出口：至少支持双人格稳定轮转，发言顺序可追踪可复放。
-- K1 出口：私有记忆隔离有效，跨人格污染可检测且可阻断。
-- K2 出口：CLI 命令可操作，评测覆盖核心多人格场景。
-
-### K/P0-0 多人格会话图谱与注册表
-- 状态：`done`
-- 交付：`multi_persona_registry.ts`（PersonaRegistryEntry / SessionGraph / GroupPolicy 接口 + 3 个 JSON Schema + load/save/register/seed/ensure 全链路）；PersonaPackage 载入含 K 工件隐式默认；direct-write 门禁已覆盖
-- 门禁：8 tests pass；注册冲突有 RegistrationError 错误码；legacy persona 无 K 工件时返回默认值
-
-### K/P0-1 多人格发言仲裁器（addressing 优先）
-- 状态：`done`
-- 依赖：`K/P0-0`
-- 交付：`multi_persona_arbitration.ts`（arbitrateMultiPersonaTurn；addressing×0.55 + interest×0.25 + base×0.20；cooldown penalty；deterministic tiebreak by actorId）
-- 门禁：6 tests pass；冲突时唯一发言者；reasonCodes 可追溯
-
-### K/P0-2 回合调度与抢答抑制
-- 状态：`done`
-- 依赖：`K/P0-1`
-- 交付：`multi_persona_turn_scheduler.ts`（strict_round_robin / round_robin_priority / free_form 三模式；antiMonopolyApplied flag；history 50 cap）
-- 门禁：11 tests pass；连续霸占受 maxConsecutiveTurns 阻断
-
-### K/P0-3 兼容性与迁移门禁
-- 状态：`done`
-- 依赖：`K/P0-0`
-- 交付：`multi_persona_feature_flag.ts`（SOULSEED_PHASE_K_ENABLE 默认 0）；migratePersonaToPhaseK（幂等）；doctor K 工件健康检查（hint/warning）；compat_checklist 已扩展；fixture 回归套件（legacy/hybrid/full-K）
-- 门禁：6 tests pass；flag=0 下零退化；迁移幂等
-
-### K/P1-0 上下文总线与私有记忆隔离
-- 状态：`done`
-- 依赖：`K/P0-0`, `K/P0-3`
-- 交付：`multi_persona_context_bus.ts`（strict/shared/hybrid 三级隔离；checkAccessPermission / postMessage / getVisibleMessages / assertNoLeakage / buildMemoryIsolationFilter 全链路；accessLog 500 cap）
-- 门禁：24 tests pass；strict 模式跨 persona 私有访问全拒绝；leakCheck.ok 断言可复用
-
-### K/P1-1 多人格主动协同规划器
-- 状态：`done`
-- 依赖：`K/P0-2`, `K/P1-0`
-- 交付：`multi_persona_cooperation.ts`（decomposeRequest 按枚举/名字引用分任务；resolveConflict 按注册顺序仲裁；advanceTask 状态推进；computeCooperationLatencyBudget = 1.5× timeout）
-- 门禁：10 tests pass；cooperation disabled 时退化为单任务
-
-### K/P1-2 CLI 多人格交互命令与会话视图
-- 状态：`done`
-- 依赖：`K/P0-2`, `K/P1-0`
-- 交付：`multi_persona_commands.ts`（/who /mute /solo /invite /mp status；isMultiPersonaCommand 识别器；formatSpeakerLabel；flag=0 返回 "not enabled" 提示）
-- 门禁：22 tests pass；speaker label case-insensitive match；flag=0 优雅降级
-
-### K/P1-3 多人格评测赛道（AB 共建）
-- 状态：`done`
-- 依赖：`K/P1-1`, `K/P1-2`, `K/P0-3`
-- 交付：12 条评测数据集 `test/fixtures/k_eval/scenarios.json`；`scripts/eval_multi_persona.mjs`（ArbitrationAccuracy=1.0 / LeakageRate=0 / TurnMonopolyRate=0 / SpeakerLabelAccuracy=1.0 / CooperationLatencyRatio=1.5）；scorecard 归档 `reports/quality/phase_k_scorecard.json` + `.md`
-- 门禁：`eval_all.sh` + `verify.sh` 含 strict 阻断；Quality-Evaluation §6.1 已更新阈值
 
 ### Phase I（产品化收口）
 

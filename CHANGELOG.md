@@ -35,6 +35,10 @@ All notable changes to this project will be documented in this file.
   - Enriched K/P1-3 with concrete metrics/thresholds (ArbitrationAccuracy>=0.90, LeakageRate==0, TurnMonopolyRate<=0.05, SpeakerLabelAccuracy==1.0, CooperationLatencyP95<=1.5x), dataset contract (>=50 scenarios), and `eval_multi_persona.mjs` script spec.
   - Updated DoD with compatibility exit criteria per sub-phase.
   - Synced Roadmap.md with all K plan changes (added K/P0-3 task, updated dependencies and deliverables for K/P1-0..K/P1-3).
+- **Plan archive housekeeping**:
+  - Archived completed plan docs to `doc/plans/archive/`: `J-2026-02-Engagement-P1-Plan.md` and `K-2026-02-Multi-Persona-Chat-Plan.md`.
+  - Updated `doc/plans/README.md` Active Index and `doc/plans/archive/README.md` Archive Index.
+  - Trimmed `doc/Roadmap.md` Active Roadmap by removing completed Phase J/K detail blocks and keeping one-line historical archive links.
 - **Phase J P1 closure**: `J/P1-0..P1-2` completed with runtime flags and trace hardening:
   - Added `SOULSEED_PHASE_J_ENABLE`, `SOULSEED_PHASE_J_RECORD_ONLY`, `SOULSEED_PHASE_J_TOPIC_SCHEDULER` runtime toggles in CLI path.
   - Extended `conversationControl` trace with `phaseJMode`, `engagementTrace`, budget remaining/cooldown fields, and topic scheduler `queueSnapshot`/`recycleAction`.
