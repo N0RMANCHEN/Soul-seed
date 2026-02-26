@@ -230,7 +230,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { dispatchKnownCommand } from "./commands/router.js";
 import { inferEmotionFromText, parseEmotionTag, renderEmotionPrefix } from "./emotion.js";
 import { parseArgs } from "./parser/args.js";
-import { resolveReplyDisplayMode, resolveStreamReplyEnabled } from "./runtime_flags.js";
+import { resolveStreamReplyEnabled } from "./runtime_flags.js";
 
 type ReadingContentMode = "fiction" | "non_fiction" | "unknown";
 type PersonaTemplateKey = "friend" | "peer" | "intimate" | "neutral";
@@ -687,6 +687,15 @@ function resolveAdaptiveReasoningEnabled(options: Record<string, string | boolea
   }
   const raw = (process.env.SOULSEED_ADAPTIVE_REASONING ?? "1").trim().toLowerCase();
   return !(raw === "0" || raw === "false" || raw === "off" || raw === "no");
+}
+
+function resolveReplyLatencyMode(options: Record<string, string | boolean>): "low_latency" | "balanced" | "quality_first" {
+  const fromOption = optionString(options, "reply-latency-mode");
+  const raw = (fromOption ?? process.env.SOULSEED_REPLY_LATENCY_MODE ?? "low_latency").trim().toLowerCase();
+  if (raw === "low_latency" || raw === "balanced" || raw === "quality_first") {
+    return raw;
+  }
+  return "low_latency";
 }
 
 function resolvePhaseJFlags(options: Record<string, string | boolean>): {
@@ -2099,6 +2108,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   const thinkingPreviewModelFallback = resolveThinkingPreviewModelFallback(options);
   const thinkingPreviewModelMaxMs = resolveThinkingPreviewModelMaxMs(options);
   const adaptiveReasoningEnabled = resolveAdaptiveReasoningEnabled(options);
+  const replyLatencyMode = resolveReplyLatencyMode(options);
   let adultSafetyContext = resolveAdultSafetyContext(options, personaPkg.persona.adultSafetyDefaults);
   const ownerKey =
     (typeof options["owner-key"] === "string" ? options["owner-key"] : process.env.SOULSEED_OWNER_KEY ?? "").trim();
@@ -2197,6 +2207,25 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   const sayAsAssistant = (content: string, emotionPrefix = ""): void => {
     const safeContent = guardAssistantOutput(content, "reply");
     console.log(`${assistantLabel()} ${emotionPrefix}${safeContent}`);
+  };
+  const sayAsAssistantTypewriter = async (content: string, emotionPrefix = ""): Promise<void> => {
+    const safeContent = guardAssistantOutput(content, "reply");
+    process.stdout.write(`${assistantLabel()} ${emotionPrefix}`);
+    let delayBudgetMs = 1200;
+    for (const ch of safeContent) {
+      process.stdout.write(ch);
+      if (delayBudgetMs <= 0) {
+        continue;
+      }
+      let stepMs = 8 + Math.floor(Math.random() * 7);
+      if (/[，。！？,.!?、；;：:]/u.test(ch)) {
+        stepMs += 22 + Math.floor(Math.random() * 19);
+      }
+      stepMs = Math.min(stepMs, delayBudgetMs);
+      delayBudgetMs -= stepMs;
+      await sleep(stepMs);
+    }
+    process.stdout.write("\n");
   };
   const applyHumanPacedDelay = async (startedAtMs: number, replyText: string): Promise<void> => {
     if (!humanPacedMode) {
@@ -3895,12 +3924,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   });
   greetingText = greetingTemporalGuard.text;
   const greetingNormalized = normalizeConversationalReply(greetingText, "greeting", buildGreetingFallback(), lastUserInput);
-  const greetingAdjusted = greetingNormalized !== greetingText;
   greetingText = greetingNormalized;
-  if (!greetingGenerated.streamed || greetingFactualGrounding.corrected || greetingTemporalGuard.corrected || greetingAdjusted) {
-    await applyHumanPacedDelay(greetingStartedAtMs, greetingText);
-    sayAsAssistant(greetingText);
-  }
+  await applyHumanPacedDelay(greetingStartedAtMs, greetingText);
+  sayAsAssistant(greetingText);
   await appendAutonomyAssistantMessage({
     text: greetingText,
     mode: "greeting",
@@ -5054,7 +5080,6 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         currentAbort = bypassPrimaryModel ? null : new AbortController();
         let assistantContent = "";
         let aborted = false;
-        let streamed = false;
         const llmPrimaryStartedAtMs = Date.now();
 
         try {
@@ -5130,7 +5155,6 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         }
       });
         } else {
-      const rawAssistantContent = assistantContent;
       const guardStartedAtMs = Date.now();
       const identityGuard = enforceIdentityGuard(assistantContent, personaPkg.persona.displayName, input);
       assistantContent = identityGuard.text;
@@ -5171,7 +5195,6 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         buildContextualReplyFallback(input),
         input
       );
-      const conversationalAdjusted = conversationalNormalized !== assistantContent;
       assistantContent = conversationalNormalized;
       const emotion = parseEmotionTag(assistantContent);
       assistantContent = emotion.text;
@@ -5283,12 +5306,27 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       }
       // 保存本轮 meta-review 风格信号，用于后续 self_revision 替代关键字硬匹配
       let metaReviewStyleSignals: { concise: number; reflective: number; direct: number; warm: number } | undefined;
-      const shouldRunMetaReview =
-        turnExecution.mode === "soul" &&
-        (trace.reasoningDepth !== "fast" ||
+      const shouldRunMetaReview = (() => {
+        if (turnExecution.mode !== "soul" || instinctRoute) {
+          return false;
+        }
+        const baseShouldRun =
+          trace.reasoningDepth !== "fast" ||
           trace.riskLevel !== "low" ||
           (trace.consistencyVerdict ?? "allow") !== "allow" ||
-          (soulConsistencyReasons?.length ?? 0) > 0);
+          (soulConsistencyReasons?.length ?? 0) > 0;
+        const fastLowRiskAllow =
+          trace.reasoningDepth === "fast" &&
+          trace.riskLevel === "low" &&
+          (trace.consistencyVerdict ?? "allow") === "allow";
+        if (replyLatencyMode === "quality_first") {
+          return true;
+        }
+        if (replyLatencyMode === "balanced") {
+          return baseShouldRun;
+        }
+        return baseShouldRun && !fastLowRiskAllow;
+      })();
       if (shouldRunMetaReview) {
         const llmMetaStartedAtMs = Date.now();
         const metaAdapter = getAdapterForRoute("meta");
@@ -5301,7 +5339,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           consistencyReasons: soulConsistencyReasons,
           domain: "dialogue",
           isAdultContext,
-          fictionalRoleplayEnabled: adultSafetyContext.fictionalRoleplay
+          fictionalRoleplayEnabled: adultSafetyContext.fictionalRoleplay,
+          timeoutMs: replyLatencyMode === "low_latency" ? 600 : replyLatencyMode === "balanced" ? 900 : undefined
         });
         await appendLifeEvent(personaPath, {
           type: "consistency_checked",
@@ -5386,25 +5425,14 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       addLatency("rewrite", rewriteStartedAtMs);
       const resolvedEmotion = compactedEmotion.emotion ?? emotion.emotion ?? inferEmotionFromText(assistantContent);
       const shouldDisplayAssistant = !(loopBreak.triggered && assistantContent.trim().length === 0);
-      const adjustedByGuard =
-        identityGuard.corrected ||
-        relationalGuard.corrected ||
-        recallGroundingGuard.corrected ||
-        pronounRoleGuard.corrected ||
-        temporalPhraseGuard.corrected ||
-        conversationalAdjusted ||
-        loopBreak.triggered;
-      const displayMode = resolveReplyDisplayMode({
-        streamed,
-        shouldDisplayAssistant,
-        adjustedByGuard,
-        rawText: parseEmotionTag(rawAssistantContent).text,
-        finalText: assistantContent
-      });
-      if (displayMode !== "none") {
+      if (shouldDisplayAssistant) {
         const emitStartedAtMs = Date.now();
-        await applyHumanPacedDelay(turnStartedAtMs, assistantContent);
-        sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
+        if (streamReplyEnabled) {
+          await sayAsAssistantTypewriter(assistantContent, renderEmotionPrefix(resolvedEmotion));
+        } else {
+          await applyHumanPacedDelay(turnStartedAtMs, assistantContent);
+          sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
+        }
         addLatency("emit", emitStartedAtMs);
       }
       const turnLatencySummary = buildTurnLatencySummary({

@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
 - **Archive** Architecture Governance 12 项：Architecture-Governance-Roadmap 任务状态全部标记 done，风险总览更新为已闭环，归档说明已添加；Roadmap 当前执行总览补充 AG 完成记录。
 
 ### Fixed
+- **Chat greeting visibility**: Startup greeting is now always printed after normalization/guards, fixing cases where greeting was generated but not rendered.
+- **Reply interaction lag (default mode)**: Added `SOULSEED_REPLY_LATENCY_MODE` (`low_latency|balanced|quality_first`, default `low_latency`) and low-latency skip/timeout policy for meta-review in fast+low-risk turns.
+- **Streaming UX regression**: Restored streamed-feel output with finalized-text typewriter rendering when `SOULSEED_STREAM_REPLY=1`, while keeping guard-consistent final output.
 - **CLI test** `chat can resume last goal and report progress without creating a new goal`: increased `intervalMs` to 420 to avoid flakiness when run in full suite.
 
 ### Changed

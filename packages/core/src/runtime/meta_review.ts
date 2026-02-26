@@ -43,6 +43,7 @@ export async function runMetaReviewLlm(params: {
   domain?: "dialogue" | "tool";
   isAdultContext?: boolean;
   fictionalRoleplayEnabled?: boolean;
+  timeoutMs?: number;
 }): Promise<MetaReviewDecision> {
   if (!params.adapter) {
     return {
@@ -67,11 +68,25 @@ export async function runMetaReviewLlm(params: {
   }
 
   try {
-    const result = await params.adapter.streamChat(buildMetaReviewMessages(params), {
-      onToken: () => {
-        // hidden internal meta-review stage
+    const timeoutMs = Number.isFinite(params.timeoutMs) ? Math.max(100, Math.floor(Number(params.timeoutMs))) : 0;
+    const controller = timeoutMs > 0 ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    let result: { content: string };
+    try {
+      result = await params.adapter.streamChat(
+        buildMetaReviewMessages(params),
+        {
+          onToken: () => {
+            // hidden internal meta-review stage
+          }
+        },
+        controller?.signal
+      );
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
       }
-    });
+    }
     const parsed = parseMetaReviewOutput(result.content);
     if (!parsed) {
       return {
@@ -90,7 +105,14 @@ export async function runMetaReviewLlm(params: {
       quality: softened.quality,
       styleSignals: softened.styleSignals
     };
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        applied: false,
+        verdict: "allow",
+        rationale: "meta_review_timeout"
+      };
+    }
     return {
       applied: false,
       verdict: "allow",

@@ -256,6 +256,7 @@ SHA-256 哈希校验后导入，失败自动回滚并列出错误。输出：`{o
 - `SOULSEED_THINKING_PREVIEW_THRESHOLD_MS`：思考提示阈值（默认 `1000` ms）。
 - `SOULSEED_THINKING_PREVIEW_MODEL_FALLBACK`：是否允许用模型生成 thinking preview（默认 `0`）。
 - `SOULSEED_THINKING_PREVIEW_MAX_MODEL_MS`：thinking preview 模型调用超时（默认 `220` ms）。
+- `SOULSEED_REPLY_LATENCY_MODE`：回复延迟策略（`low_latency|balanced|quality_first`，默认 `low_latency`）。
 - `SOULSEED_PHASE_J_ENABLE`：是否启用 Phase J 交互控制（默认 `1`）。
 - `SOULSEED_PHASE_J_RECORD_ONLY`：是否启用预算 record-only 模式（默认 `0`）。
 - `SOULSEED_PHASE_J_TOPIC_SCHEDULER`：是否启用 topic scheduler trace（默认 `1`）。
