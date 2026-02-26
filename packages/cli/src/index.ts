@@ -2216,6 +2216,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     const safeContent = stripAssistantLabelPrefix(guardAssistantOutput(content, "reply"));
     console.log(`${assistantLabel()} ${emotionPrefix}${safeContent}`);
   };
+  const isCosmeticStreamRewrite = (rawText: string, finalText: string): boolean => {
+    const normalize = (text: string): string =>
+      stripAssistantLabelPrefix(stripPromptArtifactTags(stripStageDirections(text)))
+        .replace(/[ \t]{2,}/g, " ")
+        .trim();
+    return normalize(rawText) === normalize(finalText);
+  };
   const applyHumanPacedDelay = async (startedAtMs: number, replyText: string): Promise<void> => {
     if (!humanPacedMode) {
       return;
@@ -5604,12 +5611,17 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         rawText: rawAssistantContent || assistantContent,
         finalText: assistantContent
       });
+      const cosmeticStreamRewrite =
+        streamReplyEnabled &&
+        streamPrintStarted &&
+        replyDisplayMode === "adjusted" &&
+        isCosmeticStreamRewrite(rawAssistantContent || assistantContent, assistantContent);
       if (shouldDisplayAssistant) {
         const emitStartedAtMs = Date.now();
         if (!streamReplyEnabled) {
           await applyHumanPacedDelay(turnStartedAtMs, assistantContent);
           sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
-        } else if (replyDisplayMode === "adjusted" || replyDisplayMode === "full") {
+        } else if ((replyDisplayMode === "adjusted" || replyDisplayMode === "full") && !cosmeticStreamRewrite) {
           if (streamPrintStarted && !streamPrintEnded) {
             process.stdout.write("\n");
             streamPrintEnded = true;
