@@ -117,6 +117,7 @@ export * from "./state/compat_mode.js";
 export * from "./state/compat_migration.js";
 export * from "./state/compat_calibration.js";
 export * from "./state/topic_state.js";
+export * from "./state/proactive_plan.js";
 export {
   MANIFEST_SCHEMA_VERSION,
   MANIFEST_FILENAME,

@@ -114,6 +114,11 @@ import {
   runMetaReviewLlm,
   computeProactiveStateSnapshot,
   decideProactiveEmission,
+  buildProactivePlan,
+  isProactivePlanValid,
+  writeProactivePlan,
+  loadTopicState,
+  createInitialProactivePlan,
   fetchUrlContent,
   upsertPersonaJudgment,
   listCrystallizationRuns,
@@ -2617,6 +2622,23 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       recentEmissionCount: proactiveRecentEmitCount
     });
 
+  const buildProactivePlanForTick = async (snapshot: ReturnType<typeof buildProactiveSnapshot>) => {
+    const topicState = await loadTopicState(personaPath).catch(() => null);
+    const plan = buildProactivePlan({
+      snapshot,
+      activeTopic: topicState?.activeTopic,
+      pendingGoalId: lastGoalId
+    });
+    const validated = isProactivePlanValid(plan) ? plan : createInitialProactivePlan();
+    const planWithTs = { ...validated, updatedAt: new Date().toISOString() };
+    try {
+      await writeProactivePlan(personaPath, planWithTs);
+    } catch {
+      // proactive plan persistence is non-blocking for dialogue continuity
+    }
+    return planWithTs;
+  };
+
   const buildTemporalAnchorBlock = (
     events: Array<{ ts: string; type: string; payload: Record<string, unknown> }>
   ): string => {
@@ -2897,7 +2919,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     });
   };
 
-  const sendProactiveMessage = async (): Promise<void> => {
+  const sendProactiveMessage = async (proactivePlan?: Record<string, unknown>): Promise<void> => {
     if (currentAbort) {
       return;
     }
@@ -2964,6 +2986,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         proactive: true,
         trigger: "autonomy_probabilistic",
         proactiveSnapshot: buildProactiveSnapshot(),
+        proactivePlan: proactivePlan ?? null,
         memoryMeta: buildMemoryMeta({
           tier: "pattern",
           source: "system",
@@ -3050,10 +3073,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               reason: "arousal_streak_override"
             };
           }
+          const proactivePlan = await buildProactivePlanForTick(snapshot);
           await appendLifeEvent(personaPath, {
             type: "proactive_decision_made",
             payload: {
               ...decision,
+              proactivePlan,
               suppressReason: decision.suppressReason ?? null,
               baseProbability: snapshot.probability,
               arousalBoost,
@@ -3062,7 +3087,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
             }
           });
           if (decision.emitted) {
-            await sendProactiveMessage();
+            await sendProactiveMessage(proactivePlan);
             proactiveMissStreak = 0;
           } else {
             proactiveMissStreak += 1;

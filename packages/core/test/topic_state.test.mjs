@@ -9,7 +9,8 @@ import {
   createInitialTopicState,
   evolveTopicStateFromTurn,
   loadTopicState,
-  updateInterestsFromTurn
+  updateInterestsFromTurn,
+  loadProactivePlan
 } from "../dist/index.js";
 
 test("J/P0-0: initPersonaPackage creates topic_state.json", async () => {
@@ -51,4 +52,15 @@ test("J/P0-0: updateInterestsFromTurn also refreshes topic_state", async () => {
   assert.ok(topicState, "topic_state should be present");
   assert.ok(topicState.threads.length >= 1, "topic_state should contain at least one thread");
   assert.equal(topicState.threads[0].status, "open");
+});
+
+test("J/P0-1: initPersonaPackage creates proactive_plan.json", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-proactive-plan-init-"));
+  const personaPath = path.join(tmpDir, "ProactivePlanInit.soulseedpersona");
+  await initPersonaPackage(personaPath, "ProactivePlanInit");
+
+  const plan = await loadProactivePlan(personaPath);
+  assert.ok(plan !== null, "proactive_plan.json should exist after init");
+  assert.equal(plan.schemaVersion, "1.0");
+  assert.equal(typeof plan.intent, "string");
 });
