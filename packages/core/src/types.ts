@@ -422,10 +422,14 @@ export interface ConversationControlDecision {
 export interface MemoryEvidenceBlock {
   id: string;
   source: "user" | "assistant" | "system";
+  speakerRelation?: SpeakerRelation;
+  speakerEntityId?: string;
   content: string;
   /** P4-0: 记忆不确定性分级 */
   uncertaintyLevel?: "certain" | "uncertain";
 }
+
+export type SpeakerRelation = "me" | "you" | "other_named" | "group" | "system" | "unknown";
 
 export interface DecisionTrace {
   version: string;

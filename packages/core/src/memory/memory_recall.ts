@@ -3,7 +3,7 @@ import { searchMemoryVectors } from "./memory_embeddings.js";
 import { classifyMemoryState, scoreMemoryFromStoreRow } from "./memory_lifecycle.js";
 import { ensureMemoryStore, runMemoryStoreSql } from "./memory_store.js";
 import { projectSubjectiveEmphasis } from "../runtime/semantic_projection.js";
-import type { MemoryEvidenceBlock } from "../types.js";
+import type { MemoryEvidenceBlock, SpeakerRelation } from "../types.js";
 
 export interface RecallBudget {
   candidateMax: number;
@@ -109,9 +109,8 @@ interface MemoryRow {
   credibilityScore: number;
   reconsolidationCount: number;
   originRole: "user" | "assistant" | "system";
-  speakerRole: "user" | "assistant" | "system";
-  speakerId: string | null;
-  speakerLabel: string | null;
+  speakerRelation: SpeakerRelation;
+  speakerEntityId?: string;
 }
 
 const DEFAULT_BUDGET: RecallBudget = {
@@ -440,6 +439,8 @@ export async function recallMemoriesWithTrace(
     memoryBlocks: injectedRows.map((item) => ({
       id: item.row.id,
       source: item.row.originRole,
+      speakerRelation: item.row.speakerRelation,
+      ...(item.row.speakerEntityId ? { speakerEntityId: item.row.speakerEntityId } : {}),
       content: item.row.content,
       uncertaintyLevel: computeMemoryUncertainty(item.row)
     })),
@@ -612,9 +613,8 @@ async function fetchCandidateRows(rootPath: string, limit: number): Promise<Memo
       "'credibilityScore', credibility_score,",
       "'reconsolidationCount', reconsolidation_count,",
       "'originRole', origin_role,",
-      "'speakerRole', COALESCE(speaker_role, origin_role),",
-      "'speakerId', speaker_id,",
-      "'speakerLabel', speaker_label",
+      "'speakerRelation', speaker_relation,",
+      "'speakerEntityId', speaker_entity_id",
       ")",
       "FROM memories",
       "WHERE deleted_at IS NULL AND excluded_from_recall = 0",
@@ -650,9 +650,8 @@ async function fetchCandidateRows(rootPath: string, limit: number): Promise<Memo
         credibilityScore: clamp01(Number(parsed.credibilityScore)),
         reconsolidationCount: normalizeInt(parsed.reconsolidationCount, 0),
         originRole: normalizeOriginRole(parsed.originRole),
-        speakerRole: normalizeSpeakerRole(parsed.speakerRole, normalizeOriginRole(parsed.originRole)),
-        speakerId: normalizeOptionalString(parsed.speakerId),
-        speakerLabel: normalizeOptionalString(parsed.speakerLabel)
+        speakerRelation: normalizeSpeakerRelation(parsed.speakerRelation),
+        speakerEntityId: normalizeSpeakerEntityId(parsed.speakerEntityId)
       });
     } catch {
       continue;
@@ -691,9 +690,8 @@ async function fetchKeywordCandidateRows(rootPath: string, limit: number, keywor
         "'credibilityScore', m.credibility_score,",
         "'reconsolidationCount', m.reconsolidation_count,",
         "'originRole', m.origin_role,",
-        "'speakerRole', COALESCE(m.speaker_role, m.origin_role),",
-        "'speakerId', m.speaker_id,",
-        "'speakerLabel', m.speaker_label",
+        "'speakerRelation', m.speaker_relation,",
+        "'speakerEntityId', m.speaker_entity_id",
         ")",
         "FROM memories_fts f",
         "JOIN memories m ON m.id = f.memory_id",
@@ -736,9 +734,8 @@ async function fetchKeywordCandidateRows(rootPath: string, limit: number, keywor
         "'credibilityScore', credibility_score,",
         "'reconsolidationCount', reconsolidation_count,",
         "'originRole', origin_role,",
-        "'speakerRole', COALESCE(speaker_role, origin_role),",
-        "'speakerId', speaker_id,",
-        "'speakerLabel', speaker_label",
+        "'speakerRelation', speaker_relation,",
+        "'speakerEntityId', speaker_entity_id",
         ")",
         "FROM memories",
         "WHERE deleted_at IS NULL AND excluded_from_recall = 0",
@@ -853,9 +850,8 @@ async function fetchVectorCandidateRows(
       "'credibilityScore', credibility_score,",
       "'reconsolidationCount', reconsolidation_count,",
       "'originRole', origin_role,",
-      "'speakerRole', COALESCE(speaker_role, origin_role),",
-      "'speakerId', speaker_id,",
-      "'speakerLabel', speaker_label",
+      "'speakerRelation', speaker_relation,",
+      "'speakerEntityId', speaker_entity_id",
       ")",
       "FROM memories",
       `WHERE id IN (${ids.map((id) => sqlText(id)).join(",")})`,
@@ -1197,8 +1193,7 @@ function extractKeywords(input: string): string[] {
 }
 
 function renderInjectedMemory(row: MemoryRow): string {
-  const speakerTag = renderSpeakerTag(row);
-  return `${speakerTag ? `${speakerTag} ` : ""}[${row.memoryType}/${row.state}] ${row.content}`;
+  return `[${row.memoryType}/${row.state}] ${row.content}`;
 }
 
 function recencyScore(updatedAt: string): number {
@@ -1295,9 +1290,8 @@ function parseRows(raw: string): MemoryRow[] {
         credibilityScore: clamp01(Number(parsed.credibilityScore)),
         reconsolidationCount: normalizeInt(parsed.reconsolidationCount, 0),
         originRole: normalizeOriginRole(parsed.originRole),
-        speakerRole: normalizeSpeakerRole(parsed.speakerRole, normalizeOriginRole(parsed.originRole)),
-        speakerId: normalizeOptionalString(parsed.speakerId),
-        speakerLabel: normalizeOptionalString(parsed.speakerLabel)
+        speakerRelation: normalizeSpeakerRelation(parsed.speakerRelation),
+        speakerEntityId: normalizeSpeakerEntityId(parsed.speakerEntityId)
       });
     } catch {
       continue;
@@ -1328,9 +1322,8 @@ async function fetchRowsByIds(rootPath: string, ids: string[]): Promise<MemoryRo
       "'credibilityScore', credibility_score,",
       "'reconsolidationCount', reconsolidation_count,",
       "'originRole', origin_role,",
-      "'speakerRole', COALESCE(speaker_role, origin_role),",
-      "'speakerId', speaker_id,",
-      "'speakerLabel', speaker_label",
+      "'speakerRelation', speaker_relation,",
+      "'speakerEntityId', speaker_entity_id",
       ")",
       "FROM memories",
       `WHERE id IN (${unique.map((id) => sqlText(id)).join(",")})`,
@@ -1436,35 +1429,19 @@ function normalizeOriginRole(value: unknown): "user" | "assistant" | "system" {
   return value === "user" || value === "assistant" || value === "system" ? value : "system";
 }
 
-function normalizeSpeakerRole(
-  value: unknown,
-  fallback: "user" | "assistant" | "system"
-): "user" | "assistant" | "system" {
-  return value === "user" || value === "assistant" || value === "system" ? value : fallback;
+function normalizeSpeakerRelation(value: unknown): SpeakerRelation {
+  return value === "me" ||
+    value === "you" ||
+    value === "other_named" ||
+    value === "group" ||
+    value === "system" ||
+    value === "unknown"
+    ? value
+    : "unknown";
 }
 
-function normalizeOptionalString(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function renderSpeakerTag(row: MemoryRow): string {
-  if (row.speakerRole === "assistant" && row.speakerLabel) {
-    return `[${row.speakerRole}:${row.speakerLabel}]`;
-  }
-  if (row.speakerRole === "assistant" && row.speakerId) {
-    return `[assistant:${row.speakerId}]`;
-  }
-  if (row.speakerRole === "system" && row.speakerLabel) {
-    return `[system:${row.speakerLabel}]`;
-  }
-  if (row.speakerRole !== row.originRole && row.speakerRole !== "user") {
-    return `[${row.speakerRole}]`;
-  }
-  return "";
+function normalizeSpeakerEntityId(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 function roundScore(value: number): number {

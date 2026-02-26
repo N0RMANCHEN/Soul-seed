@@ -147,3 +147,26 @@ test("ingest reinforces user emphasis into high-priority memory channel", async 
   assert.equal(Number(activationCount) >= 3, true);
   assert.equal(Number(salience) >= 0.9, true);
 });
+
+test("ingest writes speaker relation labels for user and assistant turns", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-memory-ingest-speaker-"));
+  const personaPath = path.join(tmpDir, "Aster.soulseedpersona");
+  const dbPath = path.join(personaPath, "memory.db");
+
+  await initPersonaPackage(personaPath, "Aster");
+  await appendLifeEvent(personaPath, {
+    type: "user_message",
+    payload: { text: "我今天想聊计划安排。" }
+  });
+  await appendLifeEvent(personaPath, {
+    type: "assistant_message",
+    payload: { text: "好，我来帮你拆解步骤。" }
+  });
+
+  const rows = sqlite(
+    dbPath,
+    "SELECT origin_role || '|' || speaker_relation FROM memories ORDER BY created_at ASC LIMIT 2;"
+  ).split("\n");
+  assert.equal(rows[0], "user|you");
+  assert.equal(rows[1], "assistant|me");
+});

@@ -5,7 +5,7 @@
  */
 
 import { strict as assert } from "node:assert";
-import { detectPerfectReplyStreak } from "../dist/perfect_reply_detector.js";
+import { detectPerfectReplyStreak } from "../dist/runtime/perfect_reply_detector.js";
 
 // Fixture: 50 turns, 12 with imperfection markers (streaks broken)
 const FIXTURE_50_MIXED = [

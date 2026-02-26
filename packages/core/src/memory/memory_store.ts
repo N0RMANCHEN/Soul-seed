@@ -54,9 +54,8 @@ export async function ensureMemoryStore(rootPath: string): Promise<void> {
         narrative_score REAL NOT NULL DEFAULT 0.2,
         credibility_score REAL NOT NULL DEFAULT 1.0,
         origin_role TEXT NOT NULL DEFAULT 'system',
-        speaker_role TEXT,
-        speaker_id TEXT,
-        speaker_label TEXT,
+        speaker_relation TEXT NOT NULL DEFAULT 'unknown',
+        speaker_entity_id TEXT,
         evidence_level TEXT NOT NULL DEFAULT 'derived',
         excluded_from_recall INTEGER NOT NULL DEFAULT 0,
         reconsolidation_count INTEGER NOT NULL DEFAULT 0,
@@ -597,14 +596,11 @@ async function migrateMemoryStoreToV9(dbPath: string): Promise<void> {
 async function migrateMemoryStoreToV10(dbPath: string): Promise<void> {
   const columns = await getTableColumns(dbPath, "memories");
   const alterSql: string[] = [];
-  if (!columns.has("speaker_role")) {
-    alterSql.push("ALTER TABLE memories ADD COLUMN speaker_role TEXT;");
+  if (!columns.has("speaker_relation")) {
+    alterSql.push("ALTER TABLE memories ADD COLUMN speaker_relation TEXT NOT NULL DEFAULT 'unknown';");
   }
-  if (!columns.has("speaker_id")) {
-    alterSql.push("ALTER TABLE memories ADD COLUMN speaker_id TEXT;");
-  }
-  if (!columns.has("speaker_label")) {
-    alterSql.push("ALTER TABLE memories ADD COLUMN speaker_label TEXT;");
+  if (!columns.has("speaker_entity_id")) {
+    alterSql.push("ALTER TABLE memories ADD COLUMN speaker_entity_id TEXT;");
   }
 
   await runSqlite(
@@ -612,7 +608,7 @@ async function migrateMemoryStoreToV10(dbPath: string): Promise<void> {
     `
     BEGIN;
     ${alterSql.join("\n")}
-    UPDATE memories SET speaker_role = COALESCE(NULLIF(speaker_role, ''), origin_role, 'system');
+    UPDATE memories SET speaker_relation = COALESCE(speaker_relation, 'unknown');
     PRAGMA user_version = 10;
     COMMIT;
     `
