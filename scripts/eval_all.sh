@@ -6,3 +6,4 @@ if [ ! -f "packages/core/dist/index.js" ]; then
 fi
 
 node ./scripts/quality_scorecard.mjs
+node ./scripts/eval_phase_j.mjs --strict

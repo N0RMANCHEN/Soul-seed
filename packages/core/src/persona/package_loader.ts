@@ -23,6 +23,7 @@ import { loadMoodState } from "../state/mood_state.js";
 import { loadAutobiography } from "./autobiography.js";
 import { loadInterests, computeInterestCuriosity } from "./interests.js";
 import { loadGenome, loadEpigenetics } from "../state/genome.js";
+import { loadTopicState } from "../state/topic_state.js";
 import {
   MANIFEST_FILENAME,
   isPackageManifest,
@@ -220,6 +221,7 @@ export async function loadPersonaPackageV04(rootPath: string): Promise<PackageLo
 
   const genome = await loadGenome(rootPath);
   const epigenetics = await loadEpigenetics(rootPath);
+  const topicState = await loadTopicState(rootPath) ?? undefined;
 
   const package_: PersonaPackage = {
     rootPath,
@@ -239,7 +241,8 @@ export async function loadPersonaPackageV04(rootPath: string): Promise<PackageLo
     autobiography,
     genome,
     epigenetics,
-    interests
+    interests,
+    topicState
   };
 
   return { package: package_, manifest, warnings };

@@ -150,6 +150,49 @@ test("normalizeDecisionTrace keeps semantic routing fields", () => {
   assert.deepEqual(normalized.routing?.reasonCodes, ["meta_cognition_arbitration"]);
 });
 
+test("normalizeDecisionTrace keeps engagement budget and topic scheduler fields", () => {
+  const normalized = normalizeDecisionTrace({
+    version: DECISION_TRACE_SCHEMA_VERSION,
+    timestamp: "2026-02-26T00:00:00.000Z",
+    selectedMemories: [],
+    askClarifyingQuestion: false,
+    refuse: false,
+    riskLevel: "low",
+    reason: "budget-control",
+    model: "deepseek-chat",
+    conversationControl: {
+      engagementTier: "LIGHT",
+      topicAction: "maintain",
+      responsePolicy: "light_response",
+      reasonCodes: ["task_intent_detected", "budget_degraded_normal_to_light"],
+      engagementPolicyVersion: "j-p1-0/v1",
+      budget: {
+        turnBudgetMax: 120,
+        turnBudgetUsed: 121,
+        proactiveBudgetMax: 4,
+        proactiveBudgetUsed: 2,
+        degradedByBudget: true,
+        budgetReasonCodes: ["turn_budget_exhausted"]
+      },
+      topicScheduler: {
+        activeTopic: "roadmap",
+        candidateTopics: ["roadmap", "planning"],
+        selectedBy: "task",
+        starvationBoostApplied: false,
+        bridgeFromTopic: "music"
+      }
+    }
+  });
+
+  assert.equal(normalized.conversationControl?.engagementPolicyVersion, "j-p1-0/v1");
+  assert.equal(normalized.conversationControl?.budget?.degradedByBudget, true);
+  assert.equal(normalized.conversationControl?.budget?.turnBudgetMax, 120);
+  assert.deepEqual(normalized.conversationControl?.budget?.budgetReasonCodes, ["turn_budget_exhausted"]);
+  assert.equal(normalized.conversationControl?.topicScheduler?.activeTopic, "roadmap");
+  assert.equal(normalized.conversationControl?.topicScheduler?.selectedBy, "task");
+  assert.equal(normalized.conversationControl?.topicScheduler?.bridgeFromTopic, "music");
+});
+
 test("normalizeDecisionTrace keeps adaptive reasoning and core conflict metadata", () => {
   const normalized = normalizeDecisionTrace({
     version: DECISION_TRACE_SCHEMA_VERSION,

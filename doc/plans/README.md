@@ -39,4 +39,5 @@
 
 ## Active Index
 
+- `doc/plans/J-Engagement-P1-Plan.md`（Phase J active）
 - `doc/plans/L-Incremental-Input-Plan.md`（Phase L active）

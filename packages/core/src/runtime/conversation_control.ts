@@ -20,6 +20,19 @@ export interface ConversationControlInput {
     addressedToAssistant: boolean;
     consecutiveAssistantTurns: number;
   };
+  budgetContext?: {
+    turnBudgetMax: number;
+    turnBudgetUsed: number;
+    proactiveBudgetMax: number;
+    proactiveBudgetUsed: number;
+  };
+  topicContext?: {
+    activeTopic?: string;
+    candidateTopics?: string[];
+    starvationBoostApplied?: boolean;
+    selectedBy?: "addressing" | "task" | "interest" | "clarify" | "active" | "starvation_boost";
+    bridgeFromTopic?: string;
+  };
   semanticProjection?: SemanticProjectionResult;
 }
 
@@ -28,21 +41,35 @@ export function decideConversationControl(input: ConversationControlInput): Conv
   const reasonCodes: string[] = [];
 
   if (input.isRefusal || input.isRiskyRequest || input.coreConflict) {
+    const budget = normalizeBudget(input.budgetContext);
     reasonCodes.push("safety_or_core_conflict");
     return {
       engagementTier: "REACT",
       topicAction: "maintain",
       responsePolicy: "safety_refusal",
-      reasonCodes
+      reasonCodes,
+      engagementPolicyVersion: "j-p1-0/v1",
+      ...(budget ? { budget } : {})
     };
   }
   if (input.implicitCoreTension) {
+    const budget = normalizeBudget(input.budgetContext);
     reasonCodes.push("implicit_core_tension_degrade");
     return {
       engagementTier: "LIGHT",
       topicAction: "clarify",
       responsePolicy: "light_response",
-      reasonCodes
+      reasonCodes,
+      engagementPolicyVersion: "j-p1-0/v1",
+      ...(budget ? { budget } : {}),
+      topicScheduler: buildTopicScheduler({
+        topicAction: "clarify",
+        hasTaskIntent: false,
+        hasAddressing: false,
+        highAttention: false,
+        interests: input.interests,
+        topicContext: input.topicContext
+      })
     };
   }
 
@@ -99,6 +126,22 @@ export function decideConversationControl(input: ConversationControlInput): Conv
   const topicAction: TopicAction =
     hasAmbiguousThirdPerson || (isVeryShort && engagementTier !== "IGNORE") ? "clarify" : "maintain";
 
+  const budget = normalizeBudget(input.budgetContext);
+  if (budget) {
+    if (budget.turnBudgetUsed >= budget.turnBudgetMax) {
+      const degraded = degradeTierForBudget(engagementTier);
+      if (degraded !== engagementTier) {
+        reasonCodes.push(`budget_degraded_${engagementTier.toLowerCase()}_to_${degraded.toLowerCase()}`);
+        budget.degradedByBudget = true;
+      }
+      engagementTier = degraded;
+      budget.budgetReasonCodes.push("turn_budget_exhausted");
+    }
+    if (budget.proactiveBudgetUsed >= budget.proactiveBudgetMax) {
+      budget.budgetReasonCodes.push("proactive_budget_exhausted");
+    }
+  }
+
   const responsePolicy: ResponsePolicy = mapResponsePolicy(engagementTier);
   const groupParticipation = decideGroupParticipation({
     hasAddressing,
@@ -116,7 +159,92 @@ export function decideConversationControl(input: ConversationControlInput): Conv
     topicAction,
     responsePolicy,
     reasonCodes,
+    engagementPolicyVersion: "j-p1-0/v1",
+    ...(budget ? { budget } : {}),
+    topicScheduler: buildTopicScheduler({
+      topicAction,
+      hasTaskIntent,
+      hasAddressing,
+      highAttention,
+      interests: input.interests,
+      topicContext: input.topicContext
+    }),
     ...(groupParticipation ? { groupParticipation } : {})
+  };
+}
+
+function normalizeBudget(
+  value: ConversationControlInput["budgetContext"]
+): ConversationControlDecision["budget"] | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const turnBudgetMax = Math.max(1, Math.floor(Number(value.turnBudgetMax) || 1));
+  const turnBudgetUsed = Math.max(0, Math.floor(Number(value.turnBudgetUsed) || 0));
+  const proactiveBudgetMax = Math.max(1, Math.floor(Number(value.proactiveBudgetMax) || 1));
+  const proactiveBudgetUsed = Math.max(0, Math.floor(Number(value.proactiveBudgetUsed) || 0));
+  return {
+    turnBudgetMax,
+    turnBudgetUsed,
+    proactiveBudgetMax,
+    proactiveBudgetUsed,
+    degradedByBudget: false,
+    budgetReasonCodes: []
+  };
+}
+
+function degradeTierForBudget(tier: EngagementTier): EngagementTier {
+  switch (tier) {
+    case "DEEP":
+      return "NORMAL";
+    case "NORMAL":
+      return "LIGHT";
+    case "LIGHT":
+      return "REACT";
+    default:
+      return tier;
+  }
+}
+
+function buildTopicScheduler(params: {
+  topicAction: TopicAction;
+  hasTaskIntent: boolean;
+  hasAddressing: boolean;
+  highAttention: boolean;
+  interests?: ConversationControlInput["interests"];
+  topicContext?: ConversationControlInput["topicContext"];
+}): NonNullable<ConversationControlDecision["topicScheduler"]> {
+  const activeTopic =
+    (params.topicContext?.activeTopic ?? params.interests?.topTopics?.[0] ?? "topic_open").trim().slice(0, 64) ||
+    "topic_open";
+  const candidateTopics = [
+    ...(params.topicContext?.candidateTopics ?? []),
+    ...(params.interests?.topTopics ?? [])
+  ]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  const uniqueCandidates = [...new Set(candidateTopics)];
+  const selectedBy: NonNullable<ConversationControlDecision["topicScheduler"]>["selectedBy"] =
+    params.topicAction === "clarify"
+      ? "clarify"
+      : params.topicContext?.selectedBy
+        ? params.topicContext.selectedBy
+        : params.hasTaskIntent
+          ? "task"
+          : params.hasAddressing
+            ? "addressing"
+            : params.highAttention
+              ? "interest"
+              : "interest";
+  return {
+    activeTopic,
+    candidateTopics: uniqueCandidates,
+    selectedBy,
+    starvationBoostApplied: params.topicContext?.starvationBoostApplied === true,
+    ...(typeof params.topicContext?.bridgeFromTopic === "string" && params.topicContext.bridgeFromTopic.trim().length > 0
+      ? { bridgeFromTopic: params.topicContext.bridgeFromTopic.trim().slice(0, 64) }
+      : {})
   };
 }
 

@@ -277,6 +277,8 @@ export interface PersonaPackage {
     curiosity: number;
     updatedAt: string;
   };
+  /** J/P1-1: 话题状态快照（用于多话题上下文调度） */
+  topicState?: import("./state/topic_state.js").TopicStateData;
   /** H/P0-4: Genome-derived behavioral params */
   genome?: import("./state/genome.js").GenomeConfig;
   epigenetics?: import("./state/genome.js").EpigeneticsConfig;
@@ -362,6 +364,22 @@ export interface ConversationControlDecision {
   topicAction: TopicAction;
   responsePolicy: ResponsePolicy;
   reasonCodes: string[];
+  engagementPolicyVersion?: string;
+  budget?: {
+    turnBudgetMax: number;
+    turnBudgetUsed: number;
+    proactiveBudgetMax: number;
+    proactiveBudgetUsed: number;
+    degradedByBudget: boolean;
+    budgetReasonCodes: string[];
+  };
+  topicScheduler?: {
+    activeTopic: string;
+    candidateTopics: string[];
+    selectedBy: "addressing" | "task" | "interest" | "clarify" | "active" | "starvation_boost";
+    starvationBoostApplied: boolean;
+    bridgeFromTopic?: string;
+  };
   groupParticipation?: {
     mode: "speak" | "wait" | "brief_ack";
     score: number;

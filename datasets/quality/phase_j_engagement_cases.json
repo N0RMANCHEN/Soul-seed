@@ -1,0 +1,122 @@
+{
+  "name": "phase-j-engagement-replay",
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "j-case-1",
+      "userInput": "我们回到 Roadmap 的 Phase J 继续推进",
+      "topicState": {
+        "schemaVersion": "1.0",
+        "activeTopic": "音乐",
+        "threads": [
+          { "threadId": "th_music", "topicId": "音乐", "status": "open", "lastTouchedAt": "2026-02-26T00:00:00.000Z" },
+          { "threadId": "th_roadmap", "topicId": "Roadmap", "status": "open", "lastTouchedAt": "2026-02-26T00:01:00.000Z" }
+        ],
+        "updatedAt": "2026-02-26T00:01:00.000Z"
+      },
+      "interests": ["Roadmap", "音乐"],
+      "expected": {
+        "activeTopic": "Roadmap",
+        "selectedBy": "task",
+        "bridgeFromTopic": "音乐",
+        "starvationBoostApplied": false
+      }
+    },
+    {
+      "id": "j-case-2",
+      "userInput": "先说下音乐编曲里和声怎么走",
+      "topicState": {
+        "schemaVersion": "1.0",
+        "activeTopic": "Roadmap",
+        "threads": [
+          { "threadId": "th_roadmap", "topicId": "Roadmap", "status": "open", "lastTouchedAt": "2026-02-26T00:00:00.000Z" },
+          { "threadId": "th_music", "topicId": "音乐", "status": "open", "lastTouchedAt": "2026-02-26T00:01:00.000Z" }
+        ],
+        "updatedAt": "2026-02-26T00:01:00.000Z"
+      },
+      "interests": ["音乐", "Roadmap"],
+      "expected": {
+        "activeTopic": "音乐",
+        "selectedBy": "task",
+        "bridgeFromTopic": "Roadmap",
+        "starvationBoostApplied": false
+      }
+    },
+    {
+      "id": "j-case-3",
+      "userInput": "继续这个话题",
+      "topicState": {
+        "schemaVersion": "1.0",
+        "activeTopic": "Roadmap",
+        "threads": [
+          { "threadId": "th_roadmap", "topicId": "Roadmap", "status": "open", "lastTouchedAt": "2026-02-26T10:00:00.000Z" },
+          { "threadId": "th_music", "topicId": "音乐", "status": "open", "lastTouchedAt": "2026-02-25T08:00:00.000Z" }
+        ],
+        "updatedAt": "2026-02-26T10:00:00.000Z"
+      },
+      "interests": ["Roadmap", "音乐"],
+      "expected": {
+        "activeTopic": "Roadmap",
+        "selectedBy": "active",
+        "starvationBoostApplied": false
+      }
+    },
+    {
+      "id": "j-case-4",
+      "userInput": "我有点迷糊，先聊点别的",
+      "topicState": {
+        "schemaVersion": "1.0",
+        "activeTopic": "Roadmap",
+        "threads": [
+          { "threadId": "th_roadmap", "topicId": "Roadmap", "status": "open", "lastTouchedAt": "2026-02-26T10:00:00.000Z" },
+          { "threadId": "th_history", "topicId": "历史", "status": "open", "lastTouchedAt": "2026-01-10T08:00:00.000Z" }
+        ],
+        "updatedAt": "2026-02-26T10:00:00.000Z"
+      },
+      "interests": ["历史", "Roadmap"],
+      "expected": {
+        "activeTopic": "历史",
+        "selectedBy": "starvation_boost",
+        "bridgeFromTopic": "Roadmap",
+        "starvationBoostApplied": true
+      }
+    },
+    {
+      "id": "j-case-5",
+      "userInput": "你来决定我们先聊什么",
+      "topicState": {
+        "schemaVersion": "1.0",
+        "activeTopic": "Roadmap",
+        "threads": [
+          { "threadId": "th_roadmap", "topicId": "Roadmap", "status": "open", "lastTouchedAt": "2026-02-26T09:00:00.000Z" }
+        ],
+        "updatedAt": "2026-02-26T09:00:00.000Z"
+      },
+      "interests": ["Roadmap", "音乐"],
+      "expected": {
+        "activeTopic": "Roadmap",
+        "selectedBy": "active",
+        "starvationBoostApplied": false
+      }
+    },
+    {
+      "id": "j-case-6",
+      "userInput": "她呢？",
+      "topicState": {
+        "schemaVersion": "1.0",
+        "activeTopic": "Roadmap",
+        "threads": [
+          { "threadId": "th_roadmap", "topicId": "Roadmap", "status": "open", "lastTouchedAt": "2026-02-26T09:00:00.000Z" },
+          { "threadId": "th_music", "topicId": "音乐", "status": "open", "lastTouchedAt": "2026-02-26T09:01:00.000Z" }
+        ],
+        "updatedAt": "2026-02-26T09:01:00.000Z"
+      },
+      "interests": ["Roadmap", "音乐"],
+      "expected": {
+        "activeTopic": "Roadmap",
+        "selectedBy": "clarify",
+        "starvationBoostApplied": false
+      }
+    }
+  ]
+}

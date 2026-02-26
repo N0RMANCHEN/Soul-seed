@@ -34,6 +34,9 @@ npm run typecheck
 echo "[verify] build"
 npm run build
 
+echo "[verify] phase-j eval gate"
+npm run eval:phase-j
+
 echo "[verify] test"
 test_log="$(mktemp -t soulseed-verify-test.XXXXXX.log)"
 set +e

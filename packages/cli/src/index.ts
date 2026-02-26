@@ -2232,6 +2232,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   let proactiveCooldownUntilMs = 0;
   let proactiveMissStreak = 0;
   let proactiveRecentEmitCount = 0;
+  const TURN_BUDGET_MAX = 120;
+  const PROACTIVE_BUDGET_MAX = 4;
   const nonPollingLoopEnabled = !["0", "off", "false", "no"].includes(
     String(process.env.SOULSEED_NON_POLLING_LOOP ?? "1").trim().toLowerCase()
   );
@@ -4724,6 +4726,15 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const executionInput =
           goalAssist.kind === "resume" ? goalAssist.resumeInput : effectiveInput;
         const planningStartedAtMs = Date.now();
+        const turnBudgetUsed = Math.max(
+          0,
+          Math.min(
+            TURN_BUDGET_MAX * 2,
+            Math.floor(executionInput.trim().length / 12) +
+              Math.floor(recallResult.memories.length * 3) +
+              Math.floor(externalKnowledgeMemories.length * 5)
+          )
+        );
         const turnExecution = await executeTurnProtocol({
           rootPath: personaPath,
           personaPkg,
@@ -4734,6 +4745,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           recalledMemories: [...recallResult.memories, ...externalKnowledgeMemories],
           recalledMemoryBlocks: [...recallResult.memoryBlocks, ...externalKnowledgeBlocks],
           recallTraceId: recallResult.traceId,
+          conversationBudget: {
+            turnBudgetMax: TURN_BUDGET_MAX,
+            turnBudgetUsed,
+            proactiveBudgetMax: PROACTIVE_BUDGET_MAX,
+            proactiveBudgetUsed: proactiveRecentEmitCount
+          },
           safetyContext: adultSafetyContext,
           plannerAdapter,
           goalId: goalAssist.kind === "resume" ? goalAssist.goalId : undefined,

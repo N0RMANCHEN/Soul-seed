@@ -31,6 +31,8 @@
   - 覆盖最小在线链路与连续性 smoke 验证
 - 语义路由分层指标：`scripts/quality_scorecard.mjs` + `packages/core/src/conversation_metrics.ts`
   - 已产出 `L1HitRate`、`L2HitRate`、`L3ArbitrationRate`、`L4RegexFallbackRate`、`BusinessPathRegexRate`
+- Phase J 交互体验赛道：`scripts/eval_phase_j.mjs` + `datasets/quality/phase_j_engagement_cases.json`
+  - 已产出 `replayPassRate`、`topicHitRate(A/B)`、`topicHitDelta`、`bridgeCoverageB`、`starvationProtectionB`
 
 ### 2.2 主要缺口
 
@@ -254,6 +256,9 @@
 - `UngroundedRecallLeakRate <= 0.01`
 - `BusinessPathRegexRate == 0`
 - `L4RegexFallbackRate` 仅允许出现在安全/兼容标签样本中
+- `PhaseJ.replayPassRate >= 0.95`
+- `PhaseJ.topicHitRateB >= 0.80`
+- `PhaseJ.topicHitDelta(B-A) >= 0.15`
 
 ### 6.2 Nightly 门禁
 

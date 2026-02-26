@@ -187,12 +187,77 @@ function normalizeConversationControl(value: unknown): DecisionTrace["conversati
     return undefined;
   }
   const groupParticipation = normalizeGroupParticipation(value.groupParticipation);
+  const budget = normalizeControlBudget(value.budget);
+  const topicScheduler = normalizeTopicScheduler(value.topicScheduler);
+  const engagementPolicyVersion =
+    typeof value.engagementPolicyVersion === "string" && value.engagementPolicyVersion.trim().length > 0
+      ? value.engagementPolicyVersion.trim().slice(0, 32)
+      : undefined;
   return {
     engagementTier,
     topicAction,
     responsePolicy,
     reasonCodes: normalizeStringArray(value.reasonCodes, 16),
+    ...(engagementPolicyVersion ? { engagementPolicyVersion } : {}),
+    ...(budget ? { budget } : {}),
+    ...(topicScheduler ? { topicScheduler } : {}),
     ...(groupParticipation ? { groupParticipation } : {})
+  };
+}
+
+function normalizeControlBudget(
+  value: unknown
+): NonNullable<DecisionTrace["conversationControl"]>["budget"] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const turnBudgetMax = Number(value.turnBudgetMax);
+  const turnBudgetUsed = Number(value.turnBudgetUsed);
+  const proactiveBudgetMax = Number(value.proactiveBudgetMax);
+  const proactiveBudgetUsed = Number(value.proactiveBudgetUsed);
+  if (
+    !Number.isFinite(turnBudgetMax) ||
+    !Number.isFinite(turnBudgetUsed) ||
+    !Number.isFinite(proactiveBudgetMax) ||
+    !Number.isFinite(proactiveBudgetUsed)
+  ) {
+    return undefined;
+  }
+  return {
+    turnBudgetMax: Math.max(1, Math.floor(turnBudgetMax)),
+    turnBudgetUsed: Math.max(0, Math.floor(turnBudgetUsed)),
+    proactiveBudgetMax: Math.max(1, Math.floor(proactiveBudgetMax)),
+    proactiveBudgetUsed: Math.max(0, Math.floor(proactiveBudgetUsed)),
+    degradedByBudget: value.degradedByBudget === true,
+    budgetReasonCodes: normalizeStringArray(value.budgetReasonCodes, 16)
+  };
+}
+
+function normalizeTopicScheduler(
+  value: unknown
+): NonNullable<DecisionTrace["conversationControl"]>["topicScheduler"] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const activeTopic = typeof value.activeTopic === "string" ? value.activeTopic.trim().slice(0, 64) : "";
+  const selectedBy = value.selectedBy;
+  const validSelectedBy =
+    selectedBy === "addressing" ||
+    selectedBy === "task" ||
+    selectedBy === "interest" ||
+    selectedBy === "clarify" ||
+    selectedBy === "active" ||
+    selectedBy === "starvation_boost";
+  if (!activeTopic || !validSelectedBy) {
+    return undefined;
+  }
+  const bridgeFromTopic = typeof value.bridgeFromTopic === "string" ? value.bridgeFromTopic.trim().slice(0, 64) : "";
+  return {
+    activeTopic,
+    candidateTopics: normalizeStringArray(value.candidateTopics, 8),
+    selectedBy,
+    starvationBoostApplied: value.starvationBoostApplied === true,
+    ...(bridgeFromTopic ? { bridgeFromTopic } : {})
   };
 }
 

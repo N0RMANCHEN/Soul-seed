@@ -135,3 +135,48 @@ test("conversation control degrades on implicit core tension without safety refu
   assert.equal(control.topicAction, "clarify");
   assert.equal(control.responsePolicy, "light_response");
 });
+
+test("conversation control degrades engagement tier when turn budget is exhausted", () => {
+  const control = decideConversationControl({
+    userInput: "请详细分析这个方案并给完整推导",
+    recallNavigationMode: false,
+    isRiskyRequest: false,
+    isRefusal: false,
+    coreConflict: false,
+    impulseWindow: false,
+    budgetContext: {
+      turnBudgetMax: 10,
+      turnBudgetUsed: 10,
+      proactiveBudgetMax: 4,
+      proactiveBudgetUsed: 1
+    }
+  });
+
+  assert.equal(control.engagementTier, "NORMAL");
+  assert.equal(control.budget?.degradedByBudget, true);
+  assert.equal(control.budget?.budgetReasonCodes.includes("turn_budget_exhausted"), true);
+  assert.equal(control.engagementPolicyVersion, "j-p1-0/v1");
+});
+
+test("conversation control keeps topic scheduler bridge metadata from topic context", () => {
+  const control = decideConversationControl({
+    userInput: "继续这个话题",
+    recallNavigationMode: false,
+    isRiskyRequest: false,
+    isRefusal: false,
+    coreConflict: false,
+    impulseWindow: false,
+    topicContext: {
+      activeTopic: "Roadmap",
+      candidateTopics: ["Roadmap", "音乐"],
+      selectedBy: "starvation_boost",
+      starvationBoostApplied: true,
+      bridgeFromTopic: "音乐"
+    }
+  });
+
+  assert.equal(control.topicScheduler?.activeTopic, "Roadmap");
+  assert.equal(control.topicScheduler?.selectedBy, "starvation_boost");
+  assert.equal(control.topicScheduler?.starvationBoostApplied, true);
+  assert.equal(control.topicScheduler?.bridgeFromTopic, "音乐");
+});

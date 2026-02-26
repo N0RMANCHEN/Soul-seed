@@ -28,7 +28,8 @@
     "eval:temporal": "node ./scripts/eval_temporal.mjs",
     "quality:baseline-delta": "node ./scripts/baseline_delta.mjs",
     "quality:update-baseline": "node ./scripts/update_baseline.mjs",
-    "quality:nightly-diff": "node ./scripts/nightly_diff.mjs"
+    "quality:nightly-diff": "node ./scripts/nightly_diff.mjs",
+    "eval:phase-j": "node ./scripts/eval_phase_j.mjs --strict"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",

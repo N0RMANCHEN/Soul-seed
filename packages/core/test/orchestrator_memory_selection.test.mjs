@@ -148,6 +148,32 @@ test("decide writes conversation control decision for deterministic policy", asy
   assert.equal(trace.conversationControl?.responsePolicy, "deep_response");
 });
 
+test("J/P1-1: decide derives topic scheduler with bridge when switching to user-mentioned topic", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-orchestrator-topic-scheduler-"));
+  const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");
+  await initPersonaPackage(personaPath, "Roxy");
+  const pkg = await loadPersonaPackage(personaPath);
+  pkg.topicState = {
+    schemaVersion: "1.0",
+    activeTopic: "音乐",
+    threads: [
+      { threadId: "th_music", topicId: "音乐", status: "open", lastTouchedAt: new Date().toISOString() },
+      { threadId: "th_roadmap", topicId: "Roadmap", status: "open", lastTouchedAt: new Date().toISOString() }
+    ],
+    updatedAt: new Date().toISOString()
+  };
+  pkg.interests = {
+    topTopics: ["Roadmap", "音乐"],
+    curiosity: 0.8,
+    updatedAt: new Date().toISOString()
+  };
+
+  const trace = decide(pkg, "我们切回 Roadmap 的 Phase J", "deepseek-chat", { lifeEvents: [] });
+  assert.equal(trace.conversationControl?.topicScheduler?.activeTopic, "Roadmap");
+  assert.equal(trace.conversationControl?.topicScheduler?.selectedBy, "task");
+  assert.equal(trace.conversationControl?.topicScheduler?.bridgeFromTopic, "音乐");
+});
+
 test("decide attaches group participation arbitration for transcript-style input", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "soulseed-orchestrator-group-"));
   const personaPath = path.join(tmpDir, "Roxy.soulseedpersona");

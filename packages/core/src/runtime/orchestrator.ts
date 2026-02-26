@@ -4,7 +4,7 @@ import { DECISION_TRACE_SCHEMA_VERSION, normalizeDecisionTrace } from "../govern
 import { createInitialRelationshipState, deriveCognitiveBalanceFromLibido, deriveVoiceIntent, isImpulseWindowActive } from "../state/relationship_state.js";
 import { detectRecallNavigationIntent } from "../memory/recall_navigation_intent.js";
 import { decideConversationControl } from "./conversation_control.js";
-import { metaArbitrateConversationSignals, projectConversationSignals, projectCoreConflict } from "./semantic_projection.js";
+import { metaArbitrateConversationSignals, projectConversationSignals, projectCoreConflict, projectTopicAttention } from "./semantic_projection.js";
 import { resolveSemanticRouting } from "./semantic_routing.js";
 import { formatSystemLocalIso, getSystemTimeZone } from "../governance/time.js";
 import { computeDerivedParams } from "../state/genome_derived.js";
@@ -41,6 +41,12 @@ export function decide(
     riskLatent?: [number, number, number];
     riskAssessmentPath?: "semantic" | "regex_fallback";
     conversationProjection?: ReturnType<typeof projectConversationSignals>;
+    conversationBudget?: {
+      turnBudgetMax: number;
+      turnBudgetUsed: number;
+      proactiveBudgetMax: number;
+      proactiveBudgetUsed: number;
+    };
   }
 ): DecisionTrace {
   const selectedMemories: string[] = [];
@@ -188,6 +194,11 @@ export function decide(
     projection: conversationProjection,
     lifeEvents: options?.lifeEvents ?? []
   });
+  const topicContext = buildTopicContext({
+    input: normalized,
+    topicState: personaPkg.topicState,
+    interests: personaPkg.interests?.topTopics ?? []
+  });
   const conversationControl = decideConversationControl({
     userInput: normalized,
     recallNavigationMode,
@@ -198,6 +209,8 @@ export function decide(
     impulseWindow,
     interests: personaPkg.interests,
     groupContext,
+    topicContext,
+    budgetContext: options?.conversationBudget,
     semanticProjection: conversationProjection
   });
   const routing = resolveSemanticRouting({
@@ -302,6 +315,127 @@ function buildGroupContext(params: {
     addressedToAssistant,
     consecutiveAssistantTurns: countConsecutiveAssistantTurns(params.lifeEvents)
   };
+}
+
+function buildTopicContext(params: {
+  input: string;
+  topicState?: PersonaPackage["topicState"];
+  interests: string[];
+}): {
+  activeTopic?: string;
+  candidateTopics: string[];
+  starvationBoostApplied: boolean;
+  selectedBy: "task" | "interest" | "active" | "starvation_boost";
+  bridgeFromTopic?: string;
+} {
+  const previousActive = params.topicState?.activeTopic?.trim() ?? "";
+  const openThreads = (params.topicState?.threads ?? []).filter((item) => item.status === "open").slice(0, 12);
+  const nowMs = Date.now();
+  const topicSet = new Set<string>();
+  for (const thread of openThreads) {
+    if (thread.topicId.trim().length > 0) topicSet.add(thread.topicId.trim().slice(0, 64));
+  }
+  for (const topic of params.interests) {
+    if (topic.trim().length > 0) topicSet.add(topic.trim().slice(0, 64));
+  }
+  if (previousActive) topicSet.add(previousActive.slice(0, 64));
+  const normalizedInput = normalizeTopicText(params.input);
+  const semanticTopicScores = projectTopicAttention(params.input, [...topicSet].slice(0, 12));
+  const semanticScoreMap = new Map(semanticTopicScores.map((item) => [item.topic, item.score]));
+  const switchAwayCue = containsAnyNormalized(params.input, [
+    "换个话题",
+    "换个方向",
+    "聊点别的",
+    "先聊点别的",
+    "switch topic",
+    "another topic"
+  ]);
+  const stayOnActiveCue = containsAnyNormalized(params.input, [
+    "继续这个话题",
+    "这个话题继续",
+    "沿着这个话题",
+    "继续刚才",
+    "继续我们刚才"
+  ]);
+  const scores = [...topicSet].map((topic) => {
+    let score = 0;
+    const normalizedTopic = normalizeTopicText(topic);
+    const mentioned = normalizedTopic.length > 0 && normalizedInput.includes(normalizedTopic);
+    if (mentioned) score += 1.1;
+    if (topic === previousActive) score += 0.35;
+    const interestRank = params.interests.findIndex((item) => item === topic);
+    if (interestRank >= 0) {
+      score += Math.max(0.2, 0.5 - interestRank * 0.1);
+    }
+    score += clampTopicScore(semanticScoreMap.get(topic)) * 0.85;
+    if (stayOnActiveCue && topic === previousActive) score += 1.2;
+    const touchedAt = openThreads.find((item) => item.topicId === topic)?.lastTouchedAt;
+    const hoursIdle = estimateIdleHours(nowMs, touchedAt);
+    if (Number.isFinite(hoursIdle)) {
+      score += Math.max(0, 0.3 - hoursIdle / 96);
+    }
+    const starved = interestRank >= 0 && Number.isFinite(hoursIdle) && hoursIdle >= 24;
+    if (starved && !(stayOnActiveCue && topic === previousActive)) score += 0.95;
+    if (switchAwayCue && topic === previousActive) score -= 0.7;
+    return { topic, score, mentioned, starved };
+  });
+  scores.sort((a, b) => b.score - a.score);
+  const selected = scores[0]?.topic ?? previousActive ?? params.interests[0] ?? "";
+  const selectedEntry = scores.find((item) => item.topic === selected);
+  const starvationBoostApplied = selectedEntry?.starved === true && selectedEntry.mentioned !== true;
+  const selectedBy: "task" | "interest" | "active" | "starvation_boost" =
+    selectedEntry?.mentioned
+      ? "task"
+      : starvationBoostApplied
+        ? "starvation_boost"
+        : selected === previousActive
+          ? "active"
+          : "interest";
+  const orderedCandidates = scores.map((item) => item.topic);
+  const candidateTopics = selected.length > 0 ? [selected, ...orderedCandidates.filter((item) => item !== selected)] : orderedCandidates;
+  const bridgeFromTopic =
+    previousActive.length > 0 && selected.length > 0 && previousActive !== selected
+      ? previousActive.slice(0, 64)
+      : undefined;
+  if (bridgeFromTopic && !candidateTopics.includes(bridgeFromTopic)) {
+    candidateTopics.splice(1, 0, bridgeFromTopic);
+  }
+  return {
+    ...(selected.length > 0 ? { activeTopic: selected.slice(0, 64) } : {}),
+    candidateTopics: candidateTopics.slice(0, 8),
+    starvationBoostApplied,
+    selectedBy,
+    ...(bridgeFromTopic ? { bridgeFromTopic } : {})
+  };
+}
+
+function estimateIdleHours(nowMs: number, iso?: string): number {
+  if (!iso) return Number.NaN;
+  const ts = Date.parse(iso);
+  if (!Number.isFinite(ts)) return Number.NaN;
+  return Math.max(0, (nowMs - ts) / (1000 * 60 * 60));
+}
+
+function normalizeTopicText(input: string): string {
+  return input.toLowerCase().replace(/[^\p{L}\p{N}\u4e00-\u9fa5]+/gu, "");
+}
+
+function clampTopicScore(value: number | undefined): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function containsAnyNormalized(input: string, phrases: string[]): boolean {
+  const normalized = normalizeTopicText(input);
+  if (!normalized) return false;
+  for (const phrase of phrases) {
+    const token = normalizeTopicText(phrase);
+    if (token && normalized.includes(token)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function countTranscriptSpeakerLabels(input: string): number {

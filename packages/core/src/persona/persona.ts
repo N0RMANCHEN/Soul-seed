@@ -29,7 +29,7 @@ import {
   computeInterestCuriosity,
   INTERESTS_FILENAME
 } from "./interests.js";
-import { createInitialTopicState, TOPIC_STATE_FILENAME } from "../state/topic_state.js";
+import { createInitialTopicState, loadTopicState, TOPIC_STATE_FILENAME } from "../state/topic_state.js";
 import { createInitialProactivePlan, PROACTIVE_PLAN_FILENAME } from "../state/proactive_plan.js";
 import {
   createInitialSelfReflection,
@@ -288,6 +288,7 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
         updatedAt: interestsRaw.updatedAt
       }
     : undefined;
+  const topicState = await loadTopicState(rootPath) ?? undefined;
 
   const genome = await loadGenome(rootPath);
   const epigenetics = await loadEpigenetics(rootPath);
@@ -312,6 +313,7 @@ export async function loadPersonaPackage(rootPath: string): Promise<PersonaPacka
     genome,
     epigenetics,
     interests,
+    topicState,
     goalsState,
     beliefsState
   };

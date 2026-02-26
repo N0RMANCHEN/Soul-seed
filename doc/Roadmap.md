@@ -65,15 +65,17 @@
 - 门禁：连续 30 轮内主动触发频率与预算偏差保持在预设阈值内
 
 ### J/P1-1 多话题上下文调度器
-- 状态：`todo`
+- 状态：`in_progress`
 - 依赖：`J/P1-0`
 - 交付：topic slot 分配、优先级队列、话题回收与跨话题桥接规则
+- 当前实现：已接入 `topic_state` 到会话控制，输出候选话题优先队列、饥饿提升标记与 bridgeFromTopic 观测字段
 - 门禁：不得出现高优先级话题长期饥饿；上下文命中率可观测
 
 ### J/P1-2 交互体验评测赛道
-- 状态：`todo`
+- 状态：`in_progress`
 - 依赖：`J/P1-0`, `J/P1-1`
 - 交付：主动交互体验基线、AB 对照脚本、失败样本回放模板
+- 当前实现：`scripts/eval_phase_j.mjs` + `datasets/quality/phase_j_engagement_cases.json` 已接入 `eval_all.sh` 与 `verify.sh` 门禁链路；最小闭环门禁在 `2026-02-26` 本地验证通过
 - 门禁：评测结果可复现并进入 CI 阶段门禁
 
 ### Phase M（Bio-Inspired Human Dynamics）
