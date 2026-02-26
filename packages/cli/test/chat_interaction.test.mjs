@@ -336,7 +336,8 @@ test("chat emits thinking preview before slow reply when enabled", async () => {
       env: {
         SOULSEED_THINKING_PREVIEW: "1",
         SOULSEED_THINKING_PREVIEW_THRESHOLD_MS: "1",
-        SOULSEED_HUMAN_PACED: "0"
+        SOULSEED_HUMAN_PACED: "0",
+        SOULSEED_STREAM_REPLY: "0"
       }
     }
   );

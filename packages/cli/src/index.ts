@@ -230,6 +230,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { dispatchKnownCommand } from "./commands/router.js";
 import { inferEmotionFromText, parseEmotionTag, renderEmotionPrefix } from "./emotion.js";
 import { parseArgs } from "./parser/args.js";
+import { resolveReplyDisplayMode, resolveStreamReplyEnabled } from "./runtime_flags.js";
 
 type ReadingContentMode = "fiction" | "non_fiction" | "unknown";
 type PersonaTemplateKey = "friend" | "peer" | "intimate" | "neutral";
@@ -2242,7 +2243,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   let activeReadingSource: { kind: "file" | "web"; uri: string; content: string; mode: ReadingContentMode } | null = null;
   let readingAwaitingContinue = false;
   let readingSourceScope: "unknown" | "external" = "unknown";
-  const streamRawAssistant = process.env.SOULSEED_STREAM_RAW === "1";
+  const streamReplyEnabled = resolveStreamReplyEnabled(process.env).enabled;
 
   const setActiveReadingSource = (source: { kind: "file" | "web"; uri: string; content: string }): void => {
     activeReadingSource = {
@@ -2375,7 +2376,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   };
 
   const emitThinkingPreviewIfNeeded = async (input: string, turnRef: string): Promise<boolean> => {
-    if (!thinkingPreviewEnabled || streamRawAssistant) {
+    if (!thinkingPreviewEnabled || streamReplyEnabled) {
       return false;
     }
     if (turnRef === lastThinkingPreviewTurnRef) {
@@ -5027,7 +5028,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               {
                 onToken: (chunk: string) => {
                   assistantContent += chunk;
-                  if (!streamRawAssistant) {
+                  if (!streamReplyEnabled) {
                     return;
                   }
                   if (!streamed) {
@@ -5037,7 +5038,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
                   process.stdout.write(chunk);
                 },
                 onDone: () => {
-                  if (!streamRawAssistant) {
+                  if (!streamReplyEnabled) {
                     return;
                   }
                   if (streamed) {
@@ -5346,18 +5347,25 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       addLatency("rewrite", rewriteStartedAtMs);
       const resolvedEmotion = compactedEmotion.emotion ?? emotion.emotion ?? inferEmotionFromText(assistantContent);
       const shouldDisplayAssistant = !(loopBreak.triggered && assistantContent.trim().length === 0);
-      const shouldReplayOnScreen =
-        shouldDisplayAssistant &&
-        (!streamed ||
-          identityGuard.corrected ||
-          relationalGuard.corrected ||
-          recallGroundingGuard.corrected ||
-          pronounRoleGuard.corrected ||
-          temporalPhraseGuard.corrected ||
-          conversationalAdjusted ||
-          loopBreak.triggered ||
-          parseEmotionTag(rawAssistantContent).text.trim() !== assistantContent.trim());
-      if (shouldReplayOnScreen) {
+      const adjustedByGuard =
+        identityGuard.corrected ||
+        relationalGuard.corrected ||
+        recallGroundingGuard.corrected ||
+        pronounRoleGuard.corrected ||
+        temporalPhraseGuard.corrected ||
+        conversationalAdjusted ||
+        loopBreak.triggered;
+      const displayMode = resolveReplyDisplayMode({
+        streamed,
+        shouldDisplayAssistant,
+        adjustedByGuard,
+        rawText: parseEmotionTag(rawAssistantContent).text,
+        finalText: assistantContent
+      });
+      if (displayMode === "adjusted") {
+        sayAsAssistant("[已按边界与一致性规则调整输出]");
+      }
+      if (displayMode !== "none") {
         const emitStartedAtMs = Date.now();
         await applyHumanPacedDelay(turnStartedAtMs, assistantContent);
         sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));

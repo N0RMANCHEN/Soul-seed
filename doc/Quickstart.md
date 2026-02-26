@@ -47,6 +47,16 @@ SOULSEED_MODEL=deepseek-chat
 # DEEPSEEK_MODEL=deepseek-chat
 ```
 
+Optional runtime flags:
+
+```env
+# Main chat reply streaming: on by default
+# SOULSEED_STREAM_REPLY=1
+
+# Turn off streaming if you need plain full-line output
+# SOULSEED_STREAM_REPLY=0
+```
+
 > Any OpenAI-compatible endpoint works. Legacy `DEEPSEEK_*` vars are still supported.
 > 任何兼容 OpenAI 的接口都可以用。旧版 `DEEPSEEK_*` 变量仍然支持。
 

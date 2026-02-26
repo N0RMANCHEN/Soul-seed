@@ -250,6 +250,8 @@ Available tools: `persona.get_context`, `memory.search`, `memory.search_hybrid`,
 | `SOULSEED_EMBEDDING_DIM` | `1024` | Embedding dimension / 嵌入维度 |
 | `SOULSEED_LLM_RETRIES` | `2` | Max retries (0–5) / 最大重试次数 |
 | `SOULSEED_LLM_TIMEOUT_MS` | `35000` | Request timeout in ms / 请求超时（毫秒） |
+| `SOULSEED_STREAM_REPLY` | `1` | Stream main chat replies in real time (`0` disables) / 主对话回复实时流式输出（`0` 关闭） |
+| `SOULSEED_STREAM_RAW` | deprecated | Legacy stream switch, used only when `SOULSEED_STREAM_REPLY` is unset / 旧版流式开关，仅在未设置 `SOULSEED_STREAM_REPLY` 时生效 |
 | `SOULSEED_ADAPTIVE_REASONING` | `1` | Adaptive fast/deep reasoning gate / 自适应 fast/deep 思考开关 |
 | `SOULSEED_THINKING_PREVIEW` | follows persona profile | Enable slow-turn preview utterance / 启用慢回合思考前置短提示 |
 | `SOULSEED_THINKING_PREVIEW_THRESHOLD_MS` | `1000` | Preview threshold in ms / 前置提示触发阈值（毫秒） |
