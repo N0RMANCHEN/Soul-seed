@@ -155,10 +155,22 @@
 1. 必需规范文档存在性（缺失即失败）
 2. 关键入口文件行数阈值（默认告警）
 3. `core` 导出面宽度（`export *` 数量告警）
-4. workspace 版本声明一致性（告警）
+4. workspace 版本声明一致性（阻塞）
 5. 计划命名体系混用（告警）
 
 说明：首版采用“核心项阻塞 + 风险项告警”的渐进策略，后续可按 Roadmap 任务提升为阻塞。
+
+### 6.2 文档-代码一致性巡检（新增，非阻塞阶段）
+
+- 命令：`npm run doc-consistency:check`
+- 脚本：`scripts/check_doc_code_consistency.mjs`
+- 规则源：`config/governance/doc_code_consistency_rules.json`
+- verify 接入策略：先非阻塞（输出告警，不中断 `verify`），稳定后可提升为阻塞。
+
+当前检查类型（首版）：
+1. 命名一致性：治理 Roadmap 任务 ID 命名分组与状态标记
+2. 路径一致性：关键文档中的代码/文档路径引用是否存在
+3. 字段一致性：关键文档字段声明是否与实现约定一致（如 `EXPORT_MANIFEST.json`）
 
 ---
 

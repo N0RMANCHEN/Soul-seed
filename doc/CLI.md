@@ -104,7 +104,7 @@ npm run build
 ./ss persona export --out <dir> [--persona <path>]
 ```
 
-带 `MANIFEST.json`（SHA-256 哈希）的完整人格包导出。输出：`{ok, outPath, personaId, displayName, filesExported}`。
+带 `EXPORT_MANIFEST.json`（SHA-256 哈希）的完整人格包导出。输出：`{ok, outPath, personaId, displayName, filesExported}`。
 
 #### `persona import`
 

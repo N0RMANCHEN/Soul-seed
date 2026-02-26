@@ -9,7 +9,7 @@
     "soulseed": "dist/index.js"
   },
   "dependencies": {
-    "@soulseed/core": "0.4.0"
+    "@soulseed/core": "workspace:*"
   },
   "scripts": {
     "lint": "tsc -p tsconfig.json --noEmit",

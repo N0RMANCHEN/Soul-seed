@@ -220,12 +220,9 @@ import type {
   VoiceProfile
 } from "@soulseed/core";
 import { createHash, randomUUID } from "node:crypto";
+import { dispatchKnownCommand } from "./commands/router.js";
 import { inferEmotionFromText, parseEmotionTag, renderEmotionPrefix } from "./emotion.js";
-
-interface ParsedArgs {
-  _: string[];
-  options: Record<string, string | boolean>;
-}
+import { parseArgs } from "./parser/args.js";
 
 type ReadingContentMode = "fiction" | "non_fiction" | "unknown";
 type PersonaTemplateKey = "friend" | "peer" | "intimate" | "neutral";
@@ -412,28 +409,6 @@ function createChatAdapter(params: {
     modelCandidates: params.modelCandidates,
     onModelFallback: params.onModelFallback
   });
-}
-
-function parseArgs(argv: string[]): ParsedArgs {
-  const parsed: ParsedArgs = { _: [], options: {} };
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    if (token.startsWith("--")) {
-      const key = token.slice(2);
-      const next = argv[i + 1];
-      if (!next || next.startsWith("--")) {
-        parsed.options[key] = true;
-      } else {
-        parsed.options[key] = next;
-        i += 1;
-      }
-    } else {
-      parsed._.push(token);
-    }
-  }
-
-  return parsed;
 }
 
 function printHelp(): void {
@@ -1399,6 +1374,28 @@ async function runPersonaConsentMode(
     }
     console.log(`\n设置：ss persona consent-mode set --mode <mode> [--persona <path>]`);
   }
+}
+
+async function runPersonaArc(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const auto = await loadAutobiography(personaPath);
+  if (!auto) {
+    console.log("autobiography.json 不存在。使用 ss persona autobiography add-chapter 开始创建。");
+    return;
+  }
+  console.log(generateArcSummary(auto));
+}
+
+async function runPersonaIdentity(options: Record<string, string | boolean>): Promise<void> {
+  const personaPath = resolvePersonaPath(options);
+  const voiceText = optionString(options, "set-voice");
+  if (!voiceText) {
+    console.log("用法：ss persona identity --set-voice <text> [--persona-triggered] [--persona <path>]");
+    return;
+  }
+  const triggeredBy = options["persona-triggered"] === true ? "persona" : "user";
+  const updated = await updatePersonaVoiceOnEvolution(personaPath, voiceText, triggeredBy);
+  console.log(`演化立场已更新：${updated.personaVoiceOnEvolution}`);
 }
 
 async function runPersonaInspect(options: Record<string, string | boolean>): Promise<void> {
@@ -7825,322 +7822,65 @@ async function runMcp(options: Record<string, string | boolean>): Promise<void> 
 async function main(): Promise<void> {
   loadDotEnvFromCwd();
   const args = parseArgs(process.argv.slice(2));
-  const [resource, action] = args._;
-
-  if (resource === "new") {
-    await runPersonaNew(action, args.options);
-    return;
-  }
-
-  if (resource === "init") {
-    await runPersonaInit(args.options);
-    return;
-  }
-
-  if (resource === "rename") {
-    await runRename(args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "init") {
-    await runPersonaInit(args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "rename") {
-    await runRename(args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "reproduce") {
-    await runPersonaReproduce(args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "inspect") {
-    await runPersonaInspect(args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "lint") {
-    await runPersonaLint(args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "compile") {
-    await runPersonaCompile(args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "export") {
-    await runPersonaExport(args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "import") {
-    await runPersonaImport(args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "model-routing") {
-    await runPersonaModelRouting(args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "voice-phrases") {
-    const subAction = args._[2];
-    await runPersonaVoicePhrases(subAction, args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "mood") {
-    const subAction = args._[2];
-    await runPersonaMood(subAction, args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "autobiography") {
-    const subAction = args._[2];
-    await runPersonaAutobiography(subAction, args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "interests") {
-    const subAction = args._[2];
-    await runPersonaInterests(subAction, args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "dates") {
-    const subAction = args._[2];
-    await runPersonaDates(subAction, args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "reflect") {
-    const subAction = args._[2];
-    await runPersonaReflect(subAction, args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "arc") {
-    const personaPath = resolvePersonaPath(args.options);
-    const auto = await loadAutobiography(personaPath);
-    if (!auto) {
-      console.log("autobiography.json 不存在。使用 ss persona autobiography add-chapter 开始创建。");
-    } else {
-      console.log(generateArcSummary(auto));
-    }
-    return;
-  }
-
-  if (resource === "persona" && action === "consent-mode") {
-    const subAction = args._[2];
-    await runPersonaConsentMode(subAction, args.options);
-    return;
-  }
-
-  if (resource === "persona" && action === "identity") {
-    const personaPath = resolvePersonaPath(args.options);
-    const voiceText = optionString(args.options, "set-voice");
-    if (voiceText) {
-      const triggeredBy = args.options["persona-triggered"] === true ? "persona" : "user";
-      const updated = await updatePersonaVoiceOnEvolution(personaPath, voiceText, triggeredBy);
-      console.log(`演化立场已更新：${updated.personaVoiceOnEvolution}`);
-    } else {
-      console.log("用法：ss persona identity --set-voice <text> [--persona-triggered] [--persona <path>]");
-    }
-    return;
-  }
-
-  if (resource === "cognition" && action === "adapt-routing") {
-    await runCognitionAdaptRouting(args.options);
-    return;
-  }
-
-  if (resource === "finetune" && action === "export-dataset") {
-    await runFinetuneExportDataset(args.options);
-    return;
-  }
-
-  if (resource === "examples") {
-    await runExamples(action ?? "list", args.options);
-    return;
-  }
-
-  if (resource === "mcp") {
-    await runMcp(args.options);
-    return;
-  }
-
-  if (resource === "refine") {
-    await runRefine(action, args.options);
-    return;
-  }
-
-  if (resource === "social") {
-    await runSocial(action, args.options);
-    return;
-  }
-
-  if (resource === "chat") {
-    console.log("提示：推荐新入口 `./ss <name>` 直接聊天。");
-    await runChat(args.options);
-    return;
-  }
-
-  if (resource === "doctor") {
-    await runDoctor(args.options);
-    return;
-  }
-
-  if (resource === "goal") {
-    await runGoal(action, args.options);
-    return;
-  }
-
-  if (resource === "agent") {
-    await runAgentCommand(action, args.options);
-    return;
-  }
-
-  if (resource === "trace") {
-    await runTrace(action, args.options);
-    return;
-  }
-
-  if (resource === "explain") {
-    await runExplain(action, args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "compact") {
-    await runMemoryCompact(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "archive") {
-    await runMemoryArchive(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "index") {
-    const indexAction = typeof args._[2] === "string" ? args._[2] : undefined;
-    await runMemoryIndex(indexAction, args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "search") {
-    await runMemorySearch(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "eval" && args._[2] === "recall") {
-    await runMemoryEvalRecall(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "eval" && args._[2] === "budget") {
-    await runMemoryEvalBudget(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "recall-trace") {
-    await runMemoryRecallTrace(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "consolidate") {
-    await runMemoryConsolidate(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "learn") {
-    const learnAction = typeof args._[2] === "string" ? args._[2] : undefined;
-    await runMemoryLearn(learnAction, args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "status") {
-    await runMemoryStatus(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "list") {
-    await runMemoryList(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "budget") {
-    await runMemoryBudget(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "inspect") {
-    await runMemoryInspect(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "forget") {
-    await runMemoryForget(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "recover") {
-    await runMemoryRecover(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "fiction" && args._[2] === "repair") {
-    await runMemoryFictionRepair(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "unstick") {
-    await runMemoryUnstick(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "export") {
-    await runMemoryExport(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "import") {
-    await runMemoryImport(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "pin") {
-    const pinAction = typeof args._[2] === "string" ? args._[2] : undefined;
-    // P0-14: `memory pin library <list|add|remove>` — persona library blocks
-    if (pinAction === "library") {
-      const libraryAction = typeof args._[3] === "string" ? args._[3] : undefined;
-      await runPinnedLibrary(libraryAction, args.options);
-      return;
-    }
-    await runMemoryPin(pinAction, args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "unpin") {
-    await runMemoryPin("remove", args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "reconcile") {
-    await runMemoryReconcile(args.options);
-    return;
-  }
-
-  if (resource === "memory" && action === "facts") {
-    const factsAction = typeof args._[2] === "string" ? args._[2] : "list";
-    await runMemoryFacts(factsAction, args.options);
-    return;
-  }
-
-  if (resource === "space") {
-    await runSharedSpaceCommand(action, args.options);
+  const resource = args._[0];
+  const handled = await dispatchKnownCommand(args, {
+    runPersonaNew,
+    runPersonaInit,
+    runRename,
+    runPersonaReproduce,
+    runPersonaInspect,
+    runPersonaLint,
+    runPersonaCompile,
+    runPersonaExport,
+    runPersonaImport,
+    runPersonaModelRouting,
+    runPersonaVoicePhrases,
+    runPersonaMood,
+    runPersonaAutobiography,
+    runPersonaInterests,
+    runPersonaDates,
+    runPersonaReflect,
+    runPersonaArc,
+    runPersonaConsentMode,
+    runPersonaIdentity,
+    runCognitionAdaptRouting,
+    runFinetuneExportDataset,
+    runExamples,
+    runMcp,
+    runRefine,
+    runSocial,
+    runChat,
+    runDoctor,
+    runGoal,
+    runAgentCommand,
+    runTrace,
+    runExplain,
+    runMemoryCompact,
+    runMemoryArchive,
+    runMemoryIndex,
+    runMemorySearch,
+    runMemoryEvalRecall,
+    runMemoryEvalBudget,
+    runMemoryRecallTrace,
+    runMemoryConsolidate,
+    runMemoryLearn,
+    runMemoryStatus,
+    runMemoryList,
+    runMemoryBudget,
+    runMemoryInspect,
+    runMemoryForget,
+    runMemoryRecover,
+    runMemoryFictionRepair,
+    runMemoryUnstick,
+    runMemoryExport,
+    runMemoryImport,
+    runMemoryPin,
+    runPinnedLibrary,
+    runMemoryReconcile,
+    runMemoryFacts,
+    runSharedSpaceCommand
+  });
+  if (handled) {
     return;
   }
 

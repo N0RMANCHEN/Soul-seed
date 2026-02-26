@@ -16,6 +16,15 @@ node scripts/compat_lint.mjs
 echo "[verify] architecture governance gate"
 npm run governance:check
 
+echo "[verify] doc-code consistency gate (non-blocking)"
+set +e
+npm run doc-consistency:check
+doc_consistency_status=$?
+set -e
+if [[ "$doc_consistency_status" -ne 0 ]]; then
+  echo "[verify] warning: doc-code consistency check failed (non-blocking phase)"
+fi
+
 echo "[verify] changelog gate"
 npm run changelog:check
 

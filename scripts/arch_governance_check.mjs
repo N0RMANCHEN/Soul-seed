@@ -22,6 +22,11 @@ function severityFor(rule, checks) {
   return s === "error" ? "error" : "warn";
 }
 
+function recordIssue({ rule, message, checks, failures, warnings }) {
+  if (severityFor(rule, checks) === "error") failures.push(message);
+  else warnings.push(message);
+}
+
 async function main() {
   const rulesPath = path.resolve(process.cwd(), "config/governance/architecture_rules.json");
   const rules = JSON.parse(await readFile(rulesPath, "utf8"));
@@ -33,9 +38,13 @@ async function main() {
   // 1) Required docs must exist.
   for (const rel of rules.requiredDocs ?? []) {
     if (!(await exists(rel))) {
-      const item = `missing required doc: ${rel}`;
-      if (severityFor("requiredDocs", checks) === "error") failures.push(item);
-      else warnings.push(item);
+      recordIssue({
+        rule: "requiredDocs",
+        message: `missing required doc: ${rel}`,
+        checks,
+        failures,
+        warnings,
+      });
     }
   }
 
@@ -52,11 +61,21 @@ async function main() {
     if (!(await exists(rel))) continue;
     const lines = await countLines(rel);
     if (lines > maxHard && !allowlist.has(rel)) {
-      const item = `hard line-limit exceeded: ${rel} (${lines} > ${maxHard})`;
-      if (severityFor("lineLimits", checks) === "error") failures.push(item);
-      else warnings.push(item);
+      recordIssue({
+        rule: "lineLimits",
+        message: `hard line-limit exceeded: ${rel} (${lines} > ${maxHard})`,
+        checks,
+        failures,
+        warnings,
+      });
     } else if (lines > maxDefault) {
-      warnings.push(`line-limit advisory: ${rel} (${lines} > ${maxDefault})`);
+      recordIssue({
+        rule: "lineLimits",
+        message: `line-limit advisory: ${rel} (${lines} > ${maxDefault})`,
+        checks,
+        failures,
+        warnings,
+      });
     }
   }
 
@@ -69,7 +88,13 @@ async function main() {
       .filter((l) => l.trim().startsWith("export * from"))
       .length;
     if (wildcardCount > 80) {
-      warnings.push(`core export surface is wide: export* count=${wildcardCount}`);
+      recordIssue({
+        rule: "coreExportSurface",
+        message: `core export surface is wide: export* count=${wildcardCount}`,
+        checks,
+        failures,
+        warnings,
+      });
     }
   }
 
@@ -86,14 +111,26 @@ async function main() {
     }
   }
   for (const mismatch of depMismatches) {
-    warnings.push(`workspace version mismatch: ${mismatch}`);
+    recordIssue({
+      rule: "workspaceVersionConsistency",
+      message: `workspace version mismatch: ${mismatch}`,
+      checks,
+      failures,
+      warnings,
+    });
   }
 
   // 5) Plan naming mix (warn): both H1/H2/H3 and Ha/Hb/Hc exist in doc/plans.
   const hasHNumeric = (await exists("doc/plans/H1-Foundation.md")) || (await exists("doc/plans/H2-State-Modules.md")) || (await exists("doc/plans/H3-Validation-and-Guards.md"));
   const hasHAlpha = (await exists("doc/plans/Ha-State-Infra-Plan.md")) || (await exists("doc/plans/Hb-Mind-Model-State-Modules.md")) || (await exists("doc/plans/Hc-Verification-Governance.md"));
   if (hasHNumeric && hasHAlpha) {
-    warnings.push("plan naming mix detected: H1/H2/H3 and Ha/Hb/Hc both present");
+    recordIssue({
+      rule: "planNamingMix",
+      message: "plan naming mix detected: H1/H2/H3 and Ha/Hb/Hc both present",
+      checks,
+      failures,
+      warnings,
+    });
   }
 
   const ok = failures.length === 0;

@@ -8,6 +8,24 @@ All notable changes to this project will be documented in this file.
 - Added `doc/Architecture-Governance-Roadmap.md` as an execution-oriented governance roadmap for architecture boundaries, folder/file management, A/B collaboration split, sync points, and acceptance gates.
 - Added `doc/Architecture-Folder-Governance.md` as the repository-level architecture/folder governance standard (boundaries, naming, write-path rules, gates, and exception workflow).
 - Added architecture governance gate: `scripts/arch_governance_check.mjs` + `config/governance/architecture_rules.json` + `npm run governance:check`; wired into `scripts/verify.sh` as a standard gate.
+- Added direct-write registry source `config/governance/state_write_registry.json` and switched `scripts/check_direct_writes.mjs` to registry-driven validation (state files, domain mapping, allowed writers).
+- Added direct-write gate tests `scripts/test_direct_writes_gate.mjs` and `npm run direct-writes:test` (allowlisted pass, unauthorized write fail, incomplete registry fail).
+- Added CLI argument parser module `packages/cli/src/parser/args.ts`.
+- Added CLI command routing modules under `packages/cli/src/commands/` (`router.ts`, `types.ts`, `persona_router.ts`, `memory_router.ts`, `misc_router.ts`) to split main dispatch responsibilities.
+- Added doc-code consistency governance gate:
+  - `scripts/check_doc_code_consistency.mjs`
+  - `config/governance/doc_code_consistency_rules.json`
+  - `npm run doc-consistency:check`
+  - integrated into `scripts/verify.sh` as non-blocking phase gate.
+
+### Changed
+- Enforced workspace dependency consistency by switching `packages/cli` and `packages/mcp-server` `@soulseed/core` dependency to `workspace:*`.
+- Tightened architecture governance severity: `workspaceVersionConsistency` promoted from `warn` to `error` in `config/governance/architecture_rules.json`.
+- Updated `scripts/arch_governance_check.mjs` to apply rule-configured severity routing consistently across all checks.
+- Refactored `packages/cli/src/index.ts` to delegate command dispatch to modular routers while preserving existing CLI behavior and test coverage.
+- Updated `doc/Architecture-Governance-Roadmap.md` task status for completed A-track items: `AG/P0-1`, `AG/P0-2`, `AG/P0-3`, `AG/P1-0`, `AG/P1-1`.
+- Updated `doc/Architecture-Governance-Roadmap.md` status for `AG/P2-3` to `done` and synchronized governance docs with new check strategy.
+- Corrected CLI export manifest documentation in `doc/CLI.md` from `MANIFEST.json` to `EXPORT_MANIFEST.json`.
 
 ## [0.5.0] - 2026-02-26
 
