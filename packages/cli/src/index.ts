@@ -116,6 +116,7 @@ import {
   decideProactiveEmission,
   buildProactivePlan,
   isProactivePlanValid,
+  applyProactivePlanConstraints,
   writeProactivePlan,
   loadTopicState,
   createInitialProactivePlan,
@@ -2820,6 +2821,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     mode: "greeting" | "proactive" | "farewell" | "exit_confirm";
     fallback: string;
     emitTokens?: boolean;
+    proactivePlan?: Record<string, unknown>;
   }): Promise<{ text: string; streamed: boolean; source: "llm" | "degraded" | "fallback"; reasonCodes: string[] }> => {
     const temporalAnchor = deriveTemporalAnchor({
       nowMs: Date.now(),
@@ -2857,7 +2859,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       lastUserInput: lastUserInput.slice(0, 180),
       lastAssistantOutput: lastAssistantOutput.slice(0, 180),
       proactiveMissStreak,
-      taskContextHint: lastGoalId ? `有未完成目标 goal:${lastGoalId.slice(0, 8)}` : null
+      taskContextHint: lastGoalId ? `有未完成目标 goal:${lastGoalId.slice(0, 8)}` : null,
+      proactivePlan: params.proactivePlan ?? null
     };
     let started = false;
     const emitTokens = params.emitTokens !== false;
@@ -2928,7 +2931,8 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     const proactiveGenerated = await streamPersonaAutonomy({
       mode: "proactive",
       fallback: buildProactiveMessage(),
-      emitTokens: false
+      emitTokens: false,
+      proactivePlan
     });
     let proactiveText = proactiveGenerated.text;
     const identityGuard = enforceIdentityGuard(proactiveText, personaPkg.persona.displayName, lastUserInput);
@@ -2962,6 +2966,10 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     );
     const proactiveAdjusted = proactiveNormalized !== proactiveText;
     proactiveText = proactiveNormalized;
+    const proactivePlanned = proactivePlan && isProactivePlanValid(proactivePlan)
+      ? applyProactivePlanConstraints(proactiveText, proactivePlan)
+      : { text: proactiveText, constrained: false };
+    proactiveText = proactivePlanned.text;
     proactiveText = guardAssistantOutput(proactiveText, "proactive");
     if (
       !proactiveGenerated.streamed ||
@@ -2987,6 +2995,7 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         trigger: "autonomy_probabilistic",
         proactiveSnapshot: buildProactiveSnapshot(),
         proactivePlan: proactivePlan ?? null,
+        proactivePlanConstrained: proactivePlanned.constrained,
         memoryMeta: buildMemoryMeta({
           tier: "pattern",
           source: "system",

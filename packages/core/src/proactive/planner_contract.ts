@@ -76,6 +76,27 @@ export function isProactivePlanValid(raw: unknown): raw is ProactivePlan {
   return true;
 }
 
+export function applyProactivePlanConstraints(
+  text: string,
+  plan: Pick<ProactivePlan, "constraints">
+): { text: string; constrained: boolean } {
+  const trimmed = text.trim();
+  if (!trimmed) return { text: "", constrained: false };
+  const maxSentencesRaw = Number(plan.constraints?.maxSentences ?? 0);
+  if (!Number.isFinite(maxSentencesRaw) || maxSentencesRaw <= 0) {
+    return { text: trimmed, constrained: false };
+  }
+  const maxSentences = Math.max(1, Math.min(6, Math.floor(maxSentencesRaw)));
+  const sentences = splitSentences(trimmed);
+  if (sentences.length <= maxSentences) {
+    return { text: trimmed, constrained: false };
+  }
+  return {
+    text: sentences.slice(0, maxSentences).join("").trim(),
+    constrained: true
+  };
+}
+
 function buildWhy(snapshot: ProactiveStateSnapshot, intent: ProactiveIntent): string[] {
   const topicAffinity = Number(snapshot.topicAffinity ?? 0.5);
   const gateReasons = Array.isArray(snapshot.gateReasons) ? snapshot.gateReasons : [];
@@ -102,4 +123,9 @@ function isOneOf<T extends readonly string[]>(value: unknown, allowed: T): value
 
 function isRecord(value: unknown): value is Record<string, any> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function splitSentences(input: string): string[] {
+  const parts = input.match(/[^。！？!?\.]+[。！？!?\.]?/g) ?? [input];
+  return parts.map((item) => item.trim()).filter((item) => item.length > 0);
 }

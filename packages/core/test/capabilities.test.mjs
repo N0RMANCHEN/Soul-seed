@@ -8,6 +8,7 @@ import {
   decideProactiveEmission,
   buildProactivePlan,
   isProactivePlanValid,
+  applyProactivePlanConstraints,
   extractTextFromHtml
 } from "../dist/index.js";
 
@@ -249,4 +250,20 @@ test("J/P0-1: proactive planner follows pending goal when provided", () => {
   assert.equal(plan.target.type, "goal");
   assert.equal(plan.target.id.startsWith("g_"), true);
   assert.equal(plan.why.includes("pending_goal"), true);
+});
+
+test("J/P0-1: proactive planner constraints enforce max sentences", () => {
+  const constrained = applyProactivePlanConstraints(
+    "第一句。第二句。第三句。第四句。",
+    { constraints: { maxSentences: 2 } }
+  );
+  assert.equal(constrained.constrained, true);
+  assert.equal(constrained.text, "第一句。第二句。");
+
+  const unchanged = applyProactivePlanConstraints(
+    "只保留一句。",
+    { constraints: { maxSentences: 2 } }
+  );
+  assert.equal(unchanged.constrained, false);
+  assert.equal(unchanged.text, "只保留一句。");
 });
