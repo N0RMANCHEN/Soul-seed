@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0",
+  "turnId": "turn_001",
+  "mode": "passive",
+  "engagementTier": "NORMAL",
+  "replyBudget": { "maxTokensOut": 120, "maxSentences": 2 },
+  "contextBudget": { "relationshipCards": 1, "recalledMemories": 6, "summaries": 1 },
+  "reasons": ["interest_overlap:0.12", "taskness:false"]
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "1.0",
+  "intent": "FOLLOW_UP",
+  "target": { "type": "topic", "id": "t_ux" },
+  "why": ["unresolved_thread", "interest_overlap_high"],
+  "constraints": { "maxSentences": 2, "tone": "gentle" }
+}

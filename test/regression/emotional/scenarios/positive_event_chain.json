@@ -1,0 +1,19 @@
+{
+  "id": "positive_event_chain",
+  "description": "Good news → joy episode → mood lift → recovery",
+  "moodSnapshots": [
+    { "valence": 0.5, "arousal": 0.3 },
+    { "valence": 0.65, "arousal": 0.5 },
+    { "valence": 0.58, "arousal": 0.4 }
+  ],
+  "episodes": [
+    {
+      "episodeId": "ep_1",
+      "trigger": "user shared good news",
+      "label": "joy",
+      "intensity": 0.7,
+      "causeConfidence": 0.8,
+      "supportingEventHashes": ["ev_1"]
+    }
+  ]
+}

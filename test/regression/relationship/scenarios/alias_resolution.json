@@ -1,0 +1,19 @@
+{
+  "id": "alias_resolution",
+  "description": "Mention same person by full name and alias → same entityId",
+  "turns": [
+    { "userInput": "Alice", "expectedEntityIds": ["ent_alice"] },
+    { "userInput": "Ali", "expectedEntityIds": ["ent_alice"] }
+  ],
+  "registry": {
+    "entities": [
+      {
+        "entityId": "ent_alice",
+        "canonicalName": "Alice",
+        "aliases": ["Ali", "A"],
+        "tags": [],
+        "addedAt": "2026-02-24T00:00:00Z"
+      }
+    ]
+  }
+}

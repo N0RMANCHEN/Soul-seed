@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0",
+  "updatedAt": "2026-02-24T00:00:00Z",
+  "topics": [
+    {
+      "topicId": "t_ux_design",
+      "label": "UX design",
+      "weight": 0.72,
+      "confidence": 0.8
+    }
+  ]
+}

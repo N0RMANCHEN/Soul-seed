@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0",
+  "activeTopic": "t_ux_design",
+  "threads": [
+    {
+      "threadId": "th_001",
+      "topicId": "t_ux",
+      "status": "open",
+      "lastTouchedAt": "2026-02-24T10:12:00Z",
+      "summary": "Last discussed..."
+    }
+  ]
+}

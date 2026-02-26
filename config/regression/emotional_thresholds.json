@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0",
+  "description": "H/P1-9: Emotional depth regression thresholds",
+  "layerPresence": 0.7,
+  "triggerBinding": 0.8,
+  "moodInertiaViolations": 0,
+  "recoveryBehavior": 0.85,
+  "explainability": 1.0,
+  "noFlatCheckSigma": 0.05,
+  "imperfectionAllowance": 0.9
+}

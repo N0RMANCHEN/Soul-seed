@@ -1,0 +1,18 @@
+{
+  "id": "entity_match",
+  "description": "Simple entity resolution by canonical name",
+  "turns": [
+    { "userInput": "Alice", "expectedEntityIds": ["ent_alice"] }
+  ],
+  "registry": {
+    "entities": [
+      {
+        "entityId": "ent_alice",
+        "canonicalName": "Alice",
+        "aliases": ["Ali"],
+        "tags": [],
+        "addedAt": "2026-02-24T00:00:00Z"
+      }
+    ]
+  }
+}

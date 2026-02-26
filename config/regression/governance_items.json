@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "1.0",
+  "description": "H/P1-10: Governance regression item registry. Each item must be auto-checkable.",
+  "items": [
+    {
+      "id": "epigenetics-evidence",
+      "category": "gates",
+      "description": "Epigenetics Gate requires evidence",
+      "verification": "runDeltaGates epigenetics with 0 hashes → reject"
+    },
+    {
+      "id": "epigenetics-trait-whitelist",
+      "category": "gates",
+      "description": "Epigenetics Gate rejects unapproved traits",
+      "verification": "runDeltaGates epigenetics with custom_new_trait → reject"
+    },
+    {
+      "id": "relationship-rate-limit",
+      "category": "gates",
+      "description": "Relationship Delta Gate rate-limits",
+      "verification": "runDeltaGates relationship trust 0.15 → reject"
+    },
+    {
+      "id": "invariant-table-complete",
+      "category": "invariants",
+      "description": "Invariant table covers required domains",
+      "verification": "invariant_table completeness check"
+    },
+    {
+      "id": "direct-writes-gate",
+      "category": "trace",
+      "description": "No unauthorized state file writes",
+      "verification": "scripts/check_direct_writes.mjs"
+    },
+    {
+      "id": "relationship-continuity",
+      "category": "regression",
+      "description": "Relationship continuity regression (H/P1-8)",
+      "verification": "scripts/regression/relationship_continuity.mjs"
+    },
+    {
+      "id": "emotional-depth",
+      "category": "regression",
+      "description": "Emotional depth regression (H/P1-9)",
+      "verification": "scripts/regression/emotional_depth.mjs"
+    },
+    {
+      "id": "appendix-a-schemas",
+      "category": "schema",
+      "description": "Appendix A schemas validate (H/P1-17, H/P1-18)",
+      "verification": "scripts/validate_appendix_a.mjs"
+    }
+  ]
+}

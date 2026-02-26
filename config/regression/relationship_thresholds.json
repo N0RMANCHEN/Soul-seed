@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0",
+  "description": "H/P1-8: Relationship continuity regression thresholds",
+  "entityHitRate": 0.99,
+  "cardInjectionAccuracy": 0.95,
+  "crossSessionIdentityStability": 1.0,
+  "relationshipDimensionAccuracy": 0.9,
+  "coldStartFalseClaims": 0
+}
