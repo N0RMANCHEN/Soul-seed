@@ -39,4 +39,4 @@
 
 ## Active Index
 
-- （当前无 active 计划文件；以 `doc/Roadmap.md` 的 `in_progress` 为准）
+- `doc/plans/L-Incremental-Input-Plan.md`（Phase L active）

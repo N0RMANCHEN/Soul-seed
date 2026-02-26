@@ -22,7 +22,7 @@
 
 ## 3) Phase 与编号规则（强制）
 
-1. 当前执行优先级：`Phase J > Phase K > Phase I`。
+1. 当前执行优先级：`Phase J > Phase K > Phase I > Phase L`。
 2. 任务 ID 冻结，不重排；新增任务仅允许追加编号。
 3. 编号格式：`{Phase}/P{priority}-{seq}`。
 4. 每次进入新 Phase 前必须先完成分工规划（A/B 归属、依赖链、同步点、回滚归属）。
@@ -31,7 +31,7 @@
 
 - `blocked`: `none`
 - `in_progress`: `J/P1-0`
-- `todo`: `Phase J`（P1 其余）, `Phase K`, `Phase I`
+- `todo`: `Phase J`（P1 其余）, `Phase K`, `Phase I`, `Phase L`
 - `historical`:
   - Phase H（Ha/Hb/Hc）完成记录：`doc/plans/archive/H-State-Closure-Plan.md` 及同目录 H*/Ha*/Hb*/Hc* 子计划。
   - Architecture Governance 12 项完成归档：`doc/plans/archive/AG-2026-02-Completion.md`。
@@ -104,6 +104,31 @@
 - 状态：`todo`
 
 ### I/P2-1 兼容收口（可选）
+- 状态：`todo`
+
+### Phase L（输入流式化：增量理解 + 分段提交）
+
+目标：在不破坏现有治理与主链路稳定性的前提下，建立 CLI 文本输入侧增量处理能力，实现“边输入边理解、分段提交后正式回合处理”。
+
+### L/P0-0 输入事件层抽象（CLI）
+- 状态：`todo`
+
+### L/P0-1 分段提交引擎
+- 状态：`todo`
+
+### L/P0-2 增量理解（轻量层）
+- 状态：`todo`
+
+### L/P0-3 正式回合桥接
+- 状态：`todo`
+
+### L/P1-0 交互可视化与修正提示
+- 状态：`todo`
+
+### L/P1-1 开销预算与门禁
+- 状态：`todo`
+
+### L/P1-2 评测赛道
 - 状态：`todo`
 
 ## 6) 文档联动清单（每次变更必查）
