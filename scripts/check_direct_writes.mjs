@@ -9,6 +9,7 @@ import path from "node:path";
 
 const STATE_FILES = [
   "mood_state.json",
+  "emotion_episodes.jsonl",
   "relationship_state.json",
   "interests.json",
   "cognition_state.json",
@@ -18,19 +19,27 @@ const STATE_FILES = [
   "beliefs.json",
   "values_rules.json",
   "personality_profile.json",
+  "people_registry.json",
+  "genome.json",
+  "epigenetics.json",
 ];
 
 const ALLOWED_FILES = new Set([
   "packages/core/src/state_delta_apply.ts",
   "packages/core/src/goals_state.ts",
+  "packages/core/src/goal_store.ts",
   "packages/core/src/beliefs_state.ts",
   "packages/core/src/mood_state.ts",
+  "packages/core/src/emotion_episode_manager.ts",
   "packages/core/src/relationship_state.ts",
   "packages/core/src/interests.ts",
   "packages/core/src/social_graph.ts",
   "packages/core/src/persona.ts",
   "packages/core/src/compat_migration.ts",
   "packages/core/src/persona_compile.ts",
+  "packages/core/src/package_snapshotter.ts",
+  "packages/core/src/people_registry.ts",
+  "packages/core/src/genome.ts",
 ]);
 
 async function walkDir(dir, files = []) {

@@ -1,21 +1,31 @@
 /**
- * P2-0: 内在情绪状态模型
+ * P2-0 / Hb-1-3: 内在情绪状态模型（三层：mood baseline / emotion episodes / temperament）
  * 独立于关系维度，描述 persona 在当前时刻的情绪状态。
- * 随对话自动演化，并向基线（valence=0.5, arousal=0.3）衰减。
- * EB-1: 增加 moodLatent（32维）为真实内在情绪状态；valence/arousal/dominantEmotion 为投影层。
+ * 随对话自动演化，并向基线衰减。Genome emotion_recovery → baselineRegressionSpeed。
+ * EB-1: moodLatent（32维）为真实内在状态；valence/arousal/dominantEmotion 为投影层。
  * valence 使用 [0, 1]，baseline=0.5（中性）。
  */
 import { writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { DominantEmotion, MoodState } from "./types.js";
+import type { DominantEmotion, MoodBaseline, MoodState } from "./types.js";
 
 export const MOOD_STATE_FILENAME = "mood_state.json";
 export const MOOD_LATENT_HISTORY_FILENAME = "mood_latent_history.jsonl";
 export const MOOD_LATENT_DIM = 32;
+export const MOOD_STATE_SCHEMA_VERSION = "1.1";
 
 const BASELINE_VALENCE = 0.5;
 const BASELINE_AROUSAL = 0.3;
+const BASELINE_ENERGY = 0.5;
+const BASELINE_STRESS = 0.2;
+
+export const DEFAULT_MOOD_BASELINE: MoodBaseline = {
+  valence: BASELINE_VALENCE,
+  arousal: BASELINE_AROUSAL,
+  energy: BASELINE_ENERGY,
+  stress: BASELINE_STRESS,
+};
 
 // ─── EB-1: Mood Latent 向量操作 ──────────────────────────────────────────────
 
@@ -81,6 +91,9 @@ export function createInitialMoodState(createdAt?: string): MoodState {
     moodLatent,
     valence: BASELINE_VALENCE,
     arousal: BASELINE_AROUSAL,
+    energy: BASELINE_ENERGY,
+    stress: BASELINE_STRESS,
+    baseline: DEFAULT_MOOD_BASELINE,
     dominantEmotion: "calm",
     triggers: [],
     onMindSnippet: null,
@@ -107,6 +120,9 @@ export function normalizeMoodState(raw: Record<string, unknown>): MoodState {
     valence = clamp(typeof raw.valence === "number" ? raw.valence : BASELINE_VALENCE, 0, 1);
     arousal = clamp(typeof raw.arousal === "number" ? raw.arousal : BASELINE_AROUSAL, 0, 1);
   }
+  const energy = clamp(typeof raw.energy === "number" ? raw.energy : BASELINE_ENERGY, 0, 1);
+  const stress = clamp(typeof raw.stress === "number" ? raw.stress : BASELINE_STRESS, 0, 1);
+  const baseline = parseBaseline(raw.baseline);
   const dominantEmotion = isValidEmotion(raw.dominantEmotion) ? raw.dominantEmotion : inferDominantEmotion(valence, arousal);
   const triggers = Array.isArray(raw.triggers)
     ? raw.triggers.filter((t): t is string => typeof t === "string").slice(0, 3)
@@ -117,7 +133,20 @@ export function normalizeMoodState(raw: Record<string, unknown>): MoodState {
     typeof raw.decayRate === "number" && raw.decayRate > 0 ? raw.decayRate : 0.08;
   const updatedAt =
     typeof raw.updatedAt === "string" ? raw.updatedAt : new Date().toISOString();
-  return { moodLatent, valence, arousal, dominantEmotion, triggers, onMindSnippet, decayRate, updatedAt };
+  return { moodLatent, valence, arousal, energy, stress, baseline, dominantEmotion, triggers, onMindSnippet, decayRate, updatedAt };
+}
+
+function parseBaseline(raw: unknown): MoodBaseline {
+  if (raw && typeof raw === "object" && "valence" in raw && "arousal" in raw) {
+    const b = raw as Record<string, unknown>;
+    return {
+      valence: clamp(typeof b.valence === "number" ? b.valence : BASELINE_VALENCE, 0, 1),
+      arousal: clamp(typeof b.arousal === "number" ? b.arousal : BASELINE_AROUSAL, 0, 1),
+      energy: clamp(typeof b.energy === "number" ? b.energy : BASELINE_ENERGY, 0, 1),
+      stress: clamp(typeof b.stress === "number" ? b.stress : BASELINE_STRESS, 0, 1),
+    };
+  }
+  return DEFAULT_MOOD_BASELINE;
 }
 
 export async function loadMoodState(rootPath: string): Promise<MoodState | null> {
@@ -142,7 +171,8 @@ export async function writeMoodState(rootPath: string, state: MoodState): Promis
 }
 
 /**
- * 基于时间向基线衰减情绪（不写盘，只返回新状态）
+ * Hb-1-3 MoodUpdateHandler: 基于时间向基线衰减情绪（不写盘，只返回新状态）。
+ * Genome emotion_recovery → baselineRegressionSpeed。
  */
 export function decayMoodTowardBaseline(
   state: MoodState,
@@ -155,37 +185,46 @@ export function decayMoodTowardBaseline(
 
   const effectiveDecayRate = opts?.baselineRegressionSpeed ?? state.decayRate;
   const decayFactor = Math.exp(-effectiveDecayRate * hoursElapsed);
+  const base = state.baseline ?? DEFAULT_MOOD_BASELINE;
 
   // EB-1: Decay latent vector if present
   let moodLatent = state.moodLatent;
   if (moodLatent) {
-    // Sync dims [0] and [1] from scalar state (backward compat: caller may set valence/arousal directly)
     const synced = [...moodLatent];
     synced[0] = state.valence;
     synced[1] = state.arousal;
-
-    const baseline = createMoodLatentBaseline();
+    const latentBase = createMoodLatentBaseline();
+    latentBase[0] = base.valence;
+    latentBase[1] = base.arousal;
     moodLatent = synced.map((v, i) => {
-      const base = baseline[i] ?? 0;
-      return clampDim(base + (v - base) * decayFactor, i);
+      const b = latentBase[i] ?? 0;
+      return clampDim(b + (v - b) * decayFactor, i);
     });
     const projected = projectMoodLatent(moodLatent);
+    const energy = base.energy + ((state.energy ?? base.energy) - base.energy) * decayFactor;
+    const stress = base.stress + ((state.stress ?? base.stress) - base.stress) * decayFactor;
     return {
       ...state,
       moodLatent,
       valence: projected.valence,
       arousal: projected.arousal,
+      energy: clamp(energy, 0, 1),
+      stress: clamp(stress, 0, 1),
       dominantEmotion: projected.dominantEmotion
     };
   }
 
   // Fallback: scalar-only decay
-  const valence = BASELINE_VALENCE + (state.valence - BASELINE_VALENCE) * decayFactor;
-  const arousal = BASELINE_AROUSAL + (state.arousal - BASELINE_AROUSAL) * decayFactor;
+  const valence = base.valence + (state.valence - base.valence) * decayFactor;
+  const arousal = base.arousal + (state.arousal - base.arousal) * decayFactor;
+  const energy = base.energy + ((state.energy ?? base.energy) - base.energy) * decayFactor;
+  const stress = base.stress + ((state.stress ?? base.stress) - base.stress) * decayFactor;
   return {
     ...state,
     valence: clamp(valence, 0, 1),
     arousal: clamp(arousal, 0, 1),
+    energy: clamp(energy, 0, 1),
+    stress: clamp(stress, 0, 1),
     dominantEmotion: inferDominantEmotion(valence, arousal)
   };
 }
@@ -233,14 +272,16 @@ function computeMoodDelta(
 
   let deltaV = 0;
   let deltaA = 0;
+  let deltaE = 0;
+  let deltaS = 0;
 
   // 用户正向情绪信号
   if (/谢谢|感谢|喜欢|开心|好棒|你真的很好|appreciate|thanks|love it|happy|great/i.test(userText)) {
-    deltaV += 0.06; deltaA += 0.03;
+    deltaV += 0.06; deltaA += 0.03; deltaE += 0.02;
   }
   // 用户负向情绪信号
   if (/讨厌|烦死了|失望|差劲|hate|disappointed|frustrated|annoying|stupid/i.test(userText)) {
-    deltaV -= 0.07; deltaA += 0.05;
+    deltaV -= 0.07; deltaA += 0.05; deltaS += 0.06;
   }
   // 用户亲密信号
   if (/爱你|想你|亲亲|宝贝|love you|miss you|darling|dear/i.test(userText)) {
@@ -248,11 +289,11 @@ function computeMoodDelta(
   }
   // 用户好奇/探索信号
   if (/为什么|怎么|是不是|真的吗|告诉我|why|how|tell me|curious|wonder/i.test(userText)) {
-    deltaA += 0.04;
+    deltaA += 0.04; deltaE += 0.03;
   }
   // 用户疲惫/平静信号
   if (/累了|好累|困了|睡觉|晚安|tired|sleepy|goodnight|need rest/i.test(userText)) {
-    deltaV += 0.02; deltaA -= 0.05;
+    deltaV += 0.02; deltaA -= 0.05; deltaE -= 0.04; deltaS -= 0.02;
   }
   // 助手输出情绪反射
   if (/[emotion:warm]|[emotion:tender]|温柔|感动|touched/i.test(assistText)) {
@@ -270,19 +311,33 @@ function computeMoodDelta(
 
   deltaV *= scale;
   deltaA *= scale;
+  deltaE *= scale;
+  deltaS *= scale;
+
+  const nextEnergy = clamp((state.energy ?? BASELINE_ENERGY) + deltaE, 0, 1);
+  const nextStress = clamp((state.stress ?? BASELINE_STRESS) + deltaS, 0, 1);
 
   // EB-1: Update latent vector if present (small-step update)
   if (state.moodLatent) {
     const newLatent = updateMoodLatent(state.moodLatent, deltaV, deltaA);
     const projected = projectMoodLatent(newLatent);
-    return { ...state, moodLatent: newLatent, valence: projected.valence, arousal: projected.arousal };
+    return {
+      ...state,
+      moodLatent: newLatent,
+      valence: projected.valence,
+      arousal: projected.arousal,
+      energy: nextEnergy,
+      stress: nextStress
+    };
   }
 
   // Fallback: scalar-only update
   return {
     ...state,
     valence: clamp(state.valence + deltaV, 0, 1),
-    arousal: clamp(state.arousal + deltaA, 0, 1)
+    arousal: clamp(state.arousal + deltaA, 0, 1),
+    energy: nextEnergy,
+    stress: nextStress
   };
 }
 

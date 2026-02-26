@@ -201,23 +201,51 @@ export type DominantEmotion =
   | "warm"
   | "guarded";
 
+/** Hb-1-3: Baseline values toward which mood regresses (Layer 1). */
+export interface MoodBaseline {
+  valence: number;
+  arousal: number;
+  energy: number;
+  stress: number;
+}
+
 export interface MoodState {
   /** EB-1: 情绪 Latent 向量（32维）— 真实内在情绪状态；valence/arousal 从此投影 */
   moodLatent?: number[];
-  /** 情绪效价：-1(负面) ~ +1(正面)，基线 0.5（从 moodLatent 投影，向后兼容接口）*/
+  /** 情绪效价：0(负面) ~ 1(正面)，基线 0.5（从 moodLatent 投影，向后兼容接口）*/
   valence: number;
   /** 情绪唤起度：0(平静) ~ 1(激动)，基线 0.3（从 moodLatent 投影，向后兼容接口）*/
   arousal: number;
+  /** Hb-1-3: Energy level [0,1], baseline 0.5 */
+  energy?: number;
+  /** Hb-1-3: Stress level [0,1], baseline 0.2 */
+  stress?: number;
+  /** Hb-1-3: Target values for regression; defaults to valence=0.5, arousal=0.3, energy=0.5, stress=0.2 */
+  baseline?: MoodBaseline;
   /** 主导情绪标签（从 moodLatent 投影，向后兼容接口）*/
   dominantEmotion: DominantEmotion;
   /** 引发当前情绪的事件 hash（最近3条）*/
   triggers: string[];
   /** Roxy 心里正挂着的一句话（≤60字）*/
   onMindSnippet: string | null;
-  /** 每小时向基线衰减的比率（默认 0.08）*/
+  /** 每小时向基线衰减的比率（默认 0.08，Genome emotion_recovery → baselineRegressionSpeed）*/
   decayRate: number;
   /** 最后更新时间 */
   updatedAt: string;
+}
+
+/** Hb-1-3 Layer 2: Emotion episode (fast, minutes). "Not knowing why" is a feature — causeConfidence can be low. */
+export interface EmotionEpisode {
+  episodeId: string;
+  at: string;
+  trigger: string;
+  label: string;
+  intensity: number;
+  decay: number;
+  causeText?: string;
+  causeConfidence: number;
+  /** When intensity decays below threshold, episode is archived */
+  archivedAt?: string;
 }
 
 export interface PersonaPackage {
@@ -235,6 +263,8 @@ export interface PersonaPackage {
   soulLineage?: SoulLineage;
   /** P2-0: 内在情绪状态 */
   moodState?: MoodState;
+  /** Hb-1-3: Active emotion episode (highest intensity), if any */
+  activeEmotionEpisode?: EmotionEpisode | null;
   /** P2-2: 自传体叙事 */
   autobiography?: {
     selfUnderstanding: string;
