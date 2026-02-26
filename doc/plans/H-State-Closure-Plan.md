@@ -3,6 +3,7 @@
 > High-Level Execution Plan  
 > Date: 2026-02-26 (updated)  
 > Progress: 以 `doc/Roadmap.md` 为准（本计划仅描述 scope，不做逐任务快照）  
+> **Batch 命名**：Batch H0=Ha, H1=Hb, H2=Hc；文件 H1/H2/H3 与 Ha/Hb/Hc 映射见 `doc/plans/README.md`  
 > Source: `doc/Roadmap.md` (Phase H) + `04-Archive.md` (v0.3.1 / v0.4 specs)  
 > Scope: 24 tasks (H/P0-0..4 + H/P1-0..10, H/P1-12..19); H/P1-11 moved to Phase I, 8 weeks (W1–W8)
 > Sub-phase plans: Ha (`Ha-State-Infra-Plan.md`, `Ha-1-*`, `Ha-2-*`); Hb (`Hb-Mind-Model-State-Modules.md`, `Hb-1-*`, `Hb-2-*`, `Hb-*-*-*`); Hc (`Hc-Verification-Governance.md`, `Hc-1-*`, `Hc-2-*`, `Hc-3-*`, `Hc-*-*-*`)  

@@ -1,5 +1,6 @@
 # Batch H1 — Foundation: State Delta Pipeline, Invariants, Compat & Genome MVP
 
+> **命名映射**：本文件对应 `Ha`（Phase Ha = State Infrastructure）。主命名：Ha；旧名：H1。详见 `doc/plans/README.md`。  
 > **Phase**: H — State Closure & Compatibility Fulfillment  
 > **Batch**: H0 (file-named H1) — Foundation  
 > **Schedule**: W1–W3 (3 weeks)  

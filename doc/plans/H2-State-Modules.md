@@ -1,5 +1,6 @@
 # Batch H2 — State Modules
 
+> **命名映射**：本文件对应 `Hb`（Phase Hb = Mind Model State Modules）。主命名：Hb；旧名：H2。详见 `doc/plans/README.md`。  
 > Phase H, Batch 2 of 3  
 > Schedule: W4–W6 (3 weeks)  
 > Tasks: 8 (H/P1-0 through H/P1-7)  

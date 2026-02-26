@@ -1,5 +1,6 @@
 # Batch H3 — Validation & Risk Guards
 
+> **命名映射**：本文件对应 `Hc`（Phase Hc = Verification & Governance）。主命名：Hc；旧名：H3。详见 `doc/plans/README.md`。  
 > Phase H: State Closure & Compatibility Fulfillment  
 > Batch: H3 (Roadmap "Batch H2" → file-naming "H3")  
 > Schedule: **W7–W8** (2 weeks)  

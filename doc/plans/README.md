@@ -4,6 +4,18 @@
 >
 > 来源：`doc/Roadmap.md` 规则 1.3；`doc/Architecture-Folder-Governance.md` §3.3
 
+## 命名体系映射（H1/H2/H3 ↔ Ha/Hb/Hc）
+
+主命名体系为 **Ha/Hb/Hc**（与 Roadmap 一致）。以下为旧 H1/H2/H3 文件与 Ha/Hb/Hc 的对应关系，引用时以主命名为准。
+
+| 旧名（文件） | 主命名 | Phase 内容 |
+|-------------|--------|------------|
+| `H1-Foundation.md` | Ha | Foundation (H/P0-0..4) |
+| `H2-State-Modules.md` | Hb | State Modules (H/P1-0..7) |
+| `H3-Validation-and-Guards.md` | Hc | Validation & Risk Guards (H/P1-8..19) |
+
+说明：H1/H2/H3 文件保留以兼容既有引用；新计划优先使用 Ha/Hb/Hc 命名。
+
 ## 文档命名约定
 
 - 高层汇总：`{Phase}-{ShortTitle}.md`（如 `H-State-Closure-Plan.md`）

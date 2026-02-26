@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **AG/P0-0** Plan doc update rules: Added `doc/plans/README.md` with fixed declaration (progress 以 Roadmap 为准); replaced granular status in `H-State-Closure-Plan.md`, `H2-State-Modules.md` with scope-level; added Progress declaration to Ha/Hb/Hc/H1/H3 plans; updated `doc/Architecture-Folder-Governance.md` §3.3 cross-ref.
 - **AG/P1-2** Persona Package single truth source: Designated `doc/Persona-Package-Layout.md` as canonical; README and AGENT now reference it with brief summary; Hb-2-1 plan references canonical layout.
+- **AG/P1-3** Plan naming unification: Added H1/H2/H3 ↔ Ha/Hb/Hc mapping to `doc/plans/README.md`; added mapping header to H1/H2/H3 plan files; H-State-Closure-Plan batch naming clarified.
 
 ### Added
 - Added `doc/Architecture-Governance-Roadmap.md` as an execution-oriented governance roadmap for architecture boundaries, folder/file management, A/B collaboration split, sync points, and acceptance gates.
