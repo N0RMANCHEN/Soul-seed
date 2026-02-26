@@ -3,7 +3,7 @@ import { searchMemoryVectors } from "./memory_embeddings.js";
 import { classifyMemoryState, scoreMemoryFromStoreRow } from "./memory_lifecycle.js";
 import { ensureMemoryStore, runMemoryStoreSql } from "./memory_store.js";
 import { projectSubjectiveEmphasis } from "../runtime/semantic_projection.js";
-import type { MemoryEvidenceBlock } from "../types.js";
+import type { MemoryEvidenceBlock, SpeakerRelation } from "../types.js";
 
 export interface RecallBudget {
   candidateMax: number;
@@ -109,6 +109,8 @@ interface MemoryRow {
   credibilityScore: number;
   reconsolidationCount: number;
   originRole: "user" | "assistant" | "system";
+  speakerRelation: SpeakerRelation;
+  speakerEntityId?: string;
 }
 
 const DEFAULT_BUDGET: RecallBudget = {
@@ -437,6 +439,8 @@ export async function recallMemoriesWithTrace(
     memoryBlocks: injectedRows.map((item) => ({
       id: item.row.id,
       source: item.row.originRole,
+      speakerRelation: item.row.speakerRelation,
+      ...(item.row.speakerEntityId ? { speakerEntityId: item.row.speakerEntityId } : {}),
       content: item.row.content,
       uncertaintyLevel: computeMemoryUncertainty(item.row)
     })),
@@ -608,7 +612,9 @@ async function fetchCandidateRows(rootPath: string, limit: number): Promise<Memo
       "'narrativeScore', narrative_score,",
       "'credibilityScore', credibility_score,",
       "'reconsolidationCount', reconsolidation_count,",
-      "'originRole', origin_role",
+      "'originRole', origin_role,",
+      "'speakerRelation', speaker_relation,",
+      "'speakerEntityId', speaker_entity_id",
       ")",
       "FROM memories",
       "WHERE deleted_at IS NULL AND excluded_from_recall = 0",
@@ -643,7 +649,9 @@ async function fetchCandidateRows(rootPath: string, limit: number): Promise<Memo
         narrativeScore: clamp01(Number(parsed.narrativeScore)),
         credibilityScore: clamp01(Number(parsed.credibilityScore)),
         reconsolidationCount: normalizeInt(parsed.reconsolidationCount, 0),
-        originRole: normalizeOriginRole(parsed.originRole)
+        originRole: normalizeOriginRole(parsed.originRole),
+        speakerRelation: normalizeSpeakerRelation(parsed.speakerRelation),
+        speakerEntityId: normalizeSpeakerEntityId(parsed.speakerEntityId)
       });
     } catch {
       continue;
@@ -681,7 +689,9 @@ async function fetchKeywordCandidateRows(rootPath: string, limit: number, keywor
         "'narrativeScore', m.narrative_score,",
         "'credibilityScore', m.credibility_score,",
         "'reconsolidationCount', m.reconsolidation_count,",
-        "'originRole', m.origin_role",
+        "'originRole', m.origin_role,",
+        "'speakerRelation', m.speaker_relation,",
+        "'speakerEntityId', m.speaker_entity_id",
         ")",
         "FROM memories_fts f",
         "JOIN memories m ON m.id = f.memory_id",
@@ -723,7 +733,9 @@ async function fetchKeywordCandidateRows(rootPath: string, limit: number, keywor
         "'narrativeScore', narrative_score,",
         "'credibilityScore', credibility_score,",
         "'reconsolidationCount', reconsolidation_count,",
-        "'originRole', origin_role",
+        "'originRole', origin_role,",
+        "'speakerRelation', speaker_relation,",
+        "'speakerEntityId', speaker_entity_id",
         ")",
         "FROM memories",
         "WHERE deleted_at IS NULL AND excluded_from_recall = 0",
@@ -837,7 +849,9 @@ async function fetchVectorCandidateRows(
       "'narrativeScore', narrative_score,",
       "'credibilityScore', credibility_score,",
       "'reconsolidationCount', reconsolidation_count,",
-      "'originRole', origin_role",
+      "'originRole', origin_role,",
+      "'speakerRelation', speaker_relation,",
+      "'speakerEntityId', speaker_entity_id",
       ")",
       "FROM memories",
       `WHERE id IN (${ids.map((id) => sqlText(id)).join(",")})`,
@@ -1275,7 +1289,9 @@ function parseRows(raw: string): MemoryRow[] {
         narrativeScore: clamp01(Number(parsed.narrativeScore)),
         credibilityScore: clamp01(Number(parsed.credibilityScore)),
         reconsolidationCount: normalizeInt(parsed.reconsolidationCount, 0),
-        originRole: normalizeOriginRole(parsed.originRole)
+        originRole: normalizeOriginRole(parsed.originRole),
+        speakerRelation: normalizeSpeakerRelation(parsed.speakerRelation),
+        speakerEntityId: normalizeSpeakerEntityId(parsed.speakerEntityId)
       });
     } catch {
       continue;
@@ -1305,7 +1321,9 @@ async function fetchRowsByIds(rootPath: string, ids: string[]): Promise<MemoryRo
       "'narrativeScore', narrative_score,",
       "'credibilityScore', credibility_score,",
       "'reconsolidationCount', reconsolidation_count,",
-      "'originRole', origin_role",
+      "'originRole', origin_role,",
+      "'speakerRelation', speaker_relation,",
+      "'speakerEntityId', speaker_entity_id",
       ")",
       "FROM memories",
       `WHERE id IN (${unique.map((id) => sqlText(id)).join(",")})`,
@@ -1409,6 +1427,21 @@ function normalizeInt(value: unknown, fallback: number): number {
 
 function normalizeOriginRole(value: unknown): "user" | "assistant" | "system" {
   return value === "user" || value === "assistant" || value === "system" ? value : "system";
+}
+
+function normalizeSpeakerRelation(value: unknown): SpeakerRelation {
+  return value === "me" ||
+    value === "you" ||
+    value === "other_named" ||
+    value === "group" ||
+    value === "system" ||
+    value === "unknown"
+    ? value
+    : "unknown";
+}
+
+function normalizeSpeakerEntityId(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 function roundScore(value: number): number {

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { ensureMemoryStore, runMemoryStoreSql } from "./memory_store.js";
 import { projectSubjectiveEmphasis } from "../runtime/semantic_projection.js";
-import type { LifeEvent } from "../types.js";
+import { linkEntity } from "../persona/people_registry.js";
+import type { LifeEvent, SpeakerRelation } from "../types.js";
 
 export type MemoryType = "episodic" | "semantic" | "relational" | "procedural";
 
@@ -11,6 +12,8 @@ interface MemoryCandidate {
   salience: number;
   state: "hot" | "warm" | "cold" | "archive" | "scar";
   originRole: "user" | "assistant" | "system";
+  speakerRelation: SpeakerRelation;
+  speakerEntityId?: string;
   evidenceLevel: "verified" | "derived" | "uncertain";
   activationCount: number;
   lastActivatedAt: string;
@@ -52,9 +55,38 @@ const RELATIONAL_EVENTS = new Set([
 ]);
 
 const PROCEDURAL_EVENTS = new Set(["conflict_logged", "memory_weight_updated"]);
+const GROUP_SPEECH_PATTERNS = [
+  /(大家|你们|你俩|你們|群里|群組里|群組裡|群里有人|all of you|you guys|everyone|the group)\s*(说|說|提到|表示|said|mentioned)/iu,
+  /(他们|她们|他們|她們)\s*(都|也)?\s*(说|說|提到|表示|said|mentioned)/iu
+];
+const DIRECT_QUOTE_NAME_PATTERN = /(?:^|[\s，,。！？!?])([\p{L}\p{N}_-]{2,20})\s*(说|說|提到|表示|said|mentioned)/u;
+const AMBIGUOUS_THIRD_PARTY_PATTERN =
+  /(他说|她说|ta说|有人说|据说|someone said|he said|she said|they said)/iu;
+const NON_ENTITY_TOKENS = new Set([
+  "我",
+  "我们",
+  "咱们",
+  "你",
+  "你们",
+  "你們",
+  "他",
+  "她",
+  "它",
+  "他们",
+  "她们",
+  "他們",
+  "她們",
+  "大家",
+  "群里",
+  "group",
+  "everyone",
+  "you",
+  "we",
+  "they"
+]);
 
 export async function ingestLifeEventMemory(rootPath: string, event: LifeEvent): Promise<string[]> {
-  const candidates = extractMemoryCandidates(event);
+  const candidates = await extractMemoryCandidates(rootPath, event);
   if (candidates.length === 0) {
     return [];
   }
@@ -78,8 +110,8 @@ export async function ingestLifeEventMemory(rootPath: string, event: LifeEvent):
     const adjustedSalience = Math.min(1, Math.max(0.05, candidate.salience * salienceGain));
     const memoryId = randomUUID();
     const sql = [
-      "INSERT INTO memories (id, memory_type, content, salience, state, origin_role, evidence_level, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at)",
-      `VALUES (${sqlText(memoryId)}, ${sqlText(candidate.memoryType)}, ${sqlText(candidate.content)}, ${adjustedSalience}, ${sqlText(candidate.state)}, ${sqlText(candidate.originRole)}, ${sqlText(candidate.evidenceLevel)}, ${candidate.activationCount}, ${sqlText(candidate.lastActivatedAt)}, ${candidate.emotionScore}, ${candidate.narrativeScore}, ${candidate.credibilityScore}, ${candidate.excludedFromRecall ? 1 : 0}, 0, ${sqlText(event.hash)}, ${sqlText(createdAt)}, ${sqlText(createdAt)}, NULL);`
+      "INSERT INTO memories (id, memory_type, content, salience, state, origin_role, speaker_relation, speaker_entity_id, evidence_level, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at)",
+      `VALUES (${sqlText(memoryId)}, ${sqlText(candidate.memoryType)}, ${sqlText(candidate.content)}, ${adjustedSalience}, ${sqlText(candidate.state)}, ${sqlText(candidate.originRole)}, ${sqlText(candidate.speakerRelation)}, ${candidate.speakerEntityId ? sqlText(candidate.speakerEntityId) : "NULL"}, ${sqlText(candidate.evidenceLevel)}, ${candidate.activationCount}, ${sqlText(candidate.lastActivatedAt)}, ${candidate.emotionScore}, ${candidate.narrativeScore}, ${candidate.credibilityScore}, ${candidate.excludedFromRecall ? 1 : 0}, 0, ${sqlText(event.hash)}, ${sqlText(createdAt)}, ${sqlText(createdAt)}, NULL);`
     ].join(" ");
     return { memoryId, sql };
   });
@@ -96,7 +128,7 @@ export async function ingestLifeEventMemory(rootPath: string, event: LifeEvent):
   return inserts.map((item) => item.memoryId);
 }
 
-function extractMemoryCandidates(event: LifeEvent): MemoryCandidate[] {
+async function extractMemoryCandidates(rootPath: string, event: LifeEvent): Promise<MemoryCandidate[]> {
   const text = toEventText(event);
   if (!text) {
     return [];
@@ -104,6 +136,7 @@ function extractMemoryCandidates(event: LifeEvent): MemoryCandidate[] {
   const meta = event.payload.memoryMeta;
   const memoryType = classifyMemoryType(event, text);
   const originRole = classifyOriginRole(event.type);
+  const speaker = await resolveSpeakerAttribution(rootPath, event.type, text);
   const emphasisDetected = detectUserEmphasis({
     eventType: event.type,
     text,
@@ -129,6 +162,8 @@ function extractMemoryCandidates(event: LifeEvent): MemoryCandidate[] {
       salience,
       state,
       originRole,
+      speakerRelation: speaker.relation,
+      ...(speaker.entityId ? { speakerEntityId: speaker.entityId } : {}),
       evidenceLevel,
       activationCount,
       lastActivatedAt: normalizeIso(meta?.lastActivatedAt, event.ts),
@@ -140,6 +175,56 @@ function extractMemoryCandidates(event: LifeEvent): MemoryCandidate[] {
       excludedFromRecall
     }
   ];
+}
+
+async function resolveSpeakerAttribution(
+  rootPath: string,
+  eventType: LifeEvent["type"],
+  text: string
+): Promise<{ relation: SpeakerRelation; entityId?: string }> {
+  if (eventType === "assistant_message" || eventType === "assistant_aborted") {
+    return { relation: "me" };
+  }
+  if (eventType !== "user_message") {
+    return { relation: "system" };
+  }
+
+  if (GROUP_SPEECH_PATTERNS.some((pattern) => pattern.test(text))) {
+    return { relation: "group" };
+  }
+
+  const namedCandidate = extractNamedSpeakerCandidate(text);
+  if (namedCandidate) {
+    try {
+      const linked = await linkEntity(rootPath, namedCandidate);
+      if (linked?.entityId) {
+        return { relation: "other_named", entityId: linked.entityId };
+      }
+    } catch {
+      // link failure should never block memory ingest
+    }
+  }
+
+  if (AMBIGUOUS_THIRD_PARTY_PATTERN.test(text)) {
+    return { relation: "unknown" };
+  }
+
+  return { relation: "you" };
+}
+
+function extractNamedSpeakerCandidate(text: string): string | null {
+  const match = DIRECT_QUOTE_NAME_PATTERN.exec(text);
+  if (!match?.[1]) {
+    return null;
+  }
+  const raw = match[1].trim();
+  if (!raw) {
+    return null;
+  }
+  if (NON_ENTITY_TOKENS.has(raw.toLowerCase())) {
+    return null;
+  }
+  return raw;
 }
 
 function detectUserEmphasis(input: {
