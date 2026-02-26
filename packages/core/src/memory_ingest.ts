@@ -60,12 +60,26 @@ export async function ingestLifeEventMemory(rootPath: string, event: LifeEvent):
   }
 
   await ensureMemoryStore(rootPath);
+
+  // H/P1-2: Genome memory_imprint → salience gain on ingest
+  let salienceGain = 1.0;
+  try {
+    const { loadGenome, loadEpigenetics } = await import("./genome.js");
+    const { getSalienceGainFromGenome } = await import("./memory_forgetting.js");
+    const genome = await loadGenome(rootPath);
+    const epigenetics = await loadEpigenetics(rootPath);
+    salienceGain = getSalienceGainFromGenome(genome, epigenetics);
+  } catch {
+    // fallback to 1.0
+  }
+
   const createdAt = event.ts;
   const inserts = candidates.map((candidate) => {
+    const adjustedSalience = Math.min(1, Math.max(0.05, candidate.salience * salienceGain));
     const memoryId = randomUUID();
     const sql = [
       "INSERT INTO memories (id, memory_type, content, salience, state, origin_role, evidence_level, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at)",
-      `VALUES (${sqlText(memoryId)}, ${sqlText(candidate.memoryType)}, ${sqlText(candidate.content)}, ${candidate.salience}, ${sqlText(candidate.state)}, ${sqlText(candidate.originRole)}, ${sqlText(candidate.evidenceLevel)}, ${candidate.activationCount}, ${sqlText(candidate.lastActivatedAt)}, ${candidate.emotionScore}, ${candidate.narrativeScore}, ${candidate.credibilityScore}, ${candidate.excludedFromRecall ? 1 : 0}, 0, ${sqlText(event.hash)}, ${sqlText(createdAt)}, ${sqlText(createdAt)}, NULL);`
+      `VALUES (${sqlText(memoryId)}, ${sqlText(candidate.memoryType)}, ${sqlText(candidate.content)}, ${adjustedSalience}, ${sqlText(candidate.state)}, ${sqlText(candidate.originRole)}, ${sqlText(candidate.evidenceLevel)}, ${candidate.activationCount}, ${sqlText(candidate.lastActivatedAt)}, ${candidate.emotionScore}, ${candidate.narrativeScore}, ${candidate.credibilityScore}, ${candidate.excludedFromRecall ? 1 : 0}, 0, ${sqlText(event.hash)}, ${sqlText(createdAt)}, ${sqlText(createdAt)}, NULL);`
     ].join(" ");
     return { memoryId, sql };
   });
