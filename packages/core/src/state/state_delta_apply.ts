@@ -21,6 +21,7 @@ export const DOMAIN_FILE_MAP: Record<string, string> = {
   personality: "personality_profile.json",
   epigenetics: "epigenetics.json",
   interests: "interests.json",
+  topic_state: "topic_state.json",
   cognition: "cognition_state.json",
   voice: "voice_profile.json",
   social_graph: "social_graph.json",

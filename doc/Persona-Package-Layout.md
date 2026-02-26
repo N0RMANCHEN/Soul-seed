@@ -24,6 +24,7 @@
 ├── genome.json               # 基因/天赋（Phase F/H）
 ├── epigenetics.json          # 表观学习（Phase F/H）
 ├── interests.json            # 兴趣分布（Phase D P3-0）
+├── topic_state.json          # 话题状态与线程（Phase J P0-0）
 ├── social_graph.json         # 社交关系图谱
 ├── autobiography.json        # 自传体叙事
 ├── self_reflection.json      # 周期自我反思

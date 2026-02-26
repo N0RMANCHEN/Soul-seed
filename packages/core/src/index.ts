@@ -68,6 +68,7 @@ export * from "./capabilities/registry.js";
 export * from "./capabilities/intent_resolver.js";
 export * from "./capabilities/policy_guard.js";
 export * from "./proactive/engine.js";
+export * from "./proactive/planner_contract.js";
 export * from "./governance/pipeline_replay.js";
 export * from "./persona/constitution_crystallization.js";
 export * from "./memory/memory_user_facts.js";
@@ -115,6 +116,7 @@ export * from "./guards/relationship_noise.js";
 export * from "./state/compat_mode.js";
 export * from "./state/compat_migration.js";
 export * from "./state/compat_calibration.js";
+export * from "./state/topic_state.js";
 export {
   MANIFEST_SCHEMA_VERSION,
   MANIFEST_FILENAME,

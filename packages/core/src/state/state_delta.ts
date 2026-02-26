@@ -10,6 +10,7 @@ export type StateDeltaDomain =
   | "personality"
   | "epigenetics"
   | "interests"
+  | "topic_state"
   | "cognition"
   | "voice"
   | "social_graph";

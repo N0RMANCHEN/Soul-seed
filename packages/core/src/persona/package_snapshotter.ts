@@ -31,6 +31,7 @@ export const SNAPSHOT_STATE_FILES = [
   "genome.json",
   "epigenetics.json",
   "interests.json",
+  "topic_state.json",
   "social_graph.json",
   "autobiography.json",
   "self_reflection.json",

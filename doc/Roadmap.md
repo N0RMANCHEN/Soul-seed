@@ -30,8 +30,8 @@
 ## 4) 当前执行总览
 
 - `blocked`: `none`
-- `in_progress`: `none`
-- `todo`: `Phase J`, `Phase K`, `Phase I`
+- `in_progress`: `J/P0-1`
+- `todo`: `Phase J`（其余）, `Phase K`, `Phase I`
 - `historical`:
   - Phase H（Ha/Hb/Hc）完成记录：`doc/plans/archive/H-State-Closure-Plan.md` 及同目录 H*/Ha*/Hb*/Hc* 子计划。
   - Architecture Governance 12 项完成归档：`doc/plans/archive/AG-2026-02-Completion.md`。
@@ -44,10 +44,11 @@
 目标：补齐兴趣/注意力/主动交互闭环，形成非轮询式会话体验。
 
 ### J/P0-0 Interest-Attention 状态闭环
-- 状态：`todo`
+- 状态：`done`
+- 计划：`doc/plans/J-Interaction-Loop-Plan.md`
 
 ### J/P0-1 Proactive Planner 契约化
-- 状态：`todo`
+- 状态：`in_progress`
 
 ### J/P0-2 非轮询会话循环（核心交互层）
 - 状态：`todo`

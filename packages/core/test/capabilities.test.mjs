@@ -6,6 +6,8 @@ import {
   evaluateCapabilityPolicy,
   computeProactiveStateSnapshot,
   decideProactiveEmission,
+  buildProactivePlan,
+  isProactivePlanValid,
   extractTextFromHtml
 } from "../dist/index.js";
 
@@ -212,4 +214,39 @@ test("proactive engine snapshot + decision are bounded", () => {
   const decisionHit = decideProactiveEmission(snapshot, 0);
   assert.equal(decisionHit.emitted, true);
   assert.equal(typeof decisionHit.frequencyWindowHit, "boolean");
+});
+
+test("J/P0-1: proactive planner contract builds schema-valid plan", () => {
+  const snapshot = computeProactiveStateSnapshot({
+    curiosity: 0.72,
+    annoyanceBias: 0,
+    silenceMinutes: 25,
+    topicAffinity: 0.84
+  });
+  const plan = buildProactivePlan({
+    snapshot,
+    activeTopic: "music_production"
+  });
+  assert.equal(isProactivePlanValid(plan), true);
+  assert.equal(plan.schemaVersion, "1.0");
+  assert.equal(Array.isArray(plan.why), true);
+  assert.equal(plan.target.type, "topic");
+});
+
+test("J/P0-1: proactive planner follows pending goal when provided", () => {
+  const snapshot = computeProactiveStateSnapshot({
+    curiosity: 0.41,
+    annoyanceBias: 0,
+    silenceMinutes: 15,
+    topicAffinity: 0.35
+  });
+  const plan = buildProactivePlan({
+    snapshot,
+    pendingGoalId: "goal_roadmap_cleanup",
+    activeTopic: "docs"
+  });
+  assert.equal(plan.intent, "FOLLOW_UP");
+  assert.equal(plan.target.type, "goal");
+  assert.equal(plan.target.id.startsWith("g_"), true);
+  assert.equal(plan.why.includes("pending_goal"), true);
 });

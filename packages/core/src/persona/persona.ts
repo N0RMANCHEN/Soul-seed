@@ -29,6 +29,7 @@ import {
   computeInterestCuriosity,
   INTERESTS_FILENAME
 } from "./interests.js";
+import { createInitialTopicState, TOPIC_STATE_FILENAME } from "../state/topic_state.js";
 import {
   createInitialSelfReflection,
   SELF_REFLECTION_FILENAME
@@ -208,6 +209,7 @@ export async function initPersonaPackage(
   await writeJson(path.join(outPath, MOOD_STATE_FILENAME), createInitialMoodState(createdAt));
   await writeJson(path.join(outPath, AUTOBIOGRAPHY_FILENAME), createInitialAutobiography());
   await writeJson(path.join(outPath, INTERESTS_FILENAME), createInitialInterests());
+  await writeJson(path.join(outPath, TOPIC_STATE_FILENAME), createInitialTopicState(createdAt));
   await writeJson(path.join(outPath, SELF_REFLECTION_FILENAME), createInitialSelfReflection());
 
   await writeJson(path.join(outPath, "summaries", "working_set.json"), {

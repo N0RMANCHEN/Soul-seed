@@ -39,5 +39,4 @@
 
 ## Active Index
 
-- 当前无 active 计划文件。
-- 下一次启动 Phase J/K/I 计划时，在 `doc/plans/` 新建计划并在此登记。
+- `doc/plans/J-Interaction-Loop-Plan.md`（Phase J active）

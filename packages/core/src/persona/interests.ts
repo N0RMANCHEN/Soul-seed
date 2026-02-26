@@ -9,6 +9,7 @@ import path from "node:path";
 import { runMemoryStoreSql } from "../memory/memory_store.js";
 import { projectTopicAttention } from "../runtime/semantic_projection.js";
 import type { ChatMessage, ModelAdapter } from "../types.js";
+import { updateTopicStateFromTurn } from "../state/topic_state.js";
 
 export const INTERESTS_FILENAME = "interests.json";
 
@@ -224,6 +225,13 @@ export async function updateInterestsFromTurn(
     }
   }
   await writeInterests(rootPath, next);
+  const allocation = allocateAttentionFromInterests(input.userInput, next);
+  await updateTopicStateFromTurn(rootPath, {
+    userInput: input.userInput,
+    assistantOutput: input.assistantOutput,
+    topTopic: allocation.topTopic ?? next.interests[0]?.topic,
+    nowIso: input.nowIso
+  });
   return next;
 }
 
