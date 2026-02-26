@@ -20,22 +20,20 @@ Soulseed is not a chatbot. It is a **portable persona runtime** — a soul that 
 ## Quick Start / 快速开始
 
 ```bash
-# 1. Install dependencies / 安装依赖
+# 1) Install / 安装
 npm install
 
-# 2. Add your API key / 填入 API Key
+# 2) Configure API / 配置 API
 cp .env.example .env
-# Edit .env — set SOULSEED_API_KEY + SOULSEED_BASE_URL + SOULSEED_MODEL (any OpenAI-compatible API works)
+# Edit .env: SOULSEED_API_KEY + SOULSEED_BASE_URL + SOULSEED_MODEL
 
-# 3. Build / 构建
+# 3) Build / 构建
 npm run build
 
-# 4. Create your first persona / 创建你的第一个人格
+# 4) Create persona / 创建人格
 ./ss new Aria
-# → One question. One answer. Done.
-# → 只需一个选择，完成创建。
 
-# 5. Start talking / 开始对话
+# 5) Start chat / 开始对话
 ./ss Aria
 ```
 
@@ -44,154 +42,25 @@ npm run build
 
 ### Onboarding Pack / 上手资料包
 
-- 快速上手（含 15 分钟验收、故障排查、首轮示例）：[`doc/Quickstart.md`](doc/Quickstart.md)
+- 快速上手（完整安装/初始化/首轮对话/验收/排障）：[`doc/Quickstart.md`](doc/Quickstart.md)
 - 完整命令参考：[`doc/CLI.md`](doc/CLI.md)
 
 ---
 
 ## Installation / 安装
 
-### Prerequisites / 前置条件
+README 只保留 5 步摘要；完整步骤请直接看：
 
-- **Node.js** >= 18.0
-- **npm** >= 9.0 (or equivalent package manager)
-- **sqlite3** (for development; usually pre-installed on macOS/Linux)
-  - Windows users: see [doc/Windows.md](doc/Windows.md)
-
-> **Node.js 版本:** >= 18.0
-> **npm 版本:** >= 9.0
-> **sqlite3:** 用于开发环境；macOS/Linux 通常预装
-
-### Step 1: Clone Repository / 克隆仓库
-
-```bash
-git clone https://github.com/hirohi/soul-seed.git
-cd soul-seed
-```
-
-### Step 2: Install Dependencies / 安装依赖
-
-```bash
-npm install
-```
-
-This installs all dependencies for `packages/core`, `packages/cli`, and `packages/mcp-server`.
-
-> 这会安装 `packages/core`、`packages/cli` 和 `packages/mcp-server` 所有依赖。
-
-### Step 3: Build / 构建
-
-```bash
-npm run build
-```
-
-Compiles TypeScript to JavaScript in each package.
-
-> 在每个包中将 TypeScript 编译为 JavaScript。
+- [`doc/Quickstart.md`](doc/Quickstart.md)（推荐，含 15 分钟验收清单）
+- [`doc/Windows.md`](doc/Windows.md)（Windows 环境）
+- [`doc/CLI.md`](doc/CLI.md)（完整命令手册）
 
 ---
 
 ## API Configuration / API 配置
 
-Soulseed uses **OpenAI-compatible LLM APIs** (e.g., DeepSeek, OpenAI, Mistral, etc.).
-
-> Soulseed 支持**兼容 OpenAI 的 LLM API**（如 DeepSeek、OpenAI、Mistral 等）。
-
-### Step 1: Create `.env` File / 创建 `.env` 文件
-
-```bash
-cp .env.example .env
-```
-
-### Step 2: Add Your API Key / 添加 API 密钥
-
-Open `.env` and fill in your credentials:
-
-```bash
-# Required / 必填 — any OpenAI-compatible provider
-SOULSEED_PROVIDER=deepseek
-SOULSEED_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-SOULSEED_BASE_URL=https://api.deepseek.com/v1
-SOULSEED_MODEL=deepseek-chat
-# SOULSEED_MODEL_CANDIDATES=deepseek-reasoner,deepseek-chat
-```
-
-Or, if you use DeepSeek, the legacy env vars still work:
-
-```bash
-# Legacy DeepSeek config (still supported)
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-DEEPSEEK_MODEL=deepseek-chat
-```
-
-### Supported API Providers / 支持的 API 提供商
-
-Any provider with an **OpenAI-compatible** `/v1/chat/completions` endpoint works.
-
-> 任何提供 OpenAI 兼容 `/v1/chat/completions` 端点的 API 均可使用。
-
-| Provider / 提供商 | Base URL | Example Model / 示例模型 |
-|---|---|---|
-| **DeepSeek** | `https://api.deepseek.com/v1` | `deepseek-chat` |
-| **OpenAI** | `https://api.openai.com/v1` | `gpt-4o` |
-| **Anthropic (native)** | `https://api.anthropic.com/v1` | `claude-3-5-sonnet-latest` |
-| **OpenAI-compatible proxy** | `https://<your-proxy>/v1` | provider-specific model id |
-
-> ✅ **Any OpenAI-compatible API is supported.**
-> ✅ **支持任意 OpenAI 兼容 API。**
->
-
-### Model Adapter / 模型适配器
-
-Soulseed uses a single **`OpenAICompatAdapter`** that works with any provider speaking the OpenAI `/v1/chat/completions` wire protocol. The adapter resolves configuration at runtime via `runtime_model_config.ts`:
-
-> Soulseed 使用一个统一的 **`OpenAICompatAdapter`**，兼容任何实现 OpenAI `/v1/chat/completions` 协议的提供方。运行时配置通过 `runtime_model_config.ts` 解析：
-
-- **Provider auto-detection** — inferred from `SOULSEED_BASE_URL` (e.g. URLs containing `deepseek` → DeepSeek defaults, `anthropic` → Anthropic defaults, `api.openai.com` → OpenAI defaults). Override with `SOULSEED_PROVIDER`.
-  *提供方自动识别 — 从 URL 推断（可通过 `SOULSEED_PROVIDER` 显式指定）*
-- **Default model per provider** — each known provider has a sensible default (`deepseek-chat`, `gpt-4o-mini`, `claude-3-5-sonnet-latest`). Custom/proxy providers require explicit `SOULSEED_MODEL`.
-  *每个已知提供方有合理的默认模型；自定义代理需显式指定 `SOULSEED_MODEL`*
-- **Model fallback chain** — set `SOULSEED_MODEL_CANDIDATES=model-a,model-b` to auto-fallback when the primary model returns a `model_not_exist` or transient error.
-  *模型候选链 — 设置 `SOULSEED_MODEL_CANDIDATES` 实现自动降级容错*
-- **Provider-model mismatch guard** — `./ss doctor` warns if model name doesn't match the provider (e.g. `claude-*` on a DeepSeek endpoint).
-  *提供方/模型不匹配守卫 — `./ss doctor` 会检测并警告*
-- **Legacy backward compat** — existing `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` still work as fallbacks.
-  *旧版兼容 — `DEEPSEEK_*` 环境变量仍作为回退支持*
-
-Example for a custom OpenAI-compatible proxy:
-
-```bash
-SOULSEED_PROVIDER=openai_compat
-SOULSEED_API_KEY=sk-your-key
-SOULSEED_BASE_URL=https://your-proxy-provider.com/v1
-SOULSEED_MODEL=claude-sonnet-4-6
-```
-
-### Step 3: Verify Configuration / 验证配置
-
-```bash
-# Quick health check / 快速健康检查
-./ss doctor
-```
-
-If everything is configured correctly, you should see:
-- ✓ Core directories initialized
-- ✓ Default personas found
-- ✓ API connectivity OK
-
-> 如果配置正确，应该看到上述检查项全部通过。
-
-### Step 4: (Optional) Test API Connection / 可选：测试 API 连接
-
-```bash
-# Use the built-in Alpha persona to test / 使用内置 Alpha 人格测试
-./ss Alpha
-
-# In the chat, type / 在对话中输入：
-# "ping" or "测试连接" or "hello"
-# The persona should respond normally
-```
+主路径配置：`SOULSEED_API_KEY` / `SOULSEED_BASE_URL` / `SOULSEED_MODEL`。  
+详细 provider 配置、兼容变量（`DEEPSEEK_*`）与排障统一放在 [`doc/Quickstart.md`](doc/Quickstart.md)。
 
 ---
 
@@ -264,32 +133,24 @@ Beta is for developers debugging persona behavior or system issues.
 ┌────────────────────────▼────────────────────────────┐
 │                  packages/core                       │
 │                                                      │
-│  execution_protocol                                  │
-│    ├─ dual_process_router  (instinct / deliberative) │
-│    └─ runtime_pipeline     (5-stage pipeline)        │
-│         ├─ [soul]  orchestrator.decide → LLM        │
-│         └─ [agent] agent_engine (Planner/Executor)  │
+│  Execution:                                            │
+│    dual-process routing (instinct / deliberative)     │
+│    5-stage pipeline (perception -> commit)            │
+│    soul-first: orchestrator decides before agent acts │
 │                                                      │
-│  consistency_kernel (5-layer guard)                  │
-│    identity · relational · recall_grounding          │
-│    factual_grounding · constitution_rules            │
+│  Cognitive Safety:                                     │
+│    5-layer consistency guard                           │
+│    meta-review + self-revision loop                   │
 │                                                      │
-│  meta_review  (LLM meta-cognition: quality+verdict)  │
-│  self_revision (habits/voice/relationship correction)│
+│  Runtime & Models:                                     │
+│    provider-agnostic adapter + fallback chain         │
 │                                                      │
-│  Model Adapter (provider-agnostic):                  │
-│    OpenAICompatAdapter → /v1/chat/completions        │
-│    runtime_model_config (auto-detect + fallback)     │
-│    providers: DeepSeek · OpenAI · Anthropic · proxy  │
+│  Memory & State:                                       │
+│    SQLite memory store + hybrid recall (FTS+vector)   │
+│    latent state + state-delta protocol + audit trace  │
 │                                                      │
-│  Memory Stack:                                       │
-│    memory_store (SQLite) + memory_embeddings (vector)│
-│    Hybrid RAG = FTS + vector + salience fusion       │
-│                                                      │
-│  Persona Package (file truth layer):                 │
-│    constitution · habits · worldview · soul_lineage  │
-│    life.log.jsonl (append-only + hash chain)         │
-│    memory.db (SQLite, 4-state lifecycle)             │
+│  Persona Package:                                      │
+│    portable persona assets + append-only life log     │
 └──────────────────────────────────────────────────────┘
                          │
 ┌────────────────────────▼────────────────────────────┐
@@ -299,6 +160,8 @@ Beta is for developers debugging persona behavior or system issues.
 │           conversation.save_turn · agent.run · ...   │
 └──────────────────────────────────────────────────────┘
 ```
+
+Folder/layer governance (source-of-truth) is defined in `doc/Architecture-Folder-Governance.md` and enforced by `npm run governance:check`.
 
 ---
 
@@ -331,32 +194,25 @@ Model selection is runtime-managed via environment/config (`SOULSEED_PROVIDER`, 
 # Core / 核心
 ./ss <Name>                         # Start chat / 开始对话
 ./ss new <Name>                     # Create persona / 创建人格
-./ss new <Name> --advanced          # Full setup wizard / 完整配置向导
 ./ss new <Name> --quick             # Instant create with defaults / 极速创建
 ./ss doctor                         # Health check / 健康检查
 
 # Persona management / 人格管理
-./ss persona list
-./ss persona lint [Name]
-./ss persona inspect <Name>
-./ss persona export <Name> <out>
-./ss persona import <file>
-./ss persona arc show [Name]
-./ss persona autobiography show|distill [Name]
-./ss persona voice-phrases list|add|remove [Name]
+./ss persona inspect [--persona <path>]
+./ss persona lint [--persona <path>] [--strict]
+./ss persona compile [--persona <path>] [--out <file>]
+./ss persona export --out <dir> [--persona <path>]
+./ss persona import --in <src_dir> --out <dest_dir>
 
 # Memory / 记忆
-./ss memory search <query> [Name]
-./ss memory consolidate [Name]
-./ss pinned list|add|remove [Name]
-./ss examples list|add|remove [Name]
+./ss memory search --query <q> [--persona <path>]
+./ss memory consolidate [--persona <path>]
+./ss memory pin add|list|remove [--text <memory>] [--persona <path>]
 
 # Advanced / 进阶
-./ss explain --last [Name]
-./ss cognition adapt-routing [Name]
-./ss finetune export-dataset [Name]
-./ss space <Name> [--path <dir>] [--remove]
-./ss mcp-server [--http]
+./ss explain --last [--persona <path>]
+./ss finetune export-dataset --out <path.jsonl> [--persona <path>]
+./ss mcp [--persona <path>] [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--auth-token <token>]
 ```
 
 Full reference: [`doc/CLI.md`](doc/CLI.md)
@@ -367,13 +223,13 @@ Full reference: [`doc/CLI.md`](doc/CLI.md)
 
 ```bash
 # Read-only mode (default) / 只读模式（默认）
-./ss mcp-server
+./ss mcp
 
 # Enable write tools / 启用写入工具
-SOULSEED_MCP_ALLOW_WRITES=true ./ss mcp-server
+SOULSEED_MCP_ALLOW_WRITES=true ./ss mcp
 
 # HTTP transport with auth token / HTTP 传输 + 鉴权
-SOULSEED_MCP_TOKEN=<token> ./ss mcp-server --http
+./ss mcp --transport http --host 127.0.0.1 --port 8787 --auth-token <token>
 ```
 
 Available tools: `persona.get_context`, `memory.search`, `memory.search_hybrid`, `conversation.save_turn`, `agent.run`, `goal.create/list/get/cancel`, `trace.get`, `consistency.inspect`, and more.
@@ -400,7 +256,6 @@ Available tools: `persona.get_context`, `memory.search`, `memory.search_hybrid`,
 | `SOULSEED_THINKING_PREVIEW_MODEL_FALLBACK` | `0` | Allow LLM fallback for preview text / 是否允许用模型生成前置提示 |
 | `SOULSEED_THINKING_PREVIEW_MAX_MODEL_MS` | `220` | Max preview LLM time in ms / 前置提示模型最大耗时（毫秒） |
 | `SOULSEED_MCP_ALLOW_WRITES` | `false` | Enable write tools in MCP / 启用 MCP 写入工具 |
-| `SOULSEED_MCP_TOKEN` | — | Auth token for HTTP MCP / HTTP MCP 鉴权 Token |
 | `SOULSEED_OWNER_KEY` | — | Owner-level auth / 所有者级别鉴权 |
 | `DEEPSEEK_API_KEY` | — | Legacy: falls back if `SOULSEED_API_KEY` not set / 旧版兼容 |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com/v1` | Legacy: falls back if `SOULSEED_BASE_URL` not set / 旧版兼容 |
@@ -412,7 +267,16 @@ Available tools: `persona.get_context`, `memory.search`, `memory.search_hybrid`,
 
 ```
 packages/
-  core/           # Pure core: memory / orchestration / guards / persona I/O
+  core/           # Core domain modules
+    src/
+      runtime/    # execution protocol / routing / adapters
+      memory/     # memory store / recall / consolidation / budget
+      persona/    # package read-write / lint / compile / migration
+      state/      # state delta / domain states / genome / invariants
+      guards/     # consistency and risk guards
+      governance/ # doctor / replay / trace / eval helpers
+      capabilities/ # capability registry & intent/policy
+      proactive/  # proactive engine
   cli/            # CLI shell: ./ss entry + interactive logic
   mcp-server/     # MCP JSON-RPC 2.0 server
 scripts/
@@ -460,7 +324,6 @@ npm run eval:all       # Full quality evaluation / 完整质量评估
 | [`doc/Quickstart.md`](doc/Quickstart.md) | 5-minute onboarding guide / 5分钟上手指南 |
 | [`doc/CLI.md`](doc/CLI.md) | Complete command reference / 完整命令参考 |
 | [`doc/Roadmap.md`](doc/Roadmap.md) | Product phases and milestones / 产品阶段与里程碑 |
-| [`doc/Architecture-Governance-Roadmap.md`](doc/Architecture-Governance-Roadmap.md) | Architecture/file governance execution roadmap / 架构与文件治理执行路线图 |
 | [`doc/Architecture-Folder-Governance.md`](doc/Architecture-Folder-Governance.md) | Architecture/folder governance standard / 架构与文件夹治理标准 |
 | [`doc/Runtime-Report-Asset-Governance.md`](doc/Runtime-Report-Asset-Governance.md) | personas/ & reports/ retention/archive policy / 运行态与报告资产治理 |
 | [`doc/Product-Standards.md`](doc/Product-Standards.md) | Product-wide implementation standards / 全产品通用实施规范 |
@@ -481,7 +344,7 @@ npm run eval:all       # Full quality evaluation / 完整质量评估
 - Online path changes require an `npm run acceptance` report
   *涉及在线路径的变更需附上 `npm run acceptance` 报告*
 - New session capabilities → register in `capabilities/registry.ts` + `intent_resolver.ts`
-- New latent dimensions → add to `doctor.ts` + `types.ts`
+- New latent dimensions → add to `governance/doctor.ts` + `types.ts`
 
 ---
 
