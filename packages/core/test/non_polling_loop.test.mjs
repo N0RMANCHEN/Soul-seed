@@ -51,3 +51,19 @@ test("J/P0-2: non-polling loop respects cooldown remaining", () => {
   assert.equal(plan.shouldArm, true);
   assert.equal(plan.delayMs >= 45_000, true);
 });
+
+test("J/P0-2: non-polling loop suppresses unfinished recent user thought", () => {
+  const now = Date.now();
+  const plan = deriveNonPollingWakePlan({
+    signal: "user_turn_committed",
+    nowMs: now,
+    lastUserAtMs: now - 20_000,
+    lastAssistantAtMs: now - 25_000,
+    hasUserSpokenThisSession: true,
+    proactiveCooldownUntilMs: 0,
+    lastUserInput: "我在想要不要先从目标拆解开始，",
+    curiosity: 0.5
+  });
+  assert.equal(plan.shouldArm, false);
+  assert.equal(plan.gateReason, "unfinished_user_thought");
+});

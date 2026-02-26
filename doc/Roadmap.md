@@ -30,11 +30,12 @@
 ## 4) 当前执行总览
 
 - `blocked`: `none`
-- `in_progress`: `J/P0-2`
-- `todo`: `Phase J`（其余）, `Phase K`, `Phase I`
+- `in_progress`: `J/P1-0`
+- `todo`: `Phase J`（P1 其余）, `Phase K`, `Phase I`
 - `historical`:
   - Phase H（Ha/Hb/Hc）完成记录：`doc/plans/archive/H-State-Closure-Plan.md` 及同目录 H*/Ha*/Hb*/Hc* 子计划。
   - Architecture Governance 12 项完成归档：`doc/plans/archive/AG-2026-02-Completion.md`。
+  - Phase J P0 交互闭环归档：`doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`。
   - Core 分层重构（2026-02-26）：`packages/core/src` 根层收敛为 `index.ts`/`types.ts`，其余迁入 `runtime|memory|persona|state|guards|governance|capabilities|proactive`。
 
 ## 5) Active Roadmap
@@ -43,18 +44,12 @@
 
 目标：补齐兴趣/注意力/主动交互闭环，形成非轮询式会话体验。
 
-### J/P0-0 Interest-Attention 状态闭环
-- 状态：`done`
-- 计划：`doc/plans/J-Interaction-Loop-Plan.md`
-
-### J/P0-1 Proactive Planner 契约化
-- 状态：`done`
-
-### J/P0-2 非轮询会话循环（核心交互层）
-- 状态：`in_progress`
+### J/P0-2 非轮询会话循环（已归档）
+- 状态：`historical`
+- 索引：`doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`（含 `J/P0-0`、`J/P0-1`、`J/P0-2`）
 
 ### J/P1-0 Engagement Plan + 预算门禁
-- 状态：`todo`
+- 状态：`in_progress`
 
 ### J/P1-1 多话题上下文调度器
 - 状态：`todo`

@@ -39,4 +39,4 @@
 
 ## Active Index
 
-- `doc/plans/J-Interaction-Loop-Plan.md`（Phase J active）
+- （当前无 active 计划文件；以 `doc/Roadmap.md` 的 `in_progress` 为准）

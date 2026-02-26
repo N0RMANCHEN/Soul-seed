@@ -2231,6 +2231,9 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   let proactiveCooldownUntilMs = 0;
   let proactiveMissStreak = 0;
   let proactiveRecentEmitCount = 0;
+  const nonPollingLoopEnabled = !["0", "off", "false", "no"].includes(
+    String(process.env.SOULSEED_NON_POLLING_LOOP ?? "1").trim().toLowerCase()
+  );
   let lastThinkingPreviewTurnRef = "";
   let lastThinkingPreviewAtMs = 0;
   let lastThinkingPreviewText = "";
@@ -3068,6 +3071,19 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   const dispatchNonPollingSignal = (signal: NonPollingSignal): void => {
     stopProactive();
     const signalAtMs = Date.now();
+    if (!nonPollingLoopEnabled) {
+      void appendLifeEvent(personaPath, {
+        type: "non_polling_wake_planned",
+        payload: {
+          signal,
+          shouldArm: false,
+          delayMs: 0,
+          gateReason: "disabled_by_flag",
+          at: new Date(signalAtMs).toISOString()
+        }
+      }).catch(() => {});
+      return;
+    }
     const wakePlan = deriveNonPollingWakePlan({
       signal,
       nowMs: signalAtMs,
