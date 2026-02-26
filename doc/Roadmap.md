@@ -1,13 +1,13 @@
 # Soulseed Roadmap (Execution-Oriented, Reindexed, Archive-Complete)
 
 ## 文档规则总纲
-- 更新日期：2026-02-25
+- 更新日期：2026-02-26
 - 核验范围：`/Users/hirohi/Soul-seed` + `/Users/hirohi/Downloads/Soul-seed-2.24.03/doc/`
 - 状态定义：`todo` / `in_progress` / `blocked` / `done` / `deferred` / `historical`
 
 ### 1) Phase 展示与优先级规则
 - Phase 可无限扩展：`Phase F -> G -> H -> I -> J -> K ...`。
-- 当前执行优先级（跨 Phase）：`Phase Ha > Hb > Hc > Phase J > Phase K > Phase I`。
+- 当前执行优先级（跨 Phase）：`Phase J > Phase K > Phase I`（Ha/Hb/Hc 已完成）。
 - 同一时刻默认只允许一个 Phase 进入主开发态，后续 Phase 以前序 Phase 的出口条件为门禁。
 
 ### 1.1) Phase 与版本联动规则（强制）
