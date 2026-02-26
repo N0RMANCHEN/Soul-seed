@@ -98,6 +98,27 @@ async function main() {
     }
   }
 
+  // 3b) Internal-only modules must not be re-exported (from core_export_whitelist.json).
+  const whitelistPath = path.resolve(process.cwd(), "config/governance/core_export_whitelist.json");
+  if (await exists(whitelistPath) && (await exists(coreIndex))) {
+    const whitelist = JSON.parse(await readFile(whitelistPath, "utf8"));
+    const internalModules = whitelist.internalModules ?? [];
+    const raw = await readFile(path.resolve(process.cwd(), coreIndex), "utf8");
+    const exportLines = raw.split("\n").filter((l) => /export\s+.*\s+from\s+/.test(l) || l.trim().startsWith("export * from"));
+    for (const mod of internalModules) {
+      const pattern = new RegExp(`["'\`].*${mod.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.js["'\`]`);
+      if (exportLines.some((line) => pattern.test(line))) {
+        recordIssue({
+          rule: "internalModuleReExport",
+          message: `internal-only module "${mod}" must not be re-exported from core index`,
+          checks,
+          failures,
+          warnings,
+        });
+      }
+    }
+  }
+
   // 4) Workspace version consistency (warn for now).
   const rootPkg = JSON.parse(await readFile(path.resolve(process.cwd(), "package.json"), "utf8"));
   const rootVersion = String(rootPkg.version ?? "");

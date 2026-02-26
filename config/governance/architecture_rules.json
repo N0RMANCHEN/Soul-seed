@@ -21,6 +21,7 @@
     "lineLimits": "warn",
     "coreExportSurface": "warn",
     "workspaceVersionConsistency": "error",
-    "planNamingMix": "warn"
+    "planNamingMix": "warn",
+    "internalModuleReExport": "error"
   }
 }
