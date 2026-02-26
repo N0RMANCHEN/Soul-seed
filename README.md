@@ -258,6 +258,10 @@ Available tools: `persona.get_context`, `memory.search`, `memory.search_hybrid`,
 | `SOULSEED_THINKING_PREVIEW_MODEL_FALLBACK` | `0` | Allow LLM fallback for preview text / 是否允许用模型生成前置提示 |
 | `SOULSEED_THINKING_PREVIEW_MAX_MODEL_MS` | `220` | Max preview LLM time in ms / 前置提示模型最大耗时（毫秒） |
 | `SOULSEED_REPLY_LATENCY_MODE` | `low_latency` | Reply latency policy (`low_latency|balanced|quality_first`) / 回复延迟策略 |
+| `SOULSEED_UX_MIN_SAMPLES` | `10` | Minimum turn samples required by `npm run ux:slo` / UX 时延门禁最小样本数 |
+| `SOULSEED_SLO_P95_TTFT_MS` | `700` | UX SLO: P95 time-to-first-token / UX SLO：首 token P95（毫秒） |
+| `SOULSEED_SLO_P95_TTFS_MS` | `1800` | UX SLO: P95 time-to-first-sentence / UX SLO：首句 P95（毫秒） |
+| `SOULSEED_SLO_P95_TTFR_MS` | `4500` | UX SLO: P95 time-to-final-reply / UX SLO：整句完成 P95（毫秒） |
 | `SOULSEED_PHASE_J_ENABLE` | `1` | Enable Phase J engagement control path / 启用 Phase J 交互控制路径 |
 | `SOULSEED_PHASE_J_RECORD_ONLY` | `0` | Record-only mode (observe budget decisions without degrading tiers) / 仅记录预算决策，不执行降级 |
 | `SOULSEED_PHASE_J_TOPIC_SCHEDULER` | `1` | Enable topic scheduler output in DecisionTrace / 启用话题调度器与 trace 输出 |

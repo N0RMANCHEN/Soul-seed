@@ -230,7 +230,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { dispatchKnownCommand } from "./commands/router.js";
 import { inferEmotionFromText, parseEmotionTag, renderEmotionPrefix } from "./emotion.js";
 import { parseArgs } from "./parser/args.js";
-import { resolveStreamReplyEnabled } from "./runtime_flags.js";
+import { resolveReplyDisplayMode, resolveStreamReplyEnabled } from "./runtime_flags.js";
 
 type ReadingContentMode = "fiction" | "non_fiction" | "unknown";
 type PersonaTemplateKey = "friend" | "peer" | "intimate" | "neutral";
@@ -2216,25 +2216,6 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
     const safeContent = stripAssistantLabelPrefix(guardAssistantOutput(content, "reply"));
     console.log(`${assistantLabel()} ${emotionPrefix}${safeContent}`);
   };
-  const sayAsAssistantTypewriter = async (content: string, emotionPrefix = ""): Promise<void> => {
-    const safeContent = stripAssistantLabelPrefix(guardAssistantOutput(content, "reply"));
-    process.stdout.write(`${assistantLabel()} ${emotionPrefix}`);
-    let delayBudgetMs = 1200;
-    for (const ch of safeContent) {
-      process.stdout.write(ch);
-      if (delayBudgetMs <= 0) {
-        continue;
-      }
-      let stepMs = 8 + Math.floor(Math.random() * 7);
-      if (/[，。！？,.!?、；;：:]/u.test(ch)) {
-        stepMs += 22 + Math.floor(Math.random() * 19);
-      }
-      stepMs = Math.min(stepMs, delayBudgetMs);
-      delayBudgetMs -= stepMs;
-      await sleep(stepMs);
-    }
-    process.stdout.write("\n");
-  };
   const applyHumanPacedDelay = async (startedAtMs: number, replyText: string): Promise<void> => {
     if (!humanPacedMode) {
       return;
@@ -4114,8 +4095,13 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
   });
   greetingText = greetingTemporalGuard.text;
   const greetingNormalized = normalizeConversationalReply(greetingText, "greeting", buildGreetingFallback(), lastUserInput);
-  greetingText = greetingNormalized;
-  await applyHumanPacedDelay(greetingStartedAtMs, greetingText);
+  greetingText = (greetingNormalized || buildGreetingFallback()).trim();
+  if (!greetingText) {
+    greetingText = "我在这，我们从你最想说的那一点开始。";
+  }
+  if (!streamReplyEnabled) {
+    await applyHumanPacedDelay(greetingStartedAtMs, greetingText);
+  }
   sayAsAssistant(greetingText);
   await appendAutonomyAssistantMessage({
     text: greetingText,
@@ -5251,6 +5237,12 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
         const bypassPrimaryModel = groupParticipationMode === "wait" || groupParticipationMode === "brief_ack";
         currentAbort = bypassPrimaryModel ? null : new AbortController();
         let assistantContent = "";
+        let rawAssistantContent = "";
+        let streamPrintStarted = false;
+        let streamPrintEnded = false;
+        let streamPrintFirstChunk = true;
+        let firstTokenAtMs: number | null = null;
+        let firstSentenceAtMs: number | null = null;
         let aborted = false;
         const llmPrimaryStartedAtMs = Date.now();
 
@@ -5268,20 +5260,36 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
               {
                 onToken: (chunk: string) => {
                   assistantContent += chunk;
+                  rawAssistantContent += chunk;
+                  if (firstTokenAtMs === null && chunk.trim().length > 0) {
+                    firstTokenAtMs = Date.now();
+                  }
+                  if (firstSentenceAtMs === null && /[。！？!?]/u.test(rawAssistantContent)) {
+                    firstSentenceAtMs = Date.now();
+                  }
                   if (!streamReplyEnabled) {
                     return;
                   }
-                  // Main chat reply is rendered only after guard/rewrite pipeline completes,
-                  // so users see exactly one finalized assistant message per turn.
+                  const safeChunk = streamPrintFirstChunk ? stripAssistantLabelPrefix(chunk) : chunk;
+                  streamPrintFirstChunk = false;
+                  if (!streamPrintStarted) {
+                    process.stdout.write(`${assistantLabel()} `);
+                    streamPrintStarted = true;
+                  }
+                  process.stdout.write(safeChunk);
                 },
                 onDone: () => {
-                  // no-op: finalized message is emitted once at the end of turn
+                  if (streamReplyEnabled && streamPrintStarted && !streamPrintEnded) {
+                    process.stdout.write("\n");
+                    streamPrintEnded = true;
+                  }
                 }
               },
               currentAbort?.signal
             );
 
-            assistantContent = result.content;
+            assistantContent = result.content || rawAssistantContent;
+            rawAssistantContent = rawAssistantContent || assistantContent;
           }
           addLatency("llm_primary", llmPrimaryStartedAtMs);
         } catch (error: unknown) {
@@ -5597,12 +5605,29 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
       addLatency("rewrite", rewriteStartedAtMs);
       const resolvedEmotion = compactedEmotion.emotion ?? emotion.emotion ?? inferEmotionFromText(assistantContent);
       const shouldDisplayAssistant = !(loopBreak.triggered && assistantContent.trim().length === 0);
+      const replyDisplayMode = resolveReplyDisplayMode({
+        streamed: streamReplyEnabled && streamPrintStarted,
+        shouldDisplayAssistant,
+        adjustedByGuard:
+          identityGuard.corrected ||
+          relationalGuard.corrected ||
+          recallGroundingGuard.corrected ||
+          pronounRoleGuard.corrected ||
+          temporalPhraseGuard.corrected ||
+          loopBreak.triggered,
+        rawText: rawAssistantContent || assistantContent,
+        finalText: assistantContent
+      });
       if (shouldDisplayAssistant) {
         const emitStartedAtMs = Date.now();
-        if (streamReplyEnabled) {
-          await sayAsAssistantTypewriter(assistantContent, renderEmotionPrefix(resolvedEmotion));
-        } else {
+        if (!streamReplyEnabled) {
           await applyHumanPacedDelay(turnStartedAtMs, assistantContent);
+          sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
+        } else if (replyDisplayMode === "adjusted" || replyDisplayMode === "full") {
+          if (streamPrintStarted && !streamPrintEnded) {
+            process.stdout.write("\n");
+            streamPrintEnded = true;
+          }
           sayAsAssistant(assistantContent, renderEmotionPrefix(resolvedEmotion));
         }
         addLatency("emit", emitStartedAtMs);
@@ -5703,7 +5728,11 @@ async function runChat(options: Record<string, string | boolean>): Promise<void>
           totalMs: trace.latencyTotalMs ?? null,
           breakdown: trace.latencyBreakdown ?? null,
           reasoningDepth: trace.reasoningDepth ?? "deep",
-          slowHintEmitted
+          slowHintEmitted,
+          streamed: streamReplyEnabled,
+          ttftMs: firstTokenAtMs ? Math.max(0, firstTokenAtMs - turnStartedAtMs) : null,
+          ttfsMs: firstSentenceAtMs ? Math.max(0, firstSentenceAtMs - turnStartedAtMs) : null,
+          ttfrMs: Math.max(0, Date.now() - turnStartedAtMs)
         }
       });
       lastAssistantOutput = assistantContent;
@@ -5962,7 +5991,7 @@ async function readTextAttachmentResolved(
     if (!raw.trim()) {
       throw new Error("文件为空");
     }
-    const MAX_CHARS = 50_000;
+    const MAX_CHARS = 200_000;
     const clipped = raw.length > MAX_CHARS;
     const content = clipped ? `${raw.slice(0, MAX_CHARS)}\n\n[truncated]` : raw;
     return {
@@ -6338,7 +6367,7 @@ function compactReplyForChatPace(reply: string, userInput: string): string {
   if (/```/.test(text) || /https?:\/\//i.test(text) || /(^|\n)\d+\.\s+/u.test(text) || /(^|\n)-\s+/u.test(text)) {
     return reply;
   }
-  if (text.length <= 160 && text.split(/\n+/).length <= 2) {
+  if (text.length <= 520 && text.split(/\n+/).length <= 5) {
     return reply;
   }
   const firstLine = text.split(/\n+/)[0]?.trim() ?? text;
@@ -6347,9 +6376,9 @@ function compactReplyForChatPace(reply: string, userInput: string): string {
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
   if (sentences.length === 0) {
-    return firstLine.slice(0, 140);
+    return firstLine.slice(0, 420);
   }
-  return sentences.slice(0, 2).join("").slice(0, 140);
+  return sentences.slice(0, 4).join("").slice(0, 420);
 }
 
 function clampNumber(value: number, min: number, max: number): number {
