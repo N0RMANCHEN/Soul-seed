@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **AG/P0-0** Plan doc update rules: Added `doc/plans/README.md` with fixed declaration (progress 以 Roadmap 为准); replaced granular status in `H-State-Closure-Plan.md`, `H2-State-Modules.md` with scope-level; added Progress declaration to Ha/Hb/Hc/H1/H3 plans; updated `doc/Architecture-Folder-Governance.md` §3.3 cross-ref.
+
 ### Added
 - Added `doc/Architecture-Governance-Roadmap.md` as an execution-oriented governance roadmap for architecture boundaries, folder/file management, A/B collaboration split, sync points, and acceptance gates.
 - Added `doc/Architecture-Folder-Governance.md` as the repository-level architecture/folder governance standard (boundaries, naming, write-path rules, gates, and exception workflow).

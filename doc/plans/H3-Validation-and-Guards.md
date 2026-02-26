@@ -4,7 +4,8 @@
 > Batch: H3 (Roadmap "Batch H2" → file-naming "H3")  
 > Schedule: **W7–W8** (2 weeks)  
 > Tasks: **11 active** (H/P1-11 moved to Phase I as `I/P1-11`)  
-> Status: `todo`  
+> Status: `todo`（Phase 级，进度以 Roadmap 为准）  
+> Progress: 以 `doc/Roadmap.md` 为准（本计划仅描述 scope，不做逐任务快照）  
 > Parent plan: `doc/plans/H-State-Closure-Plan.md`  
 > Source: `doc/Roadmap.md` (Phase H) + `04-Archive.md` §18–§21, §20, Appendix A/B
 

@@ -2,7 +2,7 @@
 
 > High-Level Execution Plan  
 > Date: 2026-02-26 (updated)  
-> Status: `in_progress` — H/P0 全部已完成；H/P1-0..H/P1-3 已启动并落地首批 scaffold（模块+测试）；H/P1-4..H/P1-19 待继续推进  
+> Progress: 以 `doc/Roadmap.md` 为准（本计划仅描述 scope，不做逐任务快照）  
 > Source: `doc/Roadmap.md` (Phase H) + `04-Archive.md` (v0.3.1 / v0.4 specs)  
 > Scope: 24 tasks (H/P0-0..4 + H/P1-0..10, H/P1-12..19); H/P1-11 moved to Phase I, 8 weeks (W1–W8)
 > Sub-phase plans: Ha (`Ha-State-Infra-Plan.md`, `Ha-1-*`, `Ha-2-*`); Hb (`Hb-Mind-Model-State-Modules.md`, `Hb-1-*`, `Hb-2-*`, `Hb-*-*-*`); Hc (`Hc-Verification-Governance.md`, `Hc-1-*`, `Hc-2-*`, `Hc-3-*`, `Hc-*-*-*`)  

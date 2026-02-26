@@ -80,7 +80,7 @@
 
 - 规范类：放 `doc/` 根目录（长期标准）
 - 路线类：`doc/Roadmap.md`
-- 计划类：`doc/plans/*`（仅写 scope/依赖/入口出口，不做逐任务快照）
+- 计划类：`doc/plans/*`（仅写 scope/依赖/入口出口，不做逐任务快照；进度以 `doc/Roadmap.md` 为准，详见 `doc/plans/README.md`）
 - 检查表：`doc/checklists/*`
 
 ---

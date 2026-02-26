@@ -2,7 +2,8 @@
 
 > High-Level Execution Plan  
 > Date: 2026-02-25  
-> Status: `done`  
+> Status: `done`（Phase 级，进度以 Roadmap 为准）  
+> Progress: 以 `doc/Roadmap.md` 为准（本计划仅描述 scope，不做逐任务快照）  
 > Source: `doc/Roadmap.md` (Phase Ha) + `04-Archive.md` §10–§16  
 > Scope: 5 tasks (H/P0-0..4), W1–W3  
 > Subplans: `Ha-1-State-Delta-Invariant.md`, `Ha-2-Compat-Genome.md`

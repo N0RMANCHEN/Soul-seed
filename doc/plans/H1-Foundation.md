@@ -5,7 +5,8 @@
 > **Schedule**: W1–W3 (3 weeks)  
 > **Tasks**: 5 (H/P0-0 through H/P0-4)  
 > **Execution Strategy**: Strictly serial (per Roadmap rule 5.1: high coupling + hard risk)  
-> **Status**: `todo`  
+> **Status**: `todo`（Phase 级，进度以 Roadmap 为准）  
+> **Progress**: 以 `doc/Roadmap.md` 为准（本计划仅描述 scope，不做逐任务快照）  
 > **Date**: 2026-02-25  
 > **Source**: `doc/plans/H-State-Closure-Plan.md`, `04-Archive.md` §2/§10–§16, `doc/Roadmap.md`
 
