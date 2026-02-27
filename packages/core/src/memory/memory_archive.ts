@@ -50,9 +50,8 @@ interface MemoryRow {
   narrativeScore: number;
   credibilityScore: number;
   originRole: string;
-  speakerRole: string;
-  speakerId: string | null;
-  speakerLabel: string | null;
+  speakerRelation: string;
+  speakerEntityId: string | null;
   evidenceLevel: string;
   reconsolidationCount: number;
   sourceEventHash: string;
@@ -146,9 +145,8 @@ export async function archiveColdMemories(
       "'narrativeScore', narrative_score,",
       "'credibilityScore', credibility_score,",
       "'originRole', origin_role,",
-      "'speakerRole', COALESCE(speaker_role, origin_role),",
-      "'speakerId', speaker_id,",
-      "'speakerLabel', speaker_label,",
+      "'speakerRelation', speaker_relation,",
+      "'speakerEntityId', speaker_entity_id,",
       "'evidenceLevel', evidence_level,",
       "'reconsolidationCount', reconsolidation_count,",
       "'sourceEventHash', source_event_hash,",
@@ -299,9 +297,8 @@ async function queryRows(rootPath: string, sql: string): Promise<MemoryRow[]> {
         narrativeScore: asNumber(parsed.narrativeScore),
         credibilityScore: asNumber(parsed.credibilityScore, 1),
         originRole: asString(parsed.originRole),
-        speakerRole: asString(parsed.speakerRole) || asString(parsed.originRole),
-        speakerId: asNullableString(parsed.speakerId),
-        speakerLabel: asNullableString(parsed.speakerLabel),
+        speakerRelation: asString(parsed.speakerRelation) || "unknown",
+        speakerEntityId: asNullableString(parsed.speakerEntityId),
         evidenceLevel: asString(parsed.evidenceLevel),
         reconsolidationCount: Math.max(0, Math.floor(asNumber(parsed.reconsolidationCount, 0))),
         sourceEventHash: asString(parsed.sourceEventHash),

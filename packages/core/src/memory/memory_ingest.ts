@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ensureMemoryStore, runMemoryStoreSql } from "./memory_store.js";
 import { projectSubjectiveEmphasis } from "../runtime/semantic_projection.js";
 import { linkEntity } from "../persona/people_registry.js";
-import type { LifeEvent, SpeakerRelation } from "../types.js";
+import type { LifeEvent, LifeEventSpeaker, SpeakerRelation } from "../types.js";
 
 export type MemoryType = "episodic" | "semantic" | "relational" | "procedural";
 
@@ -136,7 +136,7 @@ async function extractMemoryCandidates(rootPath: string, event: LifeEvent): Prom
   const meta = event.payload.memoryMeta;
   const memoryType = classifyMemoryType(event, text);
   const originRole = classifyOriginRole(event.type);
-  const speaker = await resolveSpeakerAttribution(rootPath, event.type, text);
+  const speaker = await resolveSpeakerAttribution(rootPath, event.type, text, event.payload.speaker);
   const emphasisDetected = detectUserEmphasis({
     eventType: event.type,
     text,
@@ -180,13 +180,18 @@ async function extractMemoryCandidates(rootPath: string, event: LifeEvent): Prom
 async function resolveSpeakerAttribution(
   rootPath: string,
   eventType: LifeEvent["type"],
-  text: string
+  text: string,
+  eventSpeaker?: LifeEventSpeaker
 ): Promise<{ relation: SpeakerRelation; entityId?: string }> {
+  const actorEntityId = typeof eventSpeaker?.actorId === "string" && eventSpeaker.actorId.trim()
+    ? eventSpeaker.actorId.trim()
+    : undefined;
+
   if (eventType === "assistant_message" || eventType === "assistant_aborted") {
-    return { relation: "me" };
+    return { relation: "me", ...(actorEntityId ? { entityId: actorEntityId } : {}) };
   }
   if (eventType !== "user_message") {
-    return { relation: "system" };
+    return { relation: "system", ...(actorEntityId ? { entityId: actorEntityId } : {}) };
   }
 
   if (GROUP_SPEECH_PATTERNS.some((pattern) => pattern.test(text))) {
@@ -209,7 +214,7 @@ async function resolveSpeakerAttribution(
     return { relation: "unknown" };
   }
 
-  return { relation: "you" };
+  return { relation: "you", ...(actorEntityId ? { entityId: actorEntityId } : {}) };
 }
 
 function extractNamedSpeakerCandidate(text: string): string | null {

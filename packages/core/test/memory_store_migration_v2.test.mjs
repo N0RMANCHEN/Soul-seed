@@ -50,7 +50,7 @@ test("ensureMemoryStore migrates schema v1 to current schema with new memory col
 
   const cols = sqlite(
     dbPath,
-    "SELECT GROUP_CONCAT(name, ',') FROM pragma_table_info('memories') WHERE name IN ('activation_count','last_activated_at','emotion_score','narrative_score','credibility_score','excluded_from_recall','reconsolidation_count','speaker_role','speaker_id','speaker_label') ORDER BY name;"
+    "SELECT GROUP_CONCAT(name, ',') FROM pragma_table_info('memories') WHERE name IN ('activation_count','last_activated_at','emotion_score','narrative_score','credibility_score','excluded_from_recall','reconsolidation_count','speaker_relation','speaker_entity_id') ORDER BY name;"
   );
   const got = new Set(cols.split(",").filter(Boolean));
   const expected = new Set([
@@ -61,9 +61,8 @@ test("ensureMemoryStore migrates schema v1 to current schema with new memory col
     "credibility_score",
     "excluded_from_recall",
     "reconsolidation_count",
-    "speaker_role",
-    "speaker_id",
-    "speaker_label"
+    "speaker_relation",
+    "speaker_entity_id"
   ]);
   assert.deepEqual(got, expected);
 });
@@ -151,13 +150,13 @@ test("ensureMemoryStore migrates v9 personas to v10 with speaker backfill", asyn
 
   const speakerCols = sqlite(
     dbPath,
-    "SELECT GROUP_CONCAT(name, ',') FROM pragma_table_info('memories') WHERE name IN ('speaker_role','speaker_id','speaker_label') ORDER BY name;"
+    "SELECT GROUP_CONCAT(name, ',') FROM pragma_table_info('memories') WHERE name IN ('speaker_relation','speaker_entity_id') ORDER BY name;"
   );
-  assert.deepEqual(new Set(speakerCols.split(",").filter(Boolean)), new Set(["speaker_role", "speaker_id", "speaker_label"]));
+  assert.deepEqual(new Set(speakerCols.split(",").filter(Boolean)), new Set(["speaker_relation", "speaker_entity_id"]));
 
   const backfilled = sqlite(
     dbPath,
-    "SELECT origin_role || '|' || COALESCE(speaker_role,'') || '|' || COALESCE(speaker_id,'') || '|' || COALESCE(speaker_label,'') FROM memories ORDER BY created_at DESC LIMIT 1;"
+    "SELECT origin_role || '|' || speaker_relation || '|' || COALESCE(speaker_entity_id,'') FROM memories ORDER BY created_at DESC LIMIT 1;"
   );
-  assert.equal(backfilled.startsWith("assistant|assistant|"), true);
+  assert.equal(backfilled, "assistant|unknown|");
 });

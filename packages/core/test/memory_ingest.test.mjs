@@ -51,9 +51,9 @@ test("ingest persists speaker attribution for multi-agent-safe recall", async ()
 
   const row = sqlite(
     dbPath,
-    "SELECT origin_role || '|' || COALESCE(speaker_role,'') || '|' || COALESCE(speaker_id,'') || '|' || COALESCE(speaker_label,'') FROM memories ORDER BY created_at DESC LIMIT 1;"
+    "SELECT origin_role || '|' || speaker_relation || '|' || COALESCE(speaker_entity_id,'') FROM memories ORDER BY created_at DESC LIMIT 1;"
   );
-  assert.equal(row, "assistant|assistant|persona:aster|Aster");
+  assert.equal(row, "assistant|me|persona:aster");
 });
 
 test("ingest classifier can write all four memory classes", async () => {

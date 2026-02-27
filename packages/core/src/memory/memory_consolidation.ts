@@ -567,9 +567,9 @@ function makeInsertSql(item: ConsolidationCandidate, nowIso: string): string {
   const sourceTag = createHash("sha256").update(`${item.sourceEventHash}|${item.content}`, "utf8").digest("hex");
   return [
     "INSERT INTO memories",
-    "(id, memory_type, content, salience, state, origin_role, evidence_level, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at)",
+    "(id, memory_type, content, salience, state, origin_role, speaker_relation, evidence_level, activation_count, last_activated_at, emotion_score, narrative_score, credibility_score, excluded_from_recall, reconsolidation_count, source_event_hash, created_at, updated_at, deleted_at)",
     "VALUES",
-    `(${sqlText(id)}, 'semantic', ${sqlText(item.content.slice(0, 240))}, ${item.salience}, 'warm', 'user', ${sqlText(item.evidenceLevel)}, 1, ${sqlText(nowIso)}, 0.2, 0.5, ${Math.max(0.2, Math.min(1, item.credibilityScore))}, 0, 0, ${sqlText(`consolidated:${sourceTag}`)}, ${sqlText(nowIso)}, ${sqlText(nowIso)}, NULL);`
+    `(${sqlText(id)}, 'semantic', ${sqlText(item.content.slice(0, 240))}, ${item.salience}, 'warm', 'user', 'you', ${sqlText(item.evidenceLevel)}, 1, ${sqlText(nowIso)}, 0.2, 0.5, ${Math.max(0.2, Math.min(1, item.credibilityScore))}, 0, 0, ${sqlText(`consolidated:${sourceTag}`)}, ${sqlText(nowIso)}, ${sqlText(nowIso)}, NULL);`
   ].join(" ");
 }
 
