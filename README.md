@@ -97,6 +97,26 @@ Beta is for developers debugging persona behavior or system issues.
 
 ---
 
+## FAQ / 常见问题
+
+### How do I update to version 3.0?
+The current version is **0.5.0**. Soulseed uses semantic versioning (major.minor.patch). Version 3.0 will be available when the project reaches that milestone. To update to the latest version, run:
+```bash
+git pull origin main
+npm install
+npm run build
+```
+
+### 如何更新到 3.0 版本？
+当前版本为 **0.5.0**。Soulseed 采用语义化版本号（主版本.次版本.补丁）。3.0 版本将在项目达到该里程碑时发布。更新到最新版本请运行：
+```bash
+git pull origin main
+npm install
+npm run build
+```
+
+---
+
 ## Features / 核心能力
 
 - **Provider-agnostic LLM adapter** — works with any OpenAI-compatible API; auto-detects provider from URL; model fallback chain for resilience
