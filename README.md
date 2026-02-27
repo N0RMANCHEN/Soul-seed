@@ -298,7 +298,6 @@ datasets/
   mood/           # Mood latent regression cases
 doc/
   CLI.md                   # Complete CLI command reference
-  Roadmap.md               # Product phases and milestones
   Quality-Evaluation.md    # Layered evaluation framework (L0–L5)
   Windows.md               # Windows-specific install notes
 personas/
@@ -324,37 +323,6 @@ npm run verify         # Full verification / 完整验证
 npm run acceptance     # Online acceptance test / 在线验收测试
 npm run eval:all       # Full quality evaluation / 完整质量评估
 ```
-
----
-
-## Documentation / 文档
-
-| Doc | Contents / 内容 |
-|---|---|
-| [`doc/Quickstart.md`](doc/Quickstart.md) | 5-minute onboarding guide / 5分钟上手指南 |
-| [`doc/CLI.md`](doc/CLI.md) | Complete command reference / 完整命令参考 |
-| [`doc/Roadmap.md`](doc/Roadmap.md) | Product phases and milestones / 产品阶段与里程碑 |
-| [`doc/Architecture-Folder-Governance.md`](doc/Architecture-Folder-Governance.md) | Architecture/folder governance standard / 架构与文件夹治理标准 |
-| [`doc/Runtime-Report-Asset-Governance.md`](doc/Runtime-Report-Asset-Governance.md) | personas/ & reports/ retention/archive policy / 运行态与报告资产治理 |
-| [`doc/Product-Standards.md`](doc/Product-Standards.md) | Product-wide implementation standards / 全产品通用实施规范 |
-| [`doc/Quality-Evaluation.md`](doc/Quality-Evaluation.md) | Layered evaluation system (L0–L5) / 分层评估体系 |
-| [`doc/Windows.md`](doc/Windows.md) | Windows installation guide / Windows 安装指南 |
-| [`AGENT.md`](AGENT.md) | AI collaboration guide / AI 协作指南 |
-
----
-
-## Contributing / 贡献
-
-- Read `AGENT.md` first (takes precedence over `contributing_ai.md`)
-  *先读 `AGENT.md`（优先级高于 `contributing_ai.md`）*
-- All changes must pass `./scripts/verify.sh`
-  *所有变更必须通过 `./scripts/verify.sh`*
-- Every change must run a documentation impact check (see `AGENT.md` Doc Sync Gate)
-  *每次变更都必须执行文档影响排查（见 `AGENT.md` 的 Doc Sync Gate）*
-- Online path changes require an `npm run acceptance` report
-  *涉及在线路径的变更需附上 `npm run acceptance` 报告*
-- New session capabilities → register in `capabilities/registry.ts` + `intent_resolver.ts`
-- New latent dimensions → add to `governance/doctor.ts` + `types.ts`
 
 ---
 

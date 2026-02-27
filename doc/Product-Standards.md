@@ -3,7 +3,6 @@
 > 更新日期：2026-02-24  
 > 作用：定义跨模块、跨阶段通用的产品实施标准与门禁。  
 > 边界：
-> - 任务排期与状态：见 `doc/Roadmap.md`
 > - 质量评测指标与阈值：见 `doc/Quality-Evaluation.md`
 > - 开发协作与提交流程：见 `AGENT.md`、`contributing_ai.md`
 > - 本文档定义“实施标准与设计门禁”，不重复“开发提交流程”和“质量阈值细则”
@@ -119,7 +118,6 @@ Quick 档建议预算：
 3. 有超时降级路径且不会阻塞主对话链路。
 4. 有兼容夹具（legacy persona）与迁移回归。
 5. 文档引用已更新到对应规范层：
-   - 路线与状态：`doc/Roadmap.md`
    - 质量指标：`doc/Quality-Evaluation.md`
    - 协作流程：`AGENT.md` / `contributing_ai.md`
 6. 死代码治理遵循“保守清理 + 白名单”。
@@ -148,6 +146,5 @@ Quick 档建议预算：
 
 ### 7.4 维护规则
 - 新增白名单项时，必须同步更新：
-  - `doc/Roadmap.md`
   - `doc/Product-Standards.md`（本章节）
 - 若后续证实某项可静态追踪，应从白名单移除并执行清理。
