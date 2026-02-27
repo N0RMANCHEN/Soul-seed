@@ -21,6 +21,9 @@ All notable changes to this project will be documented in this file.
   - Gate integration: `eval_all.sh` + `package.json` `eval:phase-k` script; Quality-Evaluation.md §6.1 thresholds updated.
 
 ### Changed
+- **Roadmap gap-fill task expansion (L>M>N>O)**:
+  - Added missing active tasks for concurrency/process-budget governance, long-horizon memory retrieval scaling, arbitration explainability standardization, L5 safety dataset expansion, sqlite3 dependency UX hardening, and unified scorecard output path.
+  - Appended IDs only (no in-phase reordering) to keep roadmap rules intact: `L/P2-0`, `M/P2-0~P2-1`, `N/P2-0~P2-1`, `O/P3-0~P3-3`.
 - **Roadmap reprioritized from Phase L (single-layer sequence)**:
   - Updated active execution order to `Phase L > Phase M > Phase N > Phase O`.
   - Kept valid assessment insights as explicit roadmap workstreams: Turn Candidate Contract, unified eval/release gate, sleep/distillation loop, and engineering-debt closure.
