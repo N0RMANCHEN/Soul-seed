@@ -21,22 +21,22 @@
 
 ### 2.1 已有评测与质量组件
 
-- 检索回归评测：`packages/core/src/memory_eval.ts`
+- 检索回归评测：`packages/core/src/memory/memory_eval.ts`
   - 已输出 `Recall@K`、`MRR`、`wrongRecallRate`、`injectionHitRate`、`avgLatencyMs`
-- 对话风险指标：`packages/core/src/conversation_metrics.ts`
+- 对话风险指标：`packages/core/src/runtime/conversation_metrics.ts`
   - 已输出 `servicePhraseRate`、`fabricatedRecallRate`、`providerLeakRate`
-- 结构体检与一致性检查：`packages/core/src/doctor.ts`
+- 结构体检与一致性检查：`packages/core/src/governance/doctor.ts`
   - 文件完整性、schema/version、life log hash 链、事件 payload 合法性
 - 验收入口：`scripts/acceptance.sh`
   - 覆盖最小在线链路与连续性 smoke 验证
-- 语义路由分层指标：`scripts/quality_scorecard.mjs` + `packages/core/src/conversation_metrics.ts`
+- 语义路由分层指标：`scripts/quality_scorecard.mjs` + `packages/core/src/runtime/conversation_metrics.ts`
   - 已产出 `L1HitRate`、`L2HitRate`、`L3ArbitrationRate`、`L4RegexFallbackRate`、`BusinessPathRegexRate`
 - Phase J 交互体验赛道：`scripts/eval_phase_j.mjs` + `datasets/quality/phase_j_engagement_cases.json`
   - 已产出 `replayPassRate`、`topicHitRate(A/B)`、`topicHitDelta`、`bridgeCoverageB`、`starvationProtectionB`
 
 ### 2.2 主要缺口
 
-- 指标分散，缺统一 scorecard 与 release gate
+- 已有 scorecard 与分层评测能力，但 release gate 尚未完成统一收口（阻断规则/报告格式仍分散）
 - 多轮连续性评测不足（当前更偏单点功能）
 - 拒答正确性与越权/注入抗性缺体系化赛道
 - 缺线上抽样回放到离线基准的闭环机制
@@ -280,10 +280,12 @@
 
 ## 7. CI 与报告产物（规划项）
 
-本节是后续实施建议，不代表当前仓库已实现。
+本节包含“已实现能力 + 后续收口项”，以便区分现状与增量任务。
+
+已提供：
+- 聚合入口：`scripts/eval_all.sh`
 
 建议新增：
-- 聚合入口：`scripts/eval_all.sh`
 - 统一报告：`reports/quality/scorecard.json`
 - 人读摘要：`reports/quality/scorecard.md`
 
@@ -342,11 +344,11 @@
 
 ## 9. 与现有代码映射（实施参考）
 
-- 检索评测：`packages/core/src/memory_eval.ts`
-- 对话指标：`packages/core/src/conversation_metrics.ts`
-- 结构体检：`packages/core/src/doctor.ts`
-- 事件账本与 hash 链：`packages/core/src/persona.ts`
-- 决策轨迹与证据注入：`packages/core/src/orchestrator.ts`
+- 检索评测：`packages/core/src/memory/memory_eval.ts`
+- 对话指标：`packages/core/src/runtime/conversation_metrics.ts`
+- 结构体检：`packages/core/src/governance/doctor.ts`
+- 事件账本与 hash 链：`packages/core/src/persona/persona.ts`
+- 决策轨迹与证据注入：`packages/core/src/runtime/orchestrator.ts`
 - 验收脚本：`scripts/acceptance.sh`
 
 ---

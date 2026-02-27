@@ -21,6 +21,17 @@ All notable changes to this project will be documented in this file.
   - Gate integration: `eval_all.sh` + `package.json` `eval:phase-k` script; Quality-Evaluation.md §6.1 thresholds updated.
 
 ### Changed
+- **Roadmap reprioritized from Phase L (single-layer sequence)**:
+  - Updated active execution order to `Phase L > Phase M > Phase N > Phase O`.
+  - Kept valid assessment insights as explicit roadmap workstreams: Turn Candidate Contract, unified eval/release gate, sleep/distillation loop, and engineering-debt closure.
+  - Continued multi-agent capability as active `Phase N` while keeping historical `K` archived and traceable via mapping.
+- **Roadmap rebase from Phase M (single-layer sequence)**:
+  - Reorganized active roadmap into `Phase M > Phase N > Phase O > Phase P` to align with current priorities: trace contract/human dynamics, multi-agent relaunch, unified evaluation gate + sleep loop, and input evolution + engineering debt closure.
+  - Migrated legacy `I/L` tasks into the new single sequence with explicit mapping in `doc/Roadmap.md`; historical `K` remains archived while its capability line is continued in `Phase N`.
+  - Added concrete engineering-debt closure tasks to active roadmap (large-file modularization, core export surface narrowing, doc-consistency promotion path).
+- **Roadmap/doc governance alignment (2026-02-27)**:
+  - Updated `doc/Roadmap.md` to keep active priority at `Phase M > Phase I > Phase L` while strengthening M/I/L deliverables and gates: candidate-evaluate-select trace contract, unified quality gate schema target, and explicit rollback triggers.
+  - Updated `doc/Quality-Evaluation.md` to reflect current code layout paths (`memory/*`, `runtime/*`, `governance/*`) and clarify the real gap as "release gate unification" rather than missing baseline capability.
 - **Memory speaker attribution (multi-agent ready)**:
   - Added `payload.speaker` normalization for `user_message` / `assistant_message` life events.
   - Upgraded memory schema to v10 with `speaker_role` / `speaker_id` / `speaker_label` columns (with migration/backfill from `origin_role`).

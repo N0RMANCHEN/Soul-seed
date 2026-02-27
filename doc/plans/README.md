@@ -39,4 +39,4 @@
 
 ## Active Index
 
-- `doc/plans/L-Incremental-Input-Plan.md`（Phase L active）
+- `none`（2026-02-27 起按 `doc/Roadmap.md` 的 `M>N>O>P` 重排；active 计划文件待迁移重建）

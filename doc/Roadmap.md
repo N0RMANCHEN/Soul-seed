@@ -1,6 +1,6 @@
 # Soulseed Roadmap (Execution-Oriented)
 
-- 更新日期：2026-02-26
+- 更新日期：2026-02-27
 - 状态定义：`todo` / `in_progress` / `blocked` / `done` / `deferred` / `historical`
 
 ## 1) 文档职责与边界（强制）
@@ -22,223 +22,251 @@
 
 ## 3) Phase 与编号规则（强制）
 
-1. 当前执行优先级：`Phase M > Phase I > Phase L`。
-2. 任务 ID 冻结，不重排；新增任务仅允许追加编号。
-3. 编号格式：`{Phase}/P{priority}-{seq}`。
+1. 当前执行优先级：`Phase L > Phase M > Phase N > Phase O`。
+2. 编号格式：`{Phase}/P{priority}-{seq}`。
+3. 新增任务仅允许追加编号，不得在同一 Phase 内重排既有编号。
 4. 每次进入新 Phase 前必须先完成分工规划（A/B 归属、依赖链、同步点、回滚归属）。
+5. 历史 `I/K` 任务不删除，通过本文件迁移映射追溯。
 
 ## 4) 当前执行总览
 
 - `blocked`: `none`
 - `in_progress`: `none`
-- `todo`: `Phase M`, `Phase I`, `Phase L`
+- `todo`: `Phase L`, `Phase M`, `Phase N`, `Phase O`
 - `historical`:
   - Phase H（Ha/Hb/Hc）完成记录：`doc/plans/archive/H-State-Closure-Plan.md` 及同目录 H*/Ha*/Hb*/Hc* 子计划。
   - Architecture Governance 12 项完成归档：`doc/plans/archive/AG-2026-02-Completion.md`。
   - Phase `J/P0-2` 交互闭环归档（含 `J/P0-0`、`J/P0-1`）：`doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`。
   - Phase `J/P1` 交互闭环归档：`doc/plans/archive/J-2026-02-Engagement-P1-Plan.md`。
   - Phase K 多人格聊天归档（`K/P0-0` ~ `K/P1-3`）：`doc/plans/archive/K-2026-02-Multi-Persona-Chat-Plan.md`。
-  - Core 分层重构（2026-02-26）：`packages/core/src` 根层收敛为 `index.ts`/`types.ts`，其余迁入 `runtime|memory|persona|state|guards|governance|capabilities|proactive`。
-
-### J/P0-2（historical anchor）
-- 状态：`historical`
-- 索引：`doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`
-
-### K/P0-0（historical anchor）
-- 状态：`historical`
-- 索引：`doc/plans/archive/K-2026-02-Multi-Persona-Chat-Plan.md`
 
 ## 5) Active Roadmap
 
-### Phase M（Bio-Inspired Human Dynamics）
+### Phase L（Input Evolution First）
 
-目标：引入“基因/表观-神经调制-主观感受整合”的人类式更新动力学，修复“参数在动但人格不活”的体验断层；在不破坏身份一致性与边界规则的前提下，提升连续人格感与向量主链路利用率。
+目标：先补输入侧短板（增量理解 + 分段提交 + 纠偏反馈），提升真实交互可用性，并为后续候选并行与仲裁提供稳定输入协议。
 
 执行拆解：
-1. M0（协议层）：统一慢/中/快变量协议与事件审计字段，建立可回放输入输出面。
-2. M1（动力层）：建立神经/激素代理和感受整合，并接入主链路与阶段可塑性。
-3. M2（收口层）：完成强刺激跃迁、genome/epigenetics 固化、评测与发布回滚。
+1. L0（输入协议层）：输入事件模型、fragment/commit、正式回合桥接。
+2. L1（体验与预算层）：增量理解可视化、误解修正、开销预算与降级策略。
+3. L2（评测与门禁层）：输入赛道指标、回放复现、CI 阻断。
 
 阶段出口标准（DoD）：
-- M0 出口：类型定义稳定、兼容开关生效、回放脚本可重放同一输入得到一致轨迹。
-- M1 出口：向量参与度可观测、人格变化连续且无高频振荡、证据链完整。
-- M2 出口：评测指标达标并接入 CI，发布检查单与回滚脚本演练通过。
+- L0 出口：流式输入与非流式基线语义一致，断流可恢复。
+- L1 出口：等待时延/误解率/修正成功率达预算阈值。
+- L2 出口：输入赛道指标接入 CI，失败可阻断。
 
-### M/P0-0 生物机制映射与状态协议（文档与类型）
+### L/P0-0 输入事件层抽象（CLI）
 - 状态：`todo`
-- 交付：统一变量分层、更新节律、证据字段、审计字段定义（与 `doc/Product-Standards.md` 对齐）
-- 门禁：不得引入破坏现有 persona 加载兼容的 schema 变更
+- 交付：按键/片段/提交事件模型、时序标记、取消语义
+- 门禁：事件顺序一致性可验证，断流可恢复
 
-### M/P0-1 神经/激素代理变量模型（中度拟真）
+### L/P0-1 分段提交与桥接协议
+- 状态：`todo`
+- 依赖：`L/P0-0`
+- 交付：片段边界识别、节流去抖、提交合并、正式回合桥接
+- 门禁：桥接后输出与非流式基线语义一致
+
+### L/P1-0 增量理解与交互纠偏
+- 状态：`todo`
+- 依赖：`L/P0-1`
+- 交付：轻量 intent/topic 增量推断、输入状态提示、误解修正建议
+- 门禁：不得提前写入长期记忆；仅允许临时态
+
+### L/P1-1 开销预算与输入赛道
+- 状态：`todo`
+- 依赖：`L/P1-0`
+- 交付：token/CPU/延迟预算模型；等待时延/误解率/修正率/成本曲线指标
+- 门禁：启用流式输入后总成本不得超过预算上限
+
+### L/P1-2 输入回放与CI门禁
+- 状态：`todo`
+- 依赖：`L/P1-1`
+- 交付：输入流式样本集、回放脚本、CI 阻断配置
+- 门禁：回放失败自动阻断
+
+### Phase M（Trace Contract + Human Dynamics）
+
+目标：打穿“候选-评估-选择”的可审计闭环，并完成人格动力学主链路，让“连续人格 + 可审计成长”可回放可复现。
+
+执行拆解：
+1. M0（合同层）：慢/中/快变量协议 + Turn Candidate Contract。
+2. M1（动力层）：神经/激素代理 + feeling integration + latent 主链路。
+3. M2（稳定层）：可塑性、强刺激跃迁、抗振荡、保护窗口。
+
+阶段出口标准（DoD）：
+- M0 出口：DecisionTrace 记录候选来源/评分/选择/拒绝原因。
+- M1 出口：`LatentUtilizationRate` 可观测，向量触发原因可追溯。
+- M2 出口：连续 20 轮无高频翻转，重大跃迁有证据链且可回滚。
+
+### M/P0-0 生物机制映射与状态协议
+- 状态：`todo`
+- 交付：变量分层、更新节律、审计字段定义
+- 门禁：不得破坏存量 persona 兼容加载
+
+### M/P0-1 神经/激素代理变量模型
 - 状态：`todo`
 - 依赖：`M/P0-0`
-- 交付：dopamine/serotonin/norepinephrine/oxytocin/cortisol 代理变量与更新规则，含饱和/恢复/衰减参数
-- 门禁：每轮计算可解释、可回放，不允许黑盒直接改写最终人格字段
+- 交付：dopamine/serotonin/norepinephrine/oxytocin/cortisol 代理变量与衰减/恢复规则
+- 门禁：每轮计算可解释、可回放
 
-### M/P0-2 事件证据与可回放轨迹（Trace Contract）
+### M/P0-2 Turn Candidate Contract（核心）
 - 状态：`todo`
 - 依赖：`M/P0-1`
-- 交付：定义事件哈希、证据强度、冲突来源、回放步骤索引字段
-- 门禁：任何人格字段变动都必须能追溯到至少一个事件证据
+- 交付：`candidates[]` + `selection{winnerId,reasonCodes,rejected[]}` + 事件证据索引
+- 门禁：任何人格字段变动都可追溯到证据事件
 
 ### M/P0-3 主观感受整合层（Feeling Integration）
 - 状态：`todo`
 - 依赖：`M/P0-1`, `M/P0-2`
-- 交付：把代理变量映射为连续 feeling state（coherence/vitality/security/tension/reflectiveLoad）
-- 门禁：L2 主路径可观测，不能退化为 regex 规则主判定
+- 交付：coherence/vitality/security/tension/reflectiveLoad 连续状态
+- 门禁：主路径可观测，不退化为 regex 主判定
 
-### M/P0-4 向量主链路接入（voice/belief/cross-influence）
+### M/P0-4 向量主链路接入
 - 状态：`todo`
 - 依赖：`M/P0-0`, `M/P0-3`
-- 交付：`voiceLatent/beliefLatent/latent_cross_influence` 真正进入 turn commit 主链路
-- 门禁：DecisionTrace 必须记录“本轮向量参与度与触发原因”
+- 交付：`voiceLatent/beliefLatent/latent_cross_influence` 接入 turn commit
+- 门禁：DecisionTrace 记录参与度、触发原因、是否影响最终选择
 
-### M/P1-0 阶段性可塑性引擎（formative/stabilizing/stable）
+### M/P1-0 阶段性可塑性引擎
 - 状态：`todo`
 - 依赖：`M/P0-3`, `M/P0-4`
-- 交付：按人格阶段动态调整更新灵敏度（早期更可塑，稳定期更稳）
-- 门禁：短窗内不得出现风格高频翻转（anti-oscillation）
+- 交付：formative/stabilizing/stable 更新灵敏度
+- 门禁：短窗内不得高频翻转
 
 ### M/P1-1 强刺激跃迁与证据门禁
 - 状态：`todo`
 - 依赖：`M/P1-0`
-- 交付：支持重大事件触发显著变化（不设固定硬上限），同时落地证据链门禁
-- 门禁：identity continuity / constitution boundary 必须硬约束
+- 交付：重大事件跃迁支持 + 证据门禁
+- 门禁：identity continuity / constitution boundary 硬约束
 
 ### M/P1-2 genome/epigenetics 演化固化
 - 状态：`todo`
 - 依赖：`M/P1-1`
-- 交付：epigenetics 连续漂移 + genome 条件固化 + mutation log 完整审计
-- 门禁：保留 `locked` 冻结与回滚能力；兼容模式不得“换人感”
+- 交付：连续漂移、条件固化、mutation log 审计
+- 门禁：保留 `locked` 冻结与回滚
 
 ### M/P1-3 抗振荡与恢复窗口控制
 - 状态：`todo`
 - 依赖：`M/P1-0`, `M/P1-1`
-- 交付：短窗振荡抑制、异常恢复窗口、过冲保护参数
-- 门禁：连续 20 轮不得出现角色语气/立场来回翻转
+- 交付：振荡抑制、恢复窗口、过冲保护
+- 门禁：连续 20 轮不得语气/立场来回翻转
 
-### M/P2-0 评测赛道（连续人格感优先）
-- 状态：`todo`
-- 依赖：`M/P1-2`, `M/P1-3`
-- 交付：`HumanContinuityScore`、`LatentUtilizationRate`、`ShockTransitionCoherence` 指标
-- 门禁：纳入 `doc/Quality-Evaluation.md` 与 CI/回放脚本
+### Phase N（Multi-Agent Network + Task Family）
 
-### M/P2-1 回放基线与对照样本
-- 状态：`todo`
-- 依赖：`M/P2-0`
-- 交付：形成期/稳定期/强刺激三类样本集与回放报告模板
-- 门禁：结果可复现、可比较、可追溯到事件哈希
-
-### M/P2-2 发布门禁与回滚预案
-- 状态：`todo`
-- 依赖：`M/P2-1`
-- 交付：一次切换发布检查单、降级条件、回滚脚本与审计要求
-- 门禁：若连续性指标回退则自动进入回滚路径
-
-### Phase I（产品化收口）
-
-目标：完成开源合规、可观测、产品化门禁与兼容收口。
+目标：将多上下文并行从“人工切换”升级为“系统能力”，并以 Task Family（器官）方式组织候选生成与共享优化。
 
 执行拆解：
-1. I0（底线）：合规、性能、可观测三项底线先闭合。
-2. I1（门禁）：产品化 DoD 与回归机制固化为发布前置。
-3. I2（兼容）：Inheritance/兼容策略在可回滚前提下上线。
+1. N0（候选层）：多上下文/多 agent 候选生成统一接口。
+2. N1（仲裁层）：统一评分与选择协议，拒绝原因可解释。
+3. N2（组织层）：Task Family 分组、共享优化队列、隔离保护。
 
 阶段出口标准（DoD）：
-- I0 出口：许可证、三方依赖、性能指标、观测指标都可审计。
-- I1 出口：发布门禁脚本化且失败可阻断发布。
-- I2 出口：兼容能力灰度可控，回滚路径经演练通过。
+- N0 出口：同输入可稳定产出多候选并记录来源与成本。
+- N1 出口：仲裁结果可回放，拒绝原因可解释。
+- N2 出口：泄漏率为 0，发言垄断率与协作延迟达标。
 
-### I/P0-0 开源合规
+### N/P0-0 多候选生成器（multi-context / multi-agent）
 - 状态：`todo`
-- 交付：license 清单、第三方依赖归因、合规检查脚本
-- 门禁：新增依赖必须通过合规扫描并记录版本来源
+- 交付：统一候选接口（reply/tool/state_delta/summary）
+- 门禁：候选必须携带风险、成本、groundedness 信号
 
-### I/P0-2 性能与可观测
+### N/P0-1 统一仲裁器（选择 + 拒绝）
 - 状态：`todo`
-- 交付：核心链路延迟/吞吐指标、关键事件 trace、异常分级告警
-- 门禁：关键路径 P95 延迟与错误率达到产品阈值
+- 依赖：`N/P0-0`, `M/P0-2`
+- 交付：`winner + reasonCodes + rejected[]`
+- 门禁：同输入同配置下结果可复现
 
-### I/P0-3 OK 定义产品化门禁
+### N/P1-0 Task Family（器官）分组与协议
 - 状态：`todo`
-- 依赖：`I/P0-0`, `I/P0-2`
-- 交付：产品化发布清单、阻断条件、降级与回滚条件
-- 门禁：无门禁豁免发布；例外必须记录审批链路
+- 依赖：`N/P0-1`
+- 交付：按评测指标/风险等级/IO 协议定义任务族
+- 门禁：每个任务族必须定义候选类型、评估指标、允许写入域
 
-### I/P1-11 可观测性回归
+### N/P1-1 上下文总线与隔离审计
 - 状态：`todo`
-- 依赖：`I/P0-2`
-- 交付：回归仪表板、波动区间、异常聚类与根因模板
-- 门禁：回归失败自动阻断发布流水线
+- 依赖：`N/P1-0`
+- 交付：strict/shared/hybrid 隔离策略与访问审计
+- 门禁：私有上下文跨 actor 访问默认 fail-closed
 
-### I/P2-0 Inheritance（可选）
+### N/P1-2 多智能体评测赛道
 - 状态：`todo`
-- 依赖：`I/P0-3`
-- 交付：继承策略配置、隔离与边界检查、灰度开关
-- 门禁：关闭继承后行为回到基线，且无数据残留副作用
+- 依赖：`N/P1-1`
+- 交付：仲裁准确率、泄漏率、协作延迟、发言垄断率指标与数据集
+- 门禁：指标纳入 CI 且失败可阻断
 
-### I/P2-1 兼容收口（可选）
-- 状态：`todo`
-- 依赖：`I/P2-0`
-- 交付：兼容模式矩阵、迁移指南、失败回滚手册
-- 门禁：兼容矩阵覆盖主流使用路径并通过回放验证
+### Phase O（Unified Gate + Sleep Distillation + Debt Closure）
 
-### Phase L（输入流式化：增量理解 + 分段提交）
-
-目标：在不破坏现有治理与主链路稳定性的前提下，建立 CLI 文本输入侧增量处理能力，实现“边输入边理解、分段提交后正式回合处理”。
+目标：统一评测发布门禁，建立可审计睡眠内化闭环，同时优先偿还影响演进速度的工程债。
 
 执行拆解：
-1. L0（输入层）：输入事件抽象、分段提交、正式回合桥接打通。
-2. L1（体验层）：增量理解可视化、纠错提示、开销门禁稳定。
-3. L2（评测层）：形成可复现输入流式化评测与上线标准。
+1. O0（门禁层）：统一 scorecard schema 与 PR/Nightly/Release 阻断。
+2. O1（睡眠层）：高质量样本筛选、三层睡眠产物、SFT 导出对齐。
+3. O2（工程债层）：大文件拆分、core export 收口、doc-code 一致性升级。
 
 阶段出口标准（DoD）：
-- L0 出口：输入事件到正式回合链路稳定且可追踪。
-- L1 出口：等待时间与误解率在预算内，用户可见纠偏反馈可用。
-- L2 出口：评测脚本和回放样本进入 CI，失败可自动阻断。
+- O0 出口：所有 eval 输出统一 JSON/MD，阈值可阻断。
+- O1 出口：睡眠输入与产物可追溯到事件证据。
+- O2 出口：关键大文件完成首轮拆分，核心耦合面收口。
 
-### L/P0-0 输入事件层抽象（CLI）
+### O/P0-0 统一 scorecard schema 与总控输出
 - 状态：`todo`
-- 交付：按键/片段/提交事件模型、会话内时序标记、取消语义
-- 门禁：事件顺序一致性可验证，断流可恢复
+- 交付：聚合 `quality_scorecard` / `phase-j` / `phase-k` / temporal / latency
+- 门禁：统一输出格式可被 CI 消费
 
-### L/P0-1 分段提交引擎
+### O/P0-1 发布门禁与自动回滚触发
 - 状态：`todo`
-- 依赖：`L/P0-0`
-- 交付：片段边界识别、节流与去抖、提交合并策略
-- 门禁：误切段率与重复提交率在阈值内
+- 依赖：`O/P0-0`
+- 交付：PR/Nightly/Release 阈值阻断、失败归因、回滚触发
+- 门禁：连续性回退/业务 regex 回升/仲裁可解释性下降触发回滚
 
-### L/P0-2 增量理解（轻量层）
+### O/P1-0 睡眠输入筛选与三层产物
 - 状态：`todo`
-- 依赖：`L/P0-1`
-- 交付：轻量 intent/topic 增量推断，低成本上下文预热
-- 门禁：不得提前写入长期记忆；仅允许临时态
+- 依赖：`M/P0-2`, `O/P0-1`
+- 交付：
+  - A 层：`summaries/`、`self_reflection`、`autobiography`
+  - B 层：可版本化 prompt/heuristic artifact
+  - C 层：`finetune_export` 对齐数据集
+- 门禁：任何内化必须可追溯到事件证据
 
-### L/P0-3 正式回合桥接
+### O/P2-0 主链路大文件拆分（第一批）
 - 状态：`todo`
-- 依赖：`L/P0-2`
-- 交付：分段缓存到正式 turn commit 的桥接协议
-- 门禁：桥接后输出与非流式基线语义一致
+- 交付：`cli/index.ts`、`governance/doctor.ts`、`persona/persona.ts` 分域拆分
+- 门禁：拆分后行为回放一致，无新增治理违规
 
-### L/P1-0 交互可视化与修正提示
+### O/P2-1 召回与编排解耦（第二批）
 - 状态：`todo`
-- 依赖：`L/P0-3`
-- 交付：输入增量状态提示、误解纠正建议、分段确认反馈
-- 门禁：提示信息不泄露系统内部规则与隐私上下文
+- 依赖：`O/P2-0`
+- 交付：`memory_recall.ts` 拆分；`orchestrator.ts` 与 `agent_engine.ts` 协议解耦
+- 门禁：回归指标不下降，关键 trace 字段不丢失
 
-### L/P1-1 开销预算与门禁
+### O/P2-2 Core export 收口与 doc-consistency 升级
 - 状态：`todo`
-- 依赖：`L/P0-2`, `L/P1-0`
-- 交付：token/CPU/延迟预算模型，过载降级与兜底策略
-- 门禁：启用流式输入后总成本不得超过预算上限
+- 依赖：`O/P2-1`
+- 交付：core 分级导出、doc 路径漂移修复、doc-consistency 由非阻塞升至阻塞
+- 门禁：shell 依赖不破坏；文档与代码路径一致
 
-### L/P1-2 评测赛道
-- 状态：`todo`
-- 依赖：`L/P1-1`
-- 交付：等待时延、误解率、修正成功率、成本曲线四类指标
-- 门禁：纳入 `doc/Quality-Evaluation.md` 并可回放复现
+## 6) 历史/迁移映射（追溯用）
 
-## 6) 文档联动清单（每次变更必查）
+- 原 `I/P0-0`, `I/P0-2`, `I/P0-3`, `I/P1-11`, `I/P2-*` -> `O/P0-*`, `O/P2-*`
+- 原历史 `K/*`（能力延续） -> `N/P0-*`, `N/P1-*`
+- 原 `L/P0-*`, `L/P1-*` -> 保留并前置为当前第一阶段
+
+## 7) 兼容命名锚点（供治理检查）
+
+### I/P0-0（compat anchor）
+- 状态：`deferred`
+- 说明：已迁移到 `O/P0-*`（统一评测与发布阻断轨道）
+
+### J/P0-0（compat anchor）
+- 状态：`historical`
+- 说明：见 `doc/plans/archive/J-2026-02-Interaction-Loop-Plan.md`
+
+### K/P0-0（compat anchor）
+- 状态：`historical`
+- 说明：见 `doc/plans/archive/K-2026-02-Multi-Persona-Chat-Plan.md`；能力延续到 `N/P0-*`
+
+## 8) 文档联动清单（每次变更必查）
 
 - `README.md`
 - `AGENT.md`
@@ -248,7 +276,7 @@
 - `doc/Roadmap.md`
 - 相关 `doc/plans/*` 与 `doc/plans/archive/*`
 
-## 7) 治理锚点（路径引用）
+## 9) 治理锚点（路径引用）
 
 - direct-write gate：`scripts/check_direct_writes.mjs`
 - architecture governance gate：`scripts/arch_governance_check.mjs`
